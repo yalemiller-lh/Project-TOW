@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import * as G from './dist/game.mjs';
 let n=0;const test=(name,fn)=>{fn();n++;console.log('PASS '+name);};
 const near=(a,b)=>assert.ok(Math.abs(a-b)<1e-6,`${a} != ${b}`);
-function fixture(distance=7){const s=G.createGame();G.autoDeploy(s);G.begin(s);G.nextPhase(s);Object.assign(G.getUnit(s,'A1'),{x:18,y:25});Object.assign(G.getUnit(s,'I1'),{x:18,y:25-G.SIZE.h-distance});s.movementStep='declare';return s;}
+function fixture(distance=7){const s=G.createGame();G.autoDeploy(s);s.rocket.wounds=0;G.begin(s);G.nextPhase(s);Object.assign(G.getUnit(s,'A1'),{x:18,y:25});Object.assign(G.getUnit(s,'I1'),{x:18,y:25-G.SIZE.h-distance});s.movementStep='declare';return s;}
 function roll(s,dice){G.declareCharge(s,'A1','I1');G.chargeReaction(s,'A1','hold');G.finishDeclarations(s);return G.resolveCharge(s,'A1',dice);}
 test('charge range uses highest of two dice, not sum',()=>{const s=fixture(8);const r=roll(s,[4,3]);assert.equal(r.range,7);assert.equal(r.success,false);near(r.distance,4);assert.equal(G.getUnit(s,'A1').moved,true);});
 test('successful charge contacts target and locks both units',()=>{const s=fixture(7);const r=roll(s,[2,4]);assert.equal(r.success,true);near(G.gap(G.getUnit(s,'A1'),G.getUnit(s,'I1')),0);assert.equal(G.getUnit(s,'I1').engaged,'A1');assert.equal(G.canAct(s,G.getUnit(s,'A1')),false);assert.throws(()=>G.undo(s),/No move/);});

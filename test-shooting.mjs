@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import * as G from './dist/game.mjs';
 
 function duel(opponent='empire'){
- const s=G.createGame(opponent);G.autoDeploy(s);G.begin(s);G.nextPhase(s);
+ const s=G.createGame(opponent);G.autoDeploy(s);s.rocket.wounds=0;G.begin(s);G.nextPhase(s);
  for(const u of s.units)if(!['A4','I4'].includes(u.id)){u.x=null;u.y=null;}
  Object.assign(G.getUnit(s,'A4'),{x:35,y:25});Object.assign(G.getUnit(s,'I4'),{x:35,y:15});return s;
 }

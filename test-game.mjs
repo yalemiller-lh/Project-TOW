@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import * as G from './dist/game.mjs';
 let passed=0;
 function test(name,fn){fn();passed++;console.log('PASS '+name);}
-function ready(){const s=G.createGame();G.autoDeploy(s);G.begin(s);G.nextPhase(s);return s;}
+function ready(){const s=G.createGame();G.autoDeploy(s);s.rocket.wounds=0;G.begin(s);G.nextPhase(s);return s;}
 test('20 models occupy exactly 125 x 100 mm',()=>{assert.equal(G.SIZE.w*25.4,125);assert.equal(G.SIZE.h*25.4,100);});
 test('deployment requires the whole footprint within its zone',()=>{const s=G.createGame();assert.throws(()=>G.place(s,'A1',20,36),/zone/);G.place(s,'A1',20,36+G.SIZE.h/2);assert.throws(()=>G.place(s,'A2',20,40),/between/);assert.throws(()=>G.begin(s),/eight/);});
 test('all eight legal blocks begin with the red army',()=>{const s=ready();assert.equal(s.units.length,8);assert.equal(s.team,'ash');assert.equal(s.stage,'movement');s.units.forEach(u=>assert.equal(G.checkPosition(s,u,u.x,u.y,true),null));});
@@ -16,4 +16,4 @@ test('turn, round and movement flags reset correctly',()=>{const s=ready();G.mov
 test('dice counts and bounds',()=>{assert.deepEqual(G.rollD6(2,()=>0),[1,1]);assert.deepEqual(G.rollD6(2,()=>.99999),[6,6]);for(const n of [0,21,1.5,NaN])assert.throws(()=>G.rollD6(n));});
 console.log(`${passed} movement checks passed.`);
 
-test('phase sequence skips Shooting when no target is legal',()=>{const s=G.createGame();G.autoDeploy(s);G.begin(s);assert.equal(s.stage,'strategy');assert.equal(G.canAct(s,G.getUnit(s)),false);G.nextPhase(s);assert.equal(s.stage,'movement');G.move(s,'A1',3,'advance');G.nextPhase(s);assert.equal(s.stage,'combat');assert.equal(G.canAct(s,G.getUnit(s,'A2')),false);assert.equal(s.history.length,0);G.nextPhase(s);assert.equal(s.stage,'strategy');assert.equal(s.team,'iron');assert.equal(s.round,1);for(let i=0;i<3;i++)G.nextPhase(s);assert.equal(s.stage,'strategy');assert.equal(s.team,'ash');assert.equal(s.round,2);});
+test('phase sequence skips Shooting when no target is legal',()=>{const s=G.createGame();G.autoDeploy(s);s.rocket.wounds=0;G.begin(s);assert.equal(s.stage,'strategy');assert.equal(G.canAct(s,G.getUnit(s)),false);G.nextPhase(s);assert.equal(s.stage,'movement');G.move(s,'A1',3,'advance');G.nextPhase(s);assert.equal(s.stage,'combat');assert.equal(G.canAct(s,G.getUnit(s,'A2')),false);assert.equal(s.history.length,0);G.nextPhase(s);assert.equal(s.stage,'strategy');assert.equal(s.team,'iron');assert.equal(s.round,1);for(let i=0;i<3;i++)G.nextPhase(s);assert.equal(s.stage,'strategy');assert.equal(s.team,'ash');assert.equal(s.round,2);});
