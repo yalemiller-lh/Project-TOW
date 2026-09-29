@@ -1,0 +1,57 @@
+# Warhammer: The Old World — Battlefield
+
+Double-click **Play.html** to play offline. Two players share one screen. Red has three Chaos Dwarf Warrior regiments and one Blunderbuss Decimator regiment, each of 20 models. Before deployment, choose green Orc Mobs (including one with warbows) or blue Empire State Troops (including one State Missile Troop regiment with crossbows) for the opposing army. Every regiment includes a musician (M), standard bearer (S), and champion (C) in the centre of its front rank; they replace three of the 20 ordinary models. Quick deploy, or place each regiment in its 12-inch deployment zone. The top marker follows Strategy → Movement → Shooting → Combat.
+
+Click a regiment on the flock table to open orders beside it. Drag the popup by its **↔ DRAG UNIT ORDERS** heading, or focus that heading and use the arrow keys. During Movement, declare charges, roll them, then move remaining units. If no legal charge is available, the charge steps are skipped. Regiments that can declare a charge remain bright; those that cannot are gray. A declared charger gains a gold outline and a gold line to its target. A charge may use one measured approach wheel and then a free wheel to align after contact. Front, flank and rear facing is fixed when the charge is declared. Chaos Dwarfs move 3 inches or march 6; Orcs and State Troops move 4 or march 8. Marching near an enemy may need a Leadership test. Advance, wheel, or reform using the segmented inch bar. After a unit finishes its action, orders advance to the next eligible regiment on the right; a partial move keeps the current popup open. The dice pit is on the battlefield. Gray units have finished their phase actions.
+
+During Shooting, click a missile regiment. If no unit has a legal shot, Shooting is skipped automatically. Its 90° front arc shades close range (the first half of the weapon's range) and far range on the table. Choose a highlighted target directly on the board or in the unit popup. The popup shows firing models, range band, movement/long-range modifiers, and the needed hit and wound rolls. Blunderbusses fire D3 shots per model and use Volley Fire from rear ranks; their weapon ignores the long-range penalty. Empire crossbows and Orc warbows fire from the front rank. Shots, wounds, armour saves, and casualties are rolled; an ordinary move gives −1 to hit, while marching or charging prevents shooting. During charge declarations, a missile defender that faces a charger starting at least the charger's Movement value away may choose Hold or Stand & Shoot. The reaction fires before the charge roll, with its own −1 to hit, no long-range penalty, and the charger treated as entering weapon range. Blunderbusses ignore the Stand & Shoot penalty.
+
+During Combat, click either engaged regiment. First show each side's Initiative, then roll attacks one Initiative tier at a time. Compare combat result, roll the loser's Break test, and choose Shieldwall when available. Move the loser back, then the winner chooses follow up/pursuit or restraint. Dead models stay dark; surviving fighting models are bright red, green or blue. A unit that breaks and survives can take a 2D6 Rally test in its next Strategy phase.
+
+## Measurements and rules
+
+- Table: 72 × 48 inches (6 × 4 feet). Deployment zones: 12 inches deep. The SVG scales the board to the available screen; measurements remain tabletop inches.
+- Each regiment: 5 files × 4 ranks. Chaos Dwarf and State Troop bases are 25 × 25 mm; their blocks measure 125 × 100 mm. Orc bases are 30 × 30 mm; their blocks measure 150 × 120 mm.
+- Renegades 2.0 Chaos Dwarf Warriors: M3 WS4 BS3 S3 T4 W1 I2 A1 Ld9, hand weapons, heavy armour and shields. Base armour 4+; Parry improves the shield save to 3+ in these close combats.
+- Orc Mob (Orc Boy): M4 WS3 BS3 S3 T4 W1 I3 A1 Ld6, hand weapons and light armour (6+). A 3-inch charge gives Furious Charge; Choppas reroll 1s to wound and add Armour Piercing on a charge. Warband adds rank bonus to Leadership where permitted and automatically rerolls a failed charge range. An Orc Mob able to charge tests Impetuous; failure forces a charge.
+- Empire State Troops (State Trooper): M4 WS3 BS3 S3 T3 W1 I3 A1 Ld7, hand weapons, light armour and the optional shield. Base armour 5+; Parry improves it to 4+ in combat.
+- Blunderbuss Decimators: M3 WS3 BS3 S3 T4 W1 I2 A1 Ld9, heavy armour, 12-inch blunderbuss (S3, AP −1, Multiple Shots D3, Volley Fire). The 5 × 4 regiment is on 25 mm bases.
+- State Missile Troops: M4 WS3 BS3 S3 T3 W1 I3 A1 Ld7, crossbows (30 inches, S4). Their Sergeant has BS4. Orc Mob with warbows: M4 WS3 BS3 S3 T4 W1 I3 A1 Ld6, warbows (24 inches, S3), light armour and 30 mm bases.
+- Fighting rank and Press of Battle models attack. Hit, wound and save targets use the opposing profiles. Charging gives an Initiative bonus. Combat result includes unsaved wounds, ranks, Close Order, Massed Infantry and flank/rear bonuses. A losing unit takes a 2D6 Break test with the combat-result difference.
+- Full command: M–S–C occupy the middle three front-rank squares, with the standard at the centre. The Orc Boss has Leadership 7 and 2 Attacks; the State Missile Troop Sergeant has BS4 and 1 Attack. Other champions have 2 Attacks. A living standard adds +1 combat result. If otherwise tied, a sole musician adds +1 combat result. A living musician adds +1 Leadership to rally tests and march tests made within 8 inches of an enemy, up to Leadership 10. Ordinary casualties are removed before command models in this simplified one-on-one combat system.
+- If applicable, the loser may choose Shieldwall to turn Fall Back in Good Order into Give Ground. Resolute reduces flee/pursuit distance by one inch. Rally uses 2D6 at or below Leadership 9; a rallied unit cannot charge that turn.
+
+This is a small tabletop prototype. One-on-one engagements only. The charge planner supports one measured approach wheel plus a free alignment wheel, for front, flank and rear charges. Defenders may Hold or Stand & Shoot where eligible. No terrain, characters, magical command upgrades, magic, victory conditions, Flee charge reactions, multiple charges, or full compulsory fleeing movement. Shooting does not yet include panic from missile casualties, cover terrain, or unusual weapon options. Challenges and directed attacks against champions are not implemented. Casualty squares stay in their original positions rather than closing ranks. Regiments keep their 5 × 4 footprint. The game resets on reload. Renegades is a community army list, separate from the official Games Workshop legacy list.
+
+The post-combat choice order follows this prototype's requested play flow: the loser moves before the winner chooses. In the published Old World rules, the winner chooses whether to follow up or pursue before the loser moves. The charge planner searches in 5-degree wheel steps, so some otherwise legal tabletop approaches may still need manual repositioning in an earlier turn.
+
+## Files and checks
+
+- `Play.html`: bundled, standalone game.
+- `dist/`: editable HTML, CSS and JavaScript source for a local server.
+- `package-standalone.mjs`: rebuilds `Play.html` from `dist/`.
+- `test-*.mjs`: movement, charges, model eligibility, movement budget and combat checks. Run each with Node.js.
+
+## References checked 29 September 2026
+
+- [Renegades 2.0 Chaos Dwarf Warriors](https://www.newrecruit.eu/wiki/tow/warhammer-the-old-world/chaos-dwarfs---renegades-2.0/3bce-c3e2-c6b1-edfb/chaos-dwarf-warriors)
+- [The Old World Orc Mob](https://tow.whfb.app/unit/orc-mob)
+- [The Old World State Troops](https://tow.whfb.app/unit/state-troops)
+- [Renegades 2.0 Blunderbuss Decimators](https://www.newrecruit.eu/wiki/tow/warhammer-the-old-world/chaos-dwarfs---renegades-2.0/37ad-5022-3124-c3d1/blunderbuss-decimators) and [blunderbuss weapon](https://tow.whfb.app/weapons-of-war/blunderbuss)
+- [State Missile Troops](https://tow.whfb.app/unit/state-missile-troops) and [crossbow](https://tow.whfb.app/weapons-of-war/crossbow)
+- [Orc Mob warbows option](https://tow.whfb.app/unit/orc-mob) and [warbow](https://tow.whfb.app/weapons-of-war/warbow)
+- [Shooting modifiers](https://tow.whfb.app/the-shooting-phase/to-hit-modifiers), [range checks](https://tow.whfb.app/the-shooting-phase/check-range), [multiple ranks](https://tow.whfb.app/the-shooting-phase/shooting-with-more-than-one-rank), and [Stand & Shoot](https://tow.whfb.app/the-movement-phase/stand-and-shoot)
+- [Orc Choppas](https://tow.whfb.app/special-rules/choppas) and [Impetuous](https://tow.whfb.app/special-rules/impetuous)
+- [The Old World: Heavy Infantry, Press of Battle and Parry](https://tow.whfb.app/troop-types-in-detail/heavy-infantry)
+- [Combat phase sequence](https://tow.whfb.app/the-combat-phase/the-combat-phase-sequence)
+- [Manoeuvring during a charge](https://tow.whfb.app/movement-in-detail/manoeuvring-during-a-charge) and [Aligning to the enemy](https://tow.whfb.app/movement-in-detail/aligning-to-the-enemy)
+- [Flank and rear charges](https://tow.whfb.app/movement-in-detail/flank-and-rear-charges)
+- [Follow up and pursuit](https://tow.whfb.app/the-combat-phase/follow-up-and-pursuit)
+- [Combat result and Break test](https://tow.whfb.app/the-combat-phase/break-test)
+- [Rally fleeing units](https://tow.whfb.app/the-strategy-phase/rally-fleeing-units)
+- [Command group position](https://tow.whfb.app/command-groups/position-within-the-unit), [standard combat bonus](https://tow.whfb.app/command-groups/combat-result-bonus-standard-bearers), and [musician tie bonus](https://tow.whfb.app/command-groups/onwards-to-victory)
+- [Musician march bonus](https://tow.whfb.app/command-groups/quick-time) and [rally bonus](https://tow.whfb.app/command-groups/steadying-rhythm)
+- [Renegades 2.0 Veteran Warrior](https://www.newrecruit.eu/wiki/tow/warhammer-the-old-world/chaos-dwarfs---renegades-2.0/d28d-4798-d876-7e4f/veteran-warrior)
+- [Rules FAQ and errata](https://tow.whfb.app/errata)
+
+Unofficial fan prototype. Not affiliated with Games Workshop or the Renegades team.

@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import * as G from './dist/game.mjs';
+const s=G.createGame();G.autoDeploy(s);const a=G.getUnit(s,'A1'),b=G.getUnit(s,'I1');
+assert.equal(G.modelSquares(s,a).length,20);assert.ok(G.modelSquares(s,a).every(m=>Math.abs(m.size*25.4-25)<1e-8&&!m.fighting));
+Object.assign(a,{x:20,y:20,heading:0,engaged:b.id,charge:{status:'success'}});Object.assign(b,{x:20,y:20-G.SIZE.h,heading:180,engaged:a.id});
+assert.equal(G.modelSquares(s,a).filter(m=>m.fighting).length,5);assert.equal(G.modelSquares(s,b).filter(m=>m.fighting).length,10);assert.equal(G.modelSquares(s,a).filter(m=>m.contact).length,5);
+a.charge=null;assert.equal(G.modelSquares(s,a).filter(m=>m.fighting).length,10);
+Object.assign(b,{x:20+(G.SIZE.w+G.SIZE.h)/2,y:20,heading:270});assert.deepEqual(G.modelSquares(s,a).filter(m=>m.fighting).map(m=>m.col),[3,4,3,4,3,4,3,4]);
+Object.assign(b,{x:20,y:20+G.SIZE.h,heading:0});assert.ok(G.modelSquares(s,a).filter(m=>m.fighting).every(m=>m.row>=2));
+console.log('PASS individual base size, 20-model count, charging rank, Press of Battle, contact, flank and rear highlights');

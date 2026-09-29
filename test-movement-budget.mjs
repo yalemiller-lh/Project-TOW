@@ -1,0 +1,8 @@
+import assert from 'node:assert/strict';import * as G from './dist/game.mjs';
+const near=(a,b)=>assert.ok(Math.abs(a-b)<1e-7,`${a} != ${b}`);
+function ready(){const s=G.createGame();G.autoDeploy(s);G.begin(s);G.nextPhase(s);if(s.movementStep==='declare')G.finishDeclarations(s);return s;}
+let s=ready(),u=G.getUnit(s);G.commitOrder(s,u.id,{kind:'wheel',mode:'advance',angle:15,distance:0});const left=3-G.wheelCost(15);near(G.movementRemaining(u),left);assert.equal(u.moved,false);G.move(s,u.id,1,'advance');near(G.movementRemaining(u),left-1);assert.throws(()=>G.move(s,u.id,1,'advance'),/allowance/);G.undo(s);near(G.movementRemaining(u),left);G.move(s,u.id,left,'advance');assert.equal(u.moved,true);near(G.movementRemaining(u),0);G.undo(s);assert.equal(u.moved,false);G.hold(s,u.id);assert.equal(u.moved,true);G.undo(s);near(G.movementRemaining(u),left);
+assert.throws(()=>G.move(s,u.id,1,'march'),/locked/);assert.throws(()=>G.commitOrder(s,u.id,{kind:'pivot',angle:90,distance:0,mode:'advance'}),/whole unused/);G.undo(s);near(u.spent,0);assert.equal(u.movementMode,null);
+G.move(s,u.id,1,'march');near(G.movementRemaining(u),5);G.commitOrder(s,u.id,{kind:'wheel',angle:15,distance:0,mode:'march'});near(G.movementRemaining(u),5-G.wheelCost(15));for(let i=0;i<8;i++)G.nextPhase(s);near(u.spent,0);assert.equal(u.movementMode,null);
+s=ready();u=G.getUnit(s);G.move(s,u.id,1,'advance');G.move(s,'A2',1,'advance');near(G.movementRemaining(u),2);near(G.movementRemaining(G.getUnit(s,'A2')),2);
+console.log('PASS sequential wheel/advance, fractional exhaustion, overspending, per-unit budget, undo, finish, mode lock, reform restriction and turn reset');
