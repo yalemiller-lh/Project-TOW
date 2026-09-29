@@ -135,7 +135,7 @@ function fireMissiles(s,u,t,plan,random=Math.random){
 export function shoot(s,id,target,random=Math.random){const u=getUnit(s,id),t=getUnit(s,target),plan=shootingPlan(s,u,t);if(plan.error)throw Error(plan.error);const result=fireMissiles(s,u,t,plan,random);u.shot=true;s.lastShooting=result;return result;}
 
 // Charge routes use one measured leading-corner wheel, then a free alignment wheel.
-// The target holds. Face selection is fixed by the charger's starting position.
+// Face selection is fixed by the charger's starting position.
 export function chargeFace(u,t){
  const a=rad(-heading(t)),c=Math.cos(a),si=Math.sin(a),{w}=size(u),b=w/5,counts={front:0,rear:0,'left flank':0,'right flank':0};
  for(let i=0;i<5;i++){const p=localPoint(u,(i-2)*b,-size(u).h/2),dx=p.x-t.x,dy=p.y-t.y,x=dx*c-dy*si,y=dx*si+dy*c;counts[Math.abs(x)<=Math.abs(y)?y<0?'front':'rear':x<0?'left flank':'right flank']++;}
@@ -144,7 +144,7 @@ export function chargeFace(u,t){
 function directChargePlan(s,u,t){
  if(!u||!t||u.x===null||t.x===null||u.team===t.team)return {error:'Choose an enemy regiment.'};
  if(u.rallied)return {error:'A regiment that rallied this turn cannot charge.'};
- if(u.engaged||t.engaged||u.fleeing||t.fleeing||u.deadModels?.length===20||t.deadModels?.length===20)return {error:'Already engaged. Multiple-unit combats are not supported yet.'};
+ if(u.engaged||t.engaged||u.fleeing||u.deadModels?.length===20||t.deadModels?.length===20)return {error:'Already engaged. Multiple-unit combats are not supported yet.'};
  if(gap(u,t)>profile(u).M+6+EPS)return {error:`Beyond the maximum ${profile(u).M+6}″ charge range.`};
  const a=rad(-heading(u)),dx=t.x-u.x,dy=t.y-u.y,lx=dx*Math.cos(a)-dy*Math.sin(a),ly=dx*Math.sin(a)+dy*Math.cos(a);
  if(ly>=0||Math.abs(lx)>-ly+EPS)return {error:'Target centre is outside the front arc in this prototype.'};
@@ -172,7 +172,7 @@ function directChargePlan(s,u,t){
 }
 export function chargePlan(s,u,t){
  const direct=directChargePlan(s,u,t);if(!direct.error)return direct;
- if(!u||!t||u.x===null||t.x===null||u.team===t.team||u.engaged||t.engaged||u.fleeing||t.fleeing||u.rallied||gap(u,t)>profile(u).M+6+EPS||/front arc/.test(direct.error))return direct;
+ if(!u||!t||u.x===null||t.x===null||u.team===t.team||u.engaged||t.engaged||u.fleeing||u.rallied||gap(u,t)>profile(u).M+6+EPS||/front arc/.test(direct.error))return direct;
  const face=chargeFace(u,t),offset={front:0,rear:180,'left flank':-90,'right flank':90}[face],out=normalize(heading(t)+offset),desired=normalize(out+180),own=size(u),theirs=size(t),depth=face.includes('flank')?theirs.w:theirs.h,width=face.includes('flank')?theirs.h:theirs.w;
  const oa=rad(out),normal={x:Math.sin(oa),y:-Math.cos(oa)},right={x:Math.cos(oa),y:Math.sin(oa)},others=s.units.filter(v=>v.x!==null&&v.id!==u.id&&v.id!==t.id),limit=profile(u).M+6;
  let best=null;
@@ -203,19 +203,32 @@ export function declareCharge(s,id,target){
  if(FACTIONS[u.faction??'chaos'].impetuous&&u.impetuousTest===null)throw Error('Roll this Orc Mob’s Impetuous test before declaring a charge.');
  if(s.units.some(v=>v.charge?.status==='declared'&&v.charge.target===target))throw Error('Only one charger per target is supported.');
  const p=chargePlan(s,u,t);if(p.error)throw Error(p.error);
- const reaction=canStandShoot(s,t,u)?'pending':'hold';u.charge={target,status:'declared',reaction};s.history=[];return {...p,reaction};
+ u.charge={target,status:'declared',reaction:'pending',initialPlan:p};s.history=[];return {...p,reaction:'pending'};
 }
 export function canStandShoot(s,defender,charger){return !!defender&&!!charger&&defender.role==='missile'&&!defender.engaged&&!defender.fleeing&&aliveCount(defender)>0&&gap(defender,charger)+EPS>=profile(charger).M&&!shootingPlan(s,defender,charger,{reaction:true}).error;}
 export function chargeReaction(s,chargerId,choice,random=Math.random){
  const charger=getUnit(s,chargerId),defender=getUnit(s,charger?.charge?.target);
  if(s.stage!=='movement'||s.movementStep!=='declare'||charger?.charge?.status!=='declared'||charger.charge.reaction!=='pending')throw Error('No charge reaction is pending.');
- if(!['hold','stand-shoot'].includes(choice))throw Error('Choose Hold or Stand & Shoot.');
- let report=null;if(choice==='stand-shoot'){const plan=shootingPlan(s,defender,charger,{reaction:true});if(plan.error)throw Error(plan.error);report=fireMissiles(s,defender,charger,plan,random);defender.reacted=true;}
- charger.charge.reaction=choice;charger.charge.reactionReport=report;
+ if(!['hold','stand-shoot','flee'].includes(choice))throw Error('Choose Hold, Stand & Shoot, or Flee.');
+ if(choice==='hold'&&defender.fleeing)throw Error('A fleeing regiment must Flee.');
+ if(choice==='stand-shoot'&&!canStandShoot(s,defender,charger))throw Error('This regiment cannot Stand & Shoot against this charge.');
+ if(choice==='flee'&&defender.engaged)throw Error('An engaged regiment must Hold.');
+ let report=null,fleeDice=null,fleeDistance=0;
+ if(choice==='stand-shoot'){const plan=shootingPlan(s,defender,charger,{reaction:true});report=fireMissiles(s,defender,charger,plan,random);defender.reacted=true;}
+ if(choice==='flee'){
+  fleeDice=rollD6(2,random);fleeDistance=fleeDice[0]+fleeDice[1];
+  const dx=defender.x-charger.x,dy=defender.y-charger.y;
+  defender.heading=normalize(Math.atan2(dx,-dy)*180/Math.PI);
+  const end=forwardPose(defender,fleeDistance);
+  if(offBoard(end)){defender.x=null;defender.y=null;defender.destroyed=true;}
+  else{defender.x=end.x;defender.y=end.y;}
+  defender.fleeing=true;defender.moved=true;
+ }
+ charger.charge.reaction=choice;charger.charge.reactionReport=report;charger.charge.fleeDice=fleeDice;
  if(aliveCount(charger)===0){charger.charge.status='stopped';charger.moved=true;}
- return {choice,report,charger:chargerId,defender:defender.id,stopped:charger.charge.status==='stopped'};
+ return {choice,report,fleeDice,fleeDistance,fledOffBoard:choice==='flee'&&!!defender.destroyed,charger:chargerId,defender:defender.id,stopped:charger.charge.status==='stopped'};
 }
-export function cancelCharge(s,id){if(s.movementStep!=='declare')throw Error('Declarations are locked after rolling begins.');const u=getUnit(s,id);if(u?.charge?.status==='declared'&&u.charge.reaction==='pending')throw Error('Choose the defender’s reaction first.');if(u?.charge?.status==='declared')u.charge=null;}
+export function cancelCharge(s,id){if(s.movementStep!=='declare')throw Error('Declarations are locked after rolling begins.');const u=getUnit(s,id);if(u?.charge?.status==='declared'&&u.charge.reaction!=='pending')throw Error('A charge cannot be cancelled after its defender reacts.');if(u?.charge?.status==='declared')u.charge=null;}
 export function availableCharges(s,u){return s.units.filter(v=>v.team!==u.team&&v.x!==null&&!s.units.some(other=>other.id!==u.id&&other.charge?.status==='declared'&&other.charge.target===v.id)&&!chargePlan(s,u,v).error);}
 export function impetuousTest(s,id,dice){const u=getUnit(s,id);if(s.stage!=='movement'||s.movementStep!=='declare'||u?.team!==s.team||u.faction!=='orc'||u.impetuousTest!==null||!availableCharges(s,u).length)throw Error('Select an Orc Mob with an available charge.');if(!Array.isArray(dice)||dice.length!==2||dice.some(d=>!Number.isInteger(d)||d<1||d>6))throw Error('An Impetuous test requires two D6.');u.impetuousTest=dice[0]+dice[1]<=profile(u).Ld;return u.impetuousTest;}
 export function finishDeclarations(s){if(s.stage!=='movement'||s.movementStep!=='declare')throw Error('Not declaring charges.');if(s.units.some(u=>u.charge?.reaction==='pending'))throw Error('Choose every defender’s charge reaction first.');for(const u of s.units.filter(u=>u.team===s.team&&u.faction==='orc'&&!u.charge&&availableCharges(s,u).length)){if(u.impetuousTest===null)throw Error('Roll Impetuous for each Orc Mob able to charge.');if(u.impetuousTest===false)throw Error('An Impetuous Orc Mob must declare a charge.');}s.movementStep=s.units.some(u=>u.charge?.status==='declared')?'charges':'remaining';s.history=[];}
@@ -226,19 +239,21 @@ export function enterRemaining(s){
 export function resolveCharge(s,id,dice){
  const u=getUnit(s,id);if(s.stage!=='movement'||s.movementStep!=='charges'||u?.charge?.status!=='declared')throw Error('Select a declared charge to resolve.');
  if(!Array.isArray(dice)||dice.length!==2||dice.some(d=>!Number.isInteger(d)||d<1||d>6))throw Error('A charge roll requires two D6.');
- const t=getUnit(s,u.charge.target),p=chargePlan(s,u,t),roll=Math.max(...dice),range=profile(u).M+roll,success=!p.error&&range+EPS>=p.cost;
+ if(u.charge.reaction==='pending')throw Error('Choose the defender’s reaction first.');
+ const t=getUnit(s,u.charge.target),fled=u.charge.reaction==='flee',p=t?.x!==null?chargePlan(s,u,t):{error:'Target fled off the table.'},route=p.error?u.charge.initialPlan:p,roll=Math.max(...dice),range=profile(u).M+roll,success=!p.error&&range+EPS>=p.cost;
  let end={...u},travel=0;
- if(success){end=p.end;travel=p.cost;u.engaged=t.id;t.engaged=u.id;}else if(p.start){
-  const budget=roll;
-  const wheelAngle=p.wheelCost<=budget?p.angle:Math.sign(p.angle)*2*Math.asin(budget/(2*size(u).w))*180/Math.PI;
+ if(success){end=p.end;travel=p.cost;if(fled){t.x=null;t.y=null;t.destroyed=true;}else{u.engaged=t.id;t.engaged=u.id;}}
+ else if(route?.start){
+  const budget=fled?range:roll;
+  const wheelAngle=route.wheelCost<=budget?route.angle:Math.sign(route.angle)*2*Math.asin(Math.min(1,budget/(2*size(u).w)))*180/Math.PI;
   const wheelEnd=wheelPose(u,wheelAngle),straight=Math.max(0,budget-wheelCost(wheelAngle,u));
   // Stop a failed charge short of units or table edges; never enter combat on failure.
   for(let i=1;i<=100;i++){const pose=i/100<=wheelCost(wheelAngle,u)/budget?wheelPose(u,wheelAngle*(i/100)*budget/Math.max(wheelCost(wheelAngle,u),EPS)):forwardPose(wheelEnd,Math.min(straight,(i/100)*budget-wheelCost(wheelAngle,u)));if(checkPosition(s,pose,pose.x,pose.y))break;end=pose;travel=budget*i/100;}
  }
  Object.assign(u,{x:end.x,y:end.y,heading:heading(end),moved:true});
- u.charge={...u.charge,status:success?'success':'failed',dice:[...dice],roll,range,distance:travel,face:p.face};s.history=[];
+ u.charge={...u.charge,status:success?'success':'failed',dice:[...dice],roll,range,distance:travel,face:route?.face};s.history=[];
  if(!s.units.some(v=>v.charge?.status==='declared'))s.movementStep='remaining';
- return {success,dice,roll,range,distance:travel,target:t.id,reason:p.error??null};
+ return {success,runDown:success&&fled,dice,roll,range,distance:travel,target:t.id,reason:p.error??null};
 }
 
 export function modelSquares(s,u){

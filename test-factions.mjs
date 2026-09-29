@@ -26,5 +26,5 @@ test('Orcs get Furious Charge attacks, Choppas wound rerolls and Warband Leaders
 test('an Orc Mob with an available charge must take its Impetuous test',()=>{
  const s=G.createGame('orc');G.autoDeploy(s);G.begin(s);s.team='iron';s.stage='movement';s.movementStep='declare';const o=G.getUnit(s,'I1'),d=G.getUnit(s,'A1');o.x=d.x=18;o.y=19;d.y=27;
  assert.equal(G.availableCharges(s,o).length,1);assert.throws(()=>G.finishDeclarations(s),/Impetuous/);assert.throws(()=>G.declareCharge(s,'I1','A1'),/Impetuous/);
- assert.equal(G.impetuousTest(s,'I1',[6,6]),false);assert.throws(()=>G.finishDeclarations(s),/must declare/);G.declareCharge(s,'I1','A1');G.finishDeclarations(s);assert.equal(s.movementStep,'charges');
+ assert.equal(G.impetuousTest(s,'I1',[6,6]),false);assert.throws(()=>G.finishDeclarations(s),/must declare/);G.declareCharge(s,'I1','A1');G.chargeReaction(s,'I1','hold');G.finishDeclarations(s);assert.equal(s.movementStep,'charges');
 });
