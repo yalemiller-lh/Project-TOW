@@ -36,6 +36,11 @@ test('an overrunner may pass a Leadership test and reform unless it contacted a 
  const second=combat();second.loser.x=null;second.loser.y=null;pending(second.s,second.winner,second.loser,'overrun',{destroyed:true,moved:0});
  const stopped=G.winnerCombat(second.s,'restrain',()=>0,180);assert.equal(stopped.overrun,false);assert.equal(stopped.reform.passed,true);assert.equal(second.winner.heading,180);
 });
+test('pursuit can leave the board and the unit returns in its next Movement phase',()=>{
+ const {s,winner,loser}=combat();winner.y=5;loser.x=null;loser.y=null;pending(s,winner,loser,'overrun',{destroyed:true,moved:0});
+ const out=G.winnerCombat(s,'follow',()=>.9);assert.equal(out.offBoardPursuit,true);assert.equal(winner.x,null);assert.equal(winner.destroyed,undefined);assert.equal(winner.offBoardPursuit.edge,'top');
+ s.stage='strategy';s.team='ash';G.nextPhase(s);assert.equal(s.stage,'movement');assert.ok(winner.x!==null);assert.equal(winner.offBoardPursuit,null);assert.equal(winner.heading,180);assert.equal(winner.moved,true);
+});
 test('the instant combat API uses the same overrun and pursuit resolution',()=>{
  const {s,winner,loser}=combat();loser.x=null;loser.y=null;pending(s,winner,loser,'overrun',{destroyed:true,moved:0});
  const out=G.finishCombat(s,'follow',()=>0);assert.equal(out.overrun,true);assert.equal(out.movement.winner,1);assert.equal(s.pendingCombat,null);
@@ -78,8 +83,8 @@ test('an overrun that contacts a fresh enemy at an angle wheels to align and cou
 });
 test('an overrun off the battlefield leaves the table and returns in its next Movement phase',()=>{
  const {s,winner,loser}=combat();Object.assign(winner,{y:8});loser.x=null;loser.y=null;loser.destroyed=true;pending(s,winner,loser,'overrun',{destroyed:true,moved:0});
- const out=G.winnerCombat(s,'follow-reform',()=>.99);assert.equal(out.leftTable,true);assert.equal(out.reform,undefined);assert.equal(winner.x,null);assert.ok(winner.offTable);
+ const out=G.winnerCombat(s,'follow-reform',()=>.99);assert.equal(out.offBoardPursuit,true);assert.equal(out.reform,undefined);assert.equal(winner.x,null);assert.equal(winner.offBoardPursuit.edge,'top');
  Object.assign(s,{team:'iron',stage:'strategy'});G.nextPhase(s);assert.equal(s.movementStep,'remaining');assert.equal(winner.x,null);
  Object.assign(s,{team:'ash',stage:'strategy'});G.nextPhase(s);assert.equal(s.movementStep,'remaining');
- assert.equal(G.heading(winner),180);assert.ok(Math.abs(winner.x-18)<.01);assert.ok(Math.abs(winner.y-G.SIZE.h/2)<.02);assert.equal(winner.offTable,null);assert.equal(winner.moved,true);assert.equal(G.canAct(s,winner),false);
+ assert.equal(G.heading(winner),180);assert.ok(Math.abs(winner.x-18)<.01);assert.ok(Math.abs(winner.y-G.SIZE.h/2)<.02);assert.equal(winner.offBoardPursuit,null);assert.equal(winner.moved,true);assert.equal(G.canAct(s,winner),false);
 });

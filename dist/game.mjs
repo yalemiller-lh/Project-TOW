@@ -326,24 +326,22 @@ export function enterRemaining(s){
  if(s.units.some(u=>u.charge?.status==='declared'))throw Error('Resolve all declared charges before Remaining Moves.');
  beginRemaining(s);
 }
-function beginRemaining(s){if(s.movementStep!=='remaining'){s.movementStep='remaining';returnOffTable(s);}}
-// Place the unit just inside the edge it left by, facing into the battlefield, as near as
-// possible to its exit point. It counts as having moved this turn.
-function returnOffTable(s){
- const back=[];
- for(const u of s.units.filter(u=>u.team===s.team&&u.offTable&&!u.destroyed)){
-  const exit={...u,...u.offTable},r=rectangle(exit),{w,h}=size(u);
-  const edge=r.top<0?'top':r.bottom>BOARD.height?'bottom':r.left<0?'left':'right',faceIn={top:180,bottom:0,left:90,right:270}[edge];
-  const along=edge==='top'||edge==='bottom'?BOARD.width:BOARD.height,at=edge==='top'||edge==='bottom'?exit.x:exit.y;
-  const depth=h/2+.01,half=w/2;
-  for(let step=0;step<=2*along;step++){
-   const offset=(step%2?1:-1)*Math.ceil(step/2)*.5,c=Math.max(half,Math.min(along-half,at+offset));
-   const x=edge==='left'?depth:edge==='right'?BOARD.width-depth:c,y=edge==='top'?depth:edge==='bottom'?BOARD.height-depth:c,candidate={...u,x,y,heading:faceIn};
-   if(checkPosition(s,candidate,x,y))continue;
-   Object.assign(u,{x,y,heading:faceIn,offTable:null,moved:true});back.push(u.id);break;
+function beginRemaining(s){if(s.movementStep!=='remaining'){s.movementStep='remaining';returnPursuers(s);}}
+// Pursuers and overrunners that left the battlefield return during their Compulsory Moves:
+// just inside the edge they left by, facing inward, near their exit point, counting as moved.
+function returnPursuers(s){
+ for(const u of s.units.filter(u=>u.team===s.team&&u.offBoardPursuit)){
+  const {edge,x,y}=u.offBoardPursuit,angle={top:180,bottom:0,left:90,right:270}[edge],depth=size(u).h/2;
+  for(let offset=0;offset<=BOARD.width+BOARD.height;offset+=.5){
+   let found=false;
+   for(const sign of offset===0?[1]:[1,-1]){
+    const along=(edge==='top'||edge==='bottom'?x:y)+offset*sign,pose={...u,heading:angle,x:edge==='left'?depth:edge==='right'?BOARD.width-depth:along,y:edge==='top'?depth:edge==='bottom'?BOARD.height-depth:along};
+    if(checkPosition(s,pose,pose.x,pose.y))continue;
+    Object.assign(u,{x:pose.x,y:pose.y,heading:angle,moved:true,offBoardPursuit:null});found=true;break;
+   }
+   if(found)break;
   }
  }
- return back;
 }
 export function resolveCharge(s,id,dice){
  const u=getUnit(s,id);if(s.stage!=='movement'||s.movementStep!=='charges'||u?.charge?.status!=='declared')throw Error('Select a declared charge to resolve.');
@@ -626,11 +624,14 @@ function retreatPose(s,u,enemy,distance,stopNear=true){
  }
  return {moved,offBoard:false,dir};
 }
-function pursuitAdvance(s,winner,distance,dir,ignoredId,originalId,{leaveTable=false}={}){
- const start={x:winner.x,y:winner.y};let moved=0,contact=null,blocked=false;
+function pursuitAdvance(s,winner,distance,dir,ignoredId,originalId){
+ const start={x:winner.x,y:winner.y};let moved=0,contact=null,blocked=false,offBoardPursuit=false;
  for(let i=1;i<=Math.ceil(distance*20);i++){
   const d=Math.min(distance,i/20),pose={...winner,x:start.x+dir.x*d,y:start.y+dir.y*d};
-  if(offBoard(pose)){if(!leaveTable){blocked=true;break;}winner.offTable={x:pose.x,y:pose.y,heading:heading(winner)};Object.assign(winner,{x:null,y:null});return {distance:d,contact:null,blocked:false,leftTable:true};}
+  if(offBoard(pose)){
+   const r=rectangle(pose),edge=r.left<0?'left':r.right>BOARD.width?'right':r.top<0?'top':'bottom';
+   winner.offBoardPursuit={edge,x:winner.x,y:winner.y};winner.x=null;winner.y=null;offBoardPursuit=true;break;
+  }
   const obstacle=s.units.find(v=>v.id!==winner.id&&v.id!==ignoredId&&v.x!==null&&aliveCount(v)>0&&(v.team===winner.team||v.engaged&&v.engaged!==winner.id?gap(pose,v)<1-EPS:gap(pose,v)<EPS));
   if(obstacle){
    if(obstacle.team!==winner.team&&!obstacle.engaged){
@@ -643,7 +644,7 @@ function pursuitAdvance(s,winner,distance,dir,ignoredId,originalId,{leaveTable=f
   }
   Object.assign(winner,{x:pose.x,y:pose.y});moved=d;
  }
- return {distance:moved,contact,blocked};
+ return {distance:moved,contact,blocked,offBoardPursuit};
 }
 export function moveCombatLoser(s,random=Math.random){
  const p=s.pendingCombat;if(s.stage!=='combat'||p?.stage!=='retreat')throw Error('Resolve the Break test and any Shieldwall choice first.');
@@ -683,13 +684,13 @@ export function winnerCombat(s,choice='follow',random=Math.random,reformHeading=
   }
   if(advance>0){
    const dir=p.outcome==='overrun'?{x:Math.sin(rad(heading(winner))),y:-Math.cos(rad(heading(winner)))}:p.retreat.dir;
-   const moved=pursuitAdvance(s,winner,advance,dir,out.loserDestroyed?loser.id:null,loser.id,{leaveTable:p.outcome==='overrun'});
-   out.movement.winner=moved.distance;out.contact=moved.contact;out.blocked=moved.blocked;out.leftTable=!!moved.leftTable;
+   const moved=pursuitAdvance(s,winner,advance,dir,out.loserDestroyed?loser.id:null,loser.id);
+   out.movement.winner=moved.distance;out.contact=moved.contact;out.blocked=moved.blocked;out.offBoardPursuit=moved.offBoardPursuit;
    if(out.caughtInGoodOrder&&moved.distance+EPS<advance)out.caughtInGoodOrder=false;
    if((p.outcome==='give-ground'||out.caughtInGoodOrder)&&loser.x!==null&&gap(winner,loser)<EPS){winner.engaged=loser.id;loser.engaged=winner.id;}
   }
  }
- if(choice==='follow-reform'&&out.loserDestroyed&&!out.contact&&!out.leftTable){const dice=combatDice(2,random);out.rolls.reform=dice;if(dice[0]+dice[1]<=leadership(winner,'restraint'))reform();else out.reform={passed:false,heading:heading(winner),error:'Leadership test failed.'};}
+ if(choice==='follow-reform'&&out.loserDestroyed&&!out.contact&&winner.x!==null){const dice=combatDice(2,random);out.rolls.reform=dice;if(dice[0]+dice[1]<=leadership(winner,'restraint'))reform();else out.reform={passed:false,heading:heading(winner),error:'Leadership test failed.'};}
  if(p.outcome==='overrun')out.overrun=follow;
  s.pendingCombat=null;s.lastCombat={...s.lastCombat,aftermath:out};s.combatHistory[s.combatHistory.length-1]=s.lastCombat;return out;
 }
