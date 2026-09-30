@@ -19,10 +19,20 @@ export const WIZARDS={chaos:{name:'Daemonsmith Sorcerer',equipment:'Hand weapon 
 export const profile=u=>u?.role==='warmachine'?{...WAR_MACHINE_CREW[u.faction].profile,A:Math.max(0,u.crew)}:u?.role==='wizard'?{...WIZARDS[u.faction].profile,T:WIZARDS[u.faction].profile.T+(u.petrified??0)}:u?.role==='missile'?MISSILE[u.faction].profile:FACTIONS[u?.faction??'chaos'].profile;
 export const equipment=u=>u?.role==='wizard'?WIZARDS[u.faction].equipment:u?.role==='missile'?MISSILE[u.faction].equipment:FACTIONS[u?.faction??'chaos'].equipment;
 export const missileWeapon=u=>u?.role==='missile'?MISSILE[u.faction].weapon:null;
-export const size=u=>{if(u?.role==='warmachine')return {w:ROCKET_BASE.w,h:ROCKET_BASE.h};const b=FACTIONS[u?.faction??'chaos'].base/25.4;return {w:(u?.role==='wizard'?1:5)*b,h:(u?.role==='wizard'?1:4)*b};};
+// A regiment's block is its files wide and as many ranks deep as its starting models need.
+export const startingModels=u=>u?.models??20,filesOf=u=>u?.files??5,ranksOf=u=>Math.ceil(startingModels(u)/filesOf(u));
+export const size=u=>{if(u?.role==='warmachine')return {w:ROCKET_BASE.w,h:ROCKET_BASE.h};const b=FACTIONS[u?.faction??'chaos'].base/25.4;return u?.role==='wizard'?{w:b,h:b}:{w:filesOf(u)*b,h:ranksOf(u)*b};};
 export const baseSize=u=>FACTIONS[u?.faction??'chaos'].base;
 export const COMMAND_SLOTS={1:'M',2:'S',3:'C'};
-export function commandAlive(u,role){if(u?.role==='wizard'||u?.role==='warmachine')return false;const index=Number(Object.keys(COMMAND_SLOTS).find(i=>COMMAND_SLOTS[i]===role));return aliveCount(u)>0&&!(u.deadModels??[]).includes(index);}
+// Purchased command stand in the middle of the front rank: musician, standard at the centre, champion.
+export function commandSlots(u){const c=Math.floor(filesOf(u)/2),bought=u?.command??{M:true,S:true,C:true},slots={};for(const [role,col]of [['M',c-1],['S',c],['C',c+1]])if(bought[role]&&col>=0&&col<filesOf(u)&&col<startingModels(u))slots[col]=role;return slots;}
+export function commandAlive(u,role){if(u?.role==='wizard'||u?.role==='warmachine')return false;const entry=Object.entries(commandSlots(u)).find(([,r])=>r===role);return !!entry&&aliveCount(u)>0&&!(u.deadModels??[]).includes(Number(entry[0]));}
+// Unit Strength = models x Unit Strength per model for the troop type (war machines: starting Wounds).
+export const TROOP_TYPES={regular:{name:'Regular Infantry',perModel:1,perRank:5},heavy:{name:'Heavy Infantry',perModel:1,perRank:4},character:{name:'Infantry character',perModel:1},warmachine:{name:'War Machine',perModel:'wounds'}};
+export function troopType(u){return u?.role==='warmachine'?'warmachine':u?.role==='wizard'?'character':u?.troop??(FACTIONS[u?.faction??'chaos'].heavy?'heavy':'regular');}
+export function startingWounds(u){return u?.role==='warmachine'||u?.role==='wizard'?(u.startingWounds??(u.role==='wizard'?2:3)):startingModels(u)*(profile(u).W??1);}
+export function unitStrength(u){if(!u||aliveCount(u)===0||u.x===null&&!u.offBoardPursuit)return 0;const per=TROOP_TYPES[troopType(u)].perModel;return per==='wounds'?startingWounds(u):aliveCount(u)*per;}
+export function startingUnitStrength(u){const per=TROOP_TYPES[troopType(u)].perModel;return per==='wounds'?startingWounds(u):u?.role==='wizard'?1:startingModels(u)*per;}
 export function championProfile(u){return {...profile(u),A:u.role==='missile'&&u.faction==='empire'?1:2,BS:u.role==='missile'&&u.faction==='empire'?4:profile(u).BS,Ld:u.faction==='orc'?7:profile(u).Ld};}
 export function setOpponent(s,faction){if(s.stage!=='deployment')throw Error('Choose the opposing army before battle starts.');if(!['orc','empire','chaos'].includes(faction))throw Error('Unknown army.');s.units=s.units.filter(u=>u.id!=='I7');for(const u of s.units.filter(u=>u.team==='iron')){u.faction=faction;u.name=u.role==='missile'?MISSILE[faction].name:FACTIONS[faction].name;u.x=null;u.y=null;}if(faction==='empire')s.units.push(createWizard('iron','empire'));s.cannons=createCannons(faction);return faction;}
 export const PHASES=['strategy','movement','shooting','combat'];
@@ -299,7 +309,7 @@ export function chargeFace(u,t){
 function directChargePlan(s,u,t){
  if(!u||!t||u.x===null||t.x===null||u.team===t.team)return {error:'Choose an enemy regiment.'};
  if(u.rallied)return {error:'A regiment that rallied this turn cannot charge.'};
- if(u.engaged||t.engaged||u.fleeing||u.deadModels?.length===20||t.deadModels?.length===20)return {error:'Already engaged. Multiple-unit combats are not supported yet.'};
+ if(u.engaged||t.engaged||u.fleeing||aliveCount(u)===0||aliveCount(t)===0)return {error:'Already engaged. Multiple-unit combats are not supported yet.'};
  if(gap(u,t)>profile(u).M+6+EPS)return {error:`Beyond the maximum ${profile(u).M+6}″ charge range.`};
  const a=rad(-heading(u)),dx=t.x-u.x,dy=t.y-u.y,lx=dx*Math.cos(a)-dy*Math.sin(a),ly=dx*Math.sin(a)+dy*Math.cos(a);
  if(ly>=0||Math.abs(lx)>-ly+EPS)return {error:'Target centre is outside the front arc in this prototype.'};
@@ -438,18 +448,19 @@ export function modelSquares(s,u){
  if(u.role==='warmachine'){const {w,h}=size(u),enemy=u.engaged?getUnit(s,u.engaged):null,poly=corners(u),gapToEnemy=enemy?polygonGap(poly,corners(enemy)):Infinity;return [{index:0,row:0,col:0,x:-w/2,y:-h/2,size:w,command:null,dead:aliveCount(u)===0,fighting:gapToEnemy<=profile(u).M+EPS,contact:gapToEnemy<EPS}];}
  if(u.role==='wizard'){const base=baseSize(u)/25.4,enemy=u.engaged?getUnit(s,u.engaged):null,poly=corners(u);return [{index:0,row:0,col:0,x:-base/2,y:-base/2,size:base,command:null,dead:aliveCount(u)===0,fighting:!!enemy&&polygonGap(poly,corners(enemy))<=profile(u).M+EPS,contact:!!enemy&&polygonGap(poly,corners(enemy))<EPS}];}
  const base=baseSize(u)/25.4,footprint=size(u),enemy=u.engaged?getUnit(s,u.engaged):null,face=enemy?chargeFace(enemy,u):null,depth=u.charge?.status==='success'?1:2;
- return Array.from({length:20},(_,i)=>{const row=Math.floor(i/5),col=i%5,x=-footprint.w/2+col*base,y=-footprint.h/2+row*base;
+ const files=filesOf(u),ranks=ranksOf(u),slots=commandSlots(u);
+ return Array.from({length:startingModels(u)},(_,i)=>{const row=Math.floor(i/files),col=i%files,x=-footprint.w/2+col*base,y=-footprint.h/2+row*base;
  const poly=[[x,y],[x+base,y],[x+base,y+base],[x,y+base]].map(([a,b])=>localPoint(u,a,b));
- const edge=face==='front'?row:face==='rear'?3-row:face==='left flank'?col:face==='right flank'?4-col:Infinity;
+ const edge=face==='front'?row:face==='rear'?ranks-1-row:face==='left flank'?col:face==='right flank'?files-1-col:Infinity;
  const dead=(u.deadModels??[]).includes(i);
  const fighting=!dead&&!!enemy&&edge<depth&&polygonGap(poly,corners(enemy))<=profile(u).M+EPS;
- return {index:i,row,col,rank:edge,x,y,size:base,command:COMMAND_SLOTS[i]??null,dead,fighting,contact:!dead&&!!enemy&&polygonGap(poly,corners(enemy))<EPS};
+ return {index:i,row,col,rank:edge,x,y,size:base,command:slots[i]??null,dead,fighting,contact:!dead&&!!enemy&&polygonGap(poly,corners(enemy))<EPS};
  });
 }
 
 export function movementRemaining(u,mode=u.movementMode??'advance'){return u.moved||u.engaged||u.charge||u.fleeing?0:Math.max(0,(mode==='march'?2*profile(u).M:profile(u).M)-(u.spent??0));}
 
-export function aliveCount(u){return u.destroyed?0:u.role==='wizard'||u.role==='warmachine'?(u.wounds>0?1:0):20-(u.deadModels?.length??0);}
+export function aliveCount(u){return u.destroyed?0:u.role==='wizard'||u.role==='warmachine'?(u.wounds>0?1:0):startingModels(u)-(u.deadModels?.length??0);}
 export function remainingWounds(u){return u.role==='wizard'||u.role==='warmachine'?Math.max(0,u.wounds):aliveCount(u);}
 export function combatPairs(s){const all=combatants(s);return all.filter(u=>u.engaged&&u.x!==null&&!u.combatResolved&&u.id< u.engaged&&all.some(v=>v.id===u.engaged&&v.x!==null&&!v.combatResolved)).map(u=>[u.id,u.engaged]);}
 function combatDice(count,random){return count?rollD6(count,random):[];}
@@ -457,7 +468,9 @@ function combatInitiative(u){if(u.charge?.status!=='success')return profile(u).I
 export function hitTarget(attacker,defender){const a=profile(attacker).WS,d=profile(defender).WS;return a>2*d?2:a>d?3:d>2*a?5:4;}
 export function woundTarget(attacker,defender){return Math.max(2,Math.min(6,4+profile(defender).T-profile(attacker).S));}
 export function saveTarget(defender,attacker){let target=profile(defender).save-(!['missile','wizard','warmachine'].includes(defender.role)&&FACTIONS[defender.faction??'chaos'].shield?1:0)+(FACTIONS[attacker.faction??'chaos'].choppas&&attacker.charge?.status==='success'?1:0)+(attacker.role==='wizard'&&attacker.faction==='chaos'?1:0);return Math.max(2,Math.min(7,target));}
-function rankBonus(u){return Math.min(2,Math.max(0,Math.floor((aliveCount(u)-1)/5)));}
+// Ranks behind the first count when they hold at least the troop type's models per rank
+// (5 regular, 4 heavy infantry); casualties come off the rear, so the front ranks stay full.
+function rankBonus(u){const alive=aliveCount(u),files=filesOf(u),full=Math.floor(alive/files),partial=alive%files,need=Math.min(files,TROOP_TYPES[troopType(u)].perRank??files);return full<1?0:Math.min(2,full-1+(partial>=need?1:0));}
 export function leadership(u,kind='normal'){const base=commandAlive(u,'C')?Math.max(profile(u).Ld,championProfile(u).Ld):profile(u).Ld;return Math.min(10,base+(FACTIONS[u.faction??'chaos'].warband&&kind!=='restraint'&&!u.fleeing?rankBonus(u):0)+(commandAlive(u,'M')&&(kind==='march'||kind==='rally')?1:0));}
 // Casualties already suffered in this combat count against the first fighting rank, then the
 // second (never the champion); the models that stepped forward from the rear cannot attack.
