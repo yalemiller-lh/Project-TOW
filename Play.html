@@ -46,7 +46,7 @@ dialog{color:#282e23;background:#f5f0d9;border:5px double #424a36;border-radius:
 .range-ring.min{stroke:#ff9d7a;stroke-dasharray:3 4}
 .range-ring.spell{stroke:#e2c6ff;fill:#b58cff14}
 .range-ring.idle{opacity:.45}
-.range-ring.chosen{stroke-width:2.8}.shooting-arc.far-arc{fill:#e4a34d33;stroke:#f2bc75;stroke-dasharray:7 4}.shooting-arc.close-arc{fill:#a8d97047;stroke:#c9f39a}.arc-label{font-size:12px;fill:#fff8dd;paint-order:stroke;stroke:#273220;stroke-width:3px;pointer-events:none}.shooting-target .unit-body{stroke:#eaf5a4;stroke-width:4}.chosen-shoot-target .unit-body{stroke:#fff;stroke-width:5}.shooting-targets{max-height:150px;overflow:auto}#shootingReport{font:12px/1.4 Georgia,serif;color:#f2dfbe;margin-top:8px}#reactionControls .primary{background:#a34b30;color:#fff9e9}
+.range-ring.chosen{stroke-width:2.8}.shooting-arc.far-arc{fill:#e4a34d33;stroke:#f2bc75;stroke-dasharray:7 4}.shooting-arc.close-arc{fill:#a8d97047;stroke:#c9f39a}.arc-label{font-size:12px;fill:#fff8dd;paint-order:stroke;stroke:#273220;stroke-width:3px;pointer-events:none}.shooting-target .unit-body{stroke:#eaf5a4;stroke-width:4}.chosen-shoot-target .unit-body{stroke:#fff;stroke-width:5}.shooting-targets{max-height:150px;overflow:auto}#shootingReport{font:12px/1.4 Georgia,serif;color:#f2dfbe;margin-top:8px}#reactionControls .primary{background:var(--army-primary);border-color:var(--army-primary);color:#fff9e9}
 
 /* Charge status remains legible while moving between units. */
 .unit.charge-ineligible{opacity:.28;filter:grayscale(.9)}.unit.charge-eligible{opacity:1;filter:none}.unit.charge-eligible .unit-body{stroke:#f5f3d7;stroke-width:2.8}.unit.charge-declared{opacity:1!important;filter:none!important}.unit.charge-declared .declared-border{fill:none;stroke:#ffcf4d;stroke-width:4;vector-effect:non-scaling-stroke;filter:drop-shadow(0 0 5px #f7b332)}.declared-charge-line{fill:none;stroke:#ffd44e;stroke-width:3.5;stroke-dasharray:9 5;vector-effect:non-scaling-stroke;pointer-events:none;filter:drop-shadow(0 0 3px #a65a14)}.declared-charge-label{fill:#fff4c2;stroke:#332b1d;stroke-width:3;paint-order:stroke fill;font:bold 13px Georgia,serif;pointer-events:none}.declared-target .unit-body{stroke:#ffd44e;stroke-width:3}.unit-orders #ordersDragHandle{cursor:grab;touch-action:none;user-select:none}.unit-orders #ordersDragHandle:active{cursor:grabbing}.unit-orders #ordersDragHandle:focus-visible{outline:2px solid #fff4cc;outline-offset:2px}
@@ -829,7 +829,8 @@ const PHASE_SUBSTEPS={
  combat:['Magic & fight by Initiative','Combat result','Break test','Pursuit']
 };
 
-function themeFor(state){return THEMES[state.team==='ash'?'ash':state.units.find(u=>u.team==='iron')?.faction??'empire'];}
+function themeForTeam(state,team){return THEMES[team==='ash'?'ash':state.units.find(u=>u.team==='iron')?.faction??'empire'];}
+function themeFor(state){return themeForTeam(state,state.team);}
 function unitName(unit){
  if(!unit)return 'No unit selected';
  if(unit.role==='warmachine')return unit.name;
@@ -871,7 +872,7 @@ function substepIndex(state,uiSub=0){
  return Math.min(Math.max(uiSub,0),(PHASE_SUBSTEPS[state.stage]?.length??1)-1);
 }
 
-return {THEMES,PHASE_SUBSTEPS,themeFor,unitName,shortName,fleeSummary,strengthLabel,scoreRows,shortestTurn,substepIndex};})();
+return {THEMES,PHASE_SUBSTEPS,themeForTeam,themeFor,unitName,shortName,fleeSummary,strengthLabel,scoreRows,shortestTurn,substepIndex};})();
 const AI=(()=>{
 
 const alive=u=>u.x!==null&&G.aliveCount(u)>0;
@@ -1373,7 +1374,8 @@ function renderMagicControls(u){
  const enemy=state.units.find(v=>v.role==='wizard'&&v.team!==u.team&&v.x!==null&&!v.fleeing&&Math.hypot(v.x-u.x,v.y-u.y)<=18);$('magicDispel').disabled=aiMode==='ai';$('magicDispel').querySelector('[value="wizard"]').disabled=!enemy;$('magicDispel').querySelector('[value="fated"]').disabled=state.fatedDispelUsed;
  for(const vortex of state.vortices.filter(v=>G.getUnit(state,v.caster)?.team!==u.team)){const b=document.createElement('button');b.className='quiet wide';b.textContent='Dispel enemy Pillar of Fire';b.onclick=()=>{try{const result=G.dispelVortex(state,vortex.caster,Math.random,$('magicDispel').value==='fated'?'fated':'wizard');render();showDice(result.dice,'Dispel Pillar');notify(result.success?'Pillar of Fire dispelled.':'The Pillar remains in play.');}catch(e){notify(e.message,true);}};root.append(b);}
 }
-function renderReactionControls(u){const pending=pendingCharger(u),panel=$('reactionControls');panel.hidden=!pending;if(!pending)return;const canStand=G.canStandShoot(state,u,pending),plan=canStand?G.shootingPlan(state,u,pending,{reaction:true}):null;$('reactionHelp').textContent=`${pending.id} charges ${u.id}. Choose a reaction for ${u.name}. ${u.fleeing?'Already fleeing: Flee is compulsory.':u.engaged?'Already engaged: Hold is compulsory.':u.movementMode==='march'?'This regiment marched, so it cannot Stand & Shoot.':canStand?`Stand & Shoot: ${plan.shooters} models fire, hit ${plan.hitLabel}; no long-range penalty.`:'Stand & Shoot is unavailable for this regiment or distance.'} Flee moves 2D6″ directly away before the charge roll.`;$('reactionHold').disabled=!!u.fleeing;$('reactionStand').disabled=!canStand;$('reactionFlee').disabled=!!u.engaged;panel.dataset.charger=pending.id;}
+function scopeTheme(el,theme){for(const key of Object.keys(P.THEMES.ash)){if(theme)el.style.setProperty('--army-'+key,theme[key]);else el.style.removeProperty('--army-'+key);}}
+function renderReactionControls(u){const pending=pendingCharger(u),panel=$('reactionControls');panel.hidden=!pending;scopeTheme($('unitOrders'),pending&&u.team!==state.team?P.themeForTeam(state,u.team):null);if(!pending)return;const canStand=G.canStandShoot(state,u,pending),plan=canStand?G.shootingPlan(state,u,pending,{reaction:true}):null;$('reactionHelp').textContent=`${pending.id} charges ${u.id}. Choose a reaction for ${u.name}. ${u.fleeing?'Already fleeing: Flee is compulsory.':u.engaged?'Already engaged: Hold is compulsory.':u.movementMode==='march'?'This regiment marched, so it cannot Stand & Shoot.':canStand?`Stand & Shoot: ${plan.shooters} models fire, hit ${plan.hitLabel}; no long-range penalty.`:'Stand & Shoot is unavailable for this regiment or distance.'} Flee moves 2D6″ directly away before the charge roll.`;$('reactionHold').disabled=!!u.fleeing;$('reactionStand').disabled=!canStand;$('reactionFlee').disabled=!!u.engaged;panel.dataset.charger=pending.id;}
 async function animateVolley(report,label){for(const [step,values] of [['D3 shots',report.dice.shots],['to hit',report.dice.hit],['to wound',report.dice.wound],['armour saves',report.dice.save]]){if(!values.length)continue;const visible=values.slice(0,20);await animatedRoll(visible.length,`${label} · ${step}${values.length>20?` · first 20 of ${values.length}`:''}`,visible);showDice(visible,`${label} · ${step}${values.length>20?` (${values.length} total)`:''}`);}}
 $('shootButton').onclick=async()=>{if(rolling)return;try{const id=state.selected,target=shootTarget,unit=G.getUnit(state,target),point=unit&&{x:unit.x,y:unit.y},report=G.shoot(state,id,target);await animateVolley(report,id+' · '+report.weapon.name);advanceSelection(id);render();if(report.hits)impactEffect(point,'volley',report.unsaved);notify(`${id} → ${target}: ${report.shots} shots, ${report.hits} hits, ${report.wounds} wounds, ${report.unsaved} slain.`);}catch(e){notify(e.message,true);}};
 $('shootHold').onclick=()=>safely(()=>{const id=state.selected;G.finishShooting(state,id);advanceSelection(id);notify(id+' finishes the Shooting phase without firing.');});

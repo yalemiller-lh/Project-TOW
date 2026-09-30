@@ -11,7 +11,8 @@ export const PHASE_SUBSTEPS={
  combat:['Magic & fight by Initiative','Combat result','Break test','Pursuit']
 };
 
-export function themeFor(state){return THEMES[state.team==='ash'?'ash':state.units.find(u=>u.team==='iron')?.faction??'empire'];}
+export function themeForTeam(state,team){return THEMES[team==='ash'?'ash':state.units.find(u=>u.team==='iron')?.faction??'empire'];}
+export function themeFor(state){return themeForTeam(state,state.team);}
 export function unitName(unit){
  if(!unit)return 'No unit selected';
  if(unit.role==='warmachine')return unit.name;
