@@ -28,10 +28,26 @@ export function humanDecision(s){
  return null;
 }
 
+// The computer resolves every combat-aftermath step that belongs to its own regiment,
+// including when the player's turn produced the combat.
+export function combatDecision(s){
+ const p=s.pendingCombat;if(s.stage!=='combat'||!p)return null;
+ const owner=['break','loser-choice','retreat'].includes(p.stage)?p.loser:p.stage==='winner-choice'?p.winner:null;
+ return G.getUnit(s,owner)?.team==='iron'?p.stage:null;
+}
+
+function resolveCombatDecision(s,random){
+ const p=s.pendingCombat;
+ if(p.stage==='break'){const out=G.rollCombatBreak(s,random);return {message:`${p.loser} ${out.outcome.replace('-',' ')} (${out.dice.join('+')}).`};}
+ if(p.stage==='loser-choice'){G.chooseLoserAction(s,p.shieldwallAvailable?'shieldwall':'fall-back');return {message:`${p.loser} chooses ${p.loserChoice}.`};}
+ if(p.stage==='retreat'){const out=G.moveCombatLoser(s,random);return {message:`${out.loser} retreats ${out.distance.toFixed(1)}″.`};}
+ const out=G.winnerCombat(s,'follow',random);return {message:`${out.winner} ${out.outcome==='overrun'?'overruns':out.outcome==='break'?'pursues':'follows up'}.`};
+}
+
 export function shouldAct(s){
  if(s.stage==='deployment')return false;
  if(s.team==='iron')return !humanDecision(s);
- return s.stage==='movement'&&s.movementStep==='declare'&&s.units.some(u=>u.team==='ash'&&u.charge?.status==='declared'&&u.charge.reaction==='pending'&&G.getUnit(s,u.charge.target)?.team==='iron')||s.stage==='combat'&&s.units.some(u=>u.team==='iron'&&u.role==='wizard'&&u.engaged&&u.spells.some(key=>['hammerhand','hashutFlames'].includes(key)&&G.canCast(s,u.id,key,u.engaged)));
+ return s.stage==='movement'&&s.movementStep==='declare'&&s.units.some(u=>u.team==='ash'&&u.charge?.status==='declared'&&u.charge.reaction==='pending'&&G.getUnit(s,u.charge.target)?.team==='iron')||!!combatDecision(s)||s.stage==='combat'&&s.units.some(u=>u.team==='iron'&&u.role==='wizard'&&u.engaged&&u.spells.some(key=>['hammerhand','hashutFlames'].includes(key)&&G.canCast(s,u.id,key,u.engaged)));
 }
 
 function moveRegiment(s,u,random){
@@ -52,7 +68,7 @@ function moveRegiment(s,u,random){
 export function takeStep(s,random=Math.random){
  if(!shouldAct(s))return {message:'Waiting for the player.',wait:true};
  if(s.team==='ash'){
-  if(s.stage==='combat'){const cast=aiSpell(s,random);if(cast)return cast;return {message:'Waiting for the player.',wait:true};}
+  if(s.stage==='combat'){if(combatDecision(s))return resolveCombatDecision(s,random);const cast=aiSpell(s,random);if(cast)return cast;return {message:'Waiting for the player.',wait:true};}
   const charger=s.units.find(u=>u.team==='ash'&&u.charge?.status==='declared'&&u.charge.reaction==='pending'&&G.getUnit(s,u.charge.target)?.team==='iron');
   const defender=G.getUnit(s,charger.charge.target),choice=defender.fleeing?'flee':G.canStandShoot(s,defender,charger)?'stand-shoot':'hold',point={x:charger.x,y:charger.y},out=G.chargeReaction(s,charger.id,choice,random);
   return {message:`${defender.id} chooses ${choice==='stand-shoot'?'Stand & Shoot':choice}.`,report:out.report,point};
@@ -90,11 +106,7 @@ export function takeStep(s,random=Math.random){
  }
  if(s.stage==='combat'){
   const cast=aiSpell(s,random);if(cast)return cast;
-  const p=s.pendingCombat;
-  if(p?.stage==='break'){const out=G.rollCombatBreak(s,random);return {message:`${p.loser} ${out.outcome.replace('-',' ')} (${out.dice.join('+')}).`};}
-  if(p?.stage==='loser-choice'){G.chooseLoserAction(s,p.shieldwallAvailable?'shieldwall':'fall-back');return {message:`${p.loser} chooses ${p.loserChoice}.`};}
-  if(p?.stage==='retreat'){const out=G.moveCombatLoser(s,random);return {message:`${out.loser} retreats ${out.distance.toFixed(1)}″.`};}
-  if(p?.stage==='winner-choice'){const out=G.winnerCombat(s,'follow',random);return {message:`${out.winner} follows up.`};}
+  if(s.pendingCombat)return resolveCombatDecision(s,random);
   if(s.combatSession?.phase==='attacks'){const out=G.fightCombatStep(s,random);return {message:`Initiative ${out.initiative}: ${out.stages.reduce((n,x)=>n+x.unsaved,0)} slain.`};}
   if(s.combatSession?.phase==='compare'){const out=G.compareCombat(s);return {message:out.winner?`${out.winner} wins combat.`:'Combat is a draw.'};}
   const pair=G.combatPairs(s)[0];if(pair){const id=pair.find(id=>G.getUnit(s,id).team==='iron')??pair[0];s.selected=id;G.beginCombat(s,id);return {message:`${pair.join(' fights ')}: initiative order shown.`};}

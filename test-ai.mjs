@@ -28,4 +28,21 @@ for(const faction of ['empire','orc']){
  s.pendingCombat={winner:'A1',loser:'I1',stage:'winner-choice'};assert.equal(AI.humanDecision(s).kind,'aftermath');assert.equal(AI.shouldAct(s),false);
 }
 
-console.log('PASS AI deployment, both opponent turns, and automated charge reaction');
+function playerTurnCombat(winner,loser){
+ const s=G.createGame('orc');G.autoDeploy(s);G.begin(s,()=>0);s.stage='combat';s.team='ash';const a=G.getUnit(s,'A1'),b=G.getUnit(s,'I1');
+ Object.assign(a,{x:18,y:24});Object.assign(b,{x:18,y:24-(G.SIZE.h+G.size(b).h)/2});s.lastCombat={a:'A1',b:'I1'};s.combatHistory=[s.lastCombat];s.pendingCombat={winner,loser,margin:2,stage:'break'};return s;
+}
+{
+ // A broken AI regiment in the player's turn: the computer tests, flees and leaves only the pursuit to the player.
+ const s=playerTurnCombat('A1','I1');assert.equal(AI.combatDecision(s),'break');assert.equal(AI.shouldAct(s),true);
+ AI.takeStep(s,()=>.99);assert.equal(s.pendingCombat.outcome,'break');assert.equal(AI.combatDecision(s),'retreat');
+ AI.takeStep(s,()=>.99);assert.equal(G.getUnit(s,'I1').fleeing||G.getUnit(s,'I1').destroyed,true);assert.equal(s.pendingCombat.stage,'winner-choice');
+ assert.equal(AI.combatDecision(s),null);assert.equal(AI.humanDecision(s).kind,'aftermath');assert.equal(AI.shouldAct(s),false);
+}
+{
+ // A winning AI regiment in the player's turn chooses its own pursuit once the player's loser has moved.
+ const s=playerTurnCombat('I1','A1');assert.equal(AI.combatDecision(s),null);assert.equal(AI.shouldAct(s),false);
+ G.rollCombatBreak(s,()=>.99);G.moveCombatLoser(s,()=>.99);assert.equal(AI.combatDecision(s),'winner-choice');assert.equal(AI.shouldAct(s),true);
+ const out=AI.takeStep(s,()=>.5);assert.match(out.message,/I1 pursues/);assert.equal(s.pendingCombat,null);assert.equal(AI.shouldAct(s),false);
+}
+console.log('PASS AI deployment, both opponent turns, automated charge reaction, and AI combat aftermath in the player turn');
