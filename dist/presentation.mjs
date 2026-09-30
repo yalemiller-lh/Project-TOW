@@ -5,20 +5,22 @@ export const THEMES={
 };
 
 export const PHASE_SUBSTEPS={
- strategy:['Start of turn','Rally fleeing troops'],
- movement:['Declare charges','Roll charges','Remaining moves'],
- shooting:['Choose targets','Roll to hit & wound','Remove casualties'],
- combat:['Fight by Initiative','Combat result','Break test','Pursuit']
+ strategy:['Start of turn & magic','Rally fleeing troops'],
+ movement:['Declare charges','Roll charges','Remaining moves & magic'],
+ shooting:['Missiles & magic','Roll to hit & wound','Remove casualties'],
+ combat:['Magic & fight by Initiative','Combat result','Break test','Pursuit']
 };
 
 export function themeFor(state){return THEMES[state.team==='ash'?'ash':state.units.find(u=>u.team==='iron')?.faction??'empire'];}
 export function unitName(unit){
  if(!unit)return 'No unit selected';
+ if(unit.role==='wizard')return unit.name;
  if(unit.role==='missile')return unit.name;
  return `${unit.name} ${'ABC'[Number(unit.id.slice(1))-1]??unit.id}`;
 }
 export function shortName(unit){
  if(!unit)return '';
+ if(unit.role==='wizard')return unit.faction==='chaos'?'Daemonsmith':'Battlemage';
  if(unit.role==='missile')return unit.faction==='chaos'?'Decimators':unit.faction==='empire'?'Missile Troops':'Warbows';
  return `${unit.faction==='chaos'?'Warriors':unit.faction==='empire'?'State Troops':'Orc Mob'} ${'ABC'[Number(unit.id.slice(1))-1]??''}`;
 }

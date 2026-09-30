@@ -5,8 +5,8 @@ function fight(opponent='chaos'){
  const s=G.createGame(opponent);G.autoDeploy(s);G.begin(s);G.nextPhase(s);
  const a=G.getUnit(s,'A1'),b=G.getUnit(s,'I1');Object.assign(a,{x:18,y:22,engaged:'I1'});Object.assign(b,{x:18,y:22-(G.size(a).h+G.size(b).h)/2,engaged:'A1'});s.stage='combat';return s;
 }
-test('all six regiments have M, S and C in the centre of their front rank',()=>{
- for(const opponent of ['chaos','orc','empire']){const s=G.createGame(opponent);for(const u of s.units){assert.deepEqual(G.modelSquares(s,u).slice(0,5).map(m=>m.command),[null,'M','S','C',null]);assert.equal(G.modelSquares(s,u).filter(m=>m.command).length,3);}}
+test('regiments have command, while standalone wizards do not',()=>{
+ for(const opponent of ['chaos','orc','empire']){const s=G.createGame(opponent);for(const u of s.units){if(u.role==='wizard'){assert.equal(G.modelSquares(s,u).length,1);assert.equal(G.modelSquares(s,u)[0].command,null);}else{assert.deepEqual(G.modelSquares(s,u).slice(0,5).map(m=>m.command),[null,'M','S','C',null]);assert.equal(G.modelSquares(s,u).filter(m=>m.command).length,3);}}}
 });
 test('the champion adds one attack when fighting and the standard adds one combat result',()=>{
  const s=fight(),r=G.resolveCombat(s,'A1',()=>0);assert.equal(r.stages[0].attacks,r.stages[0].fighters+1);assert.equal(r.score.A1.standard,1);

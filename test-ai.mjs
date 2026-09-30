@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import * as G from './dist/game.mjs';
 import * as AI from './dist/ai.mjs';
 
-function deploy(opponent){const s=G.createGame(opponent);AI.deployOpponent(s);assert.equal(s.units.filter(u=>u.team==='iron'&&u.x!==null).length,4);assert.equal(s.units.filter(u=>u.team==='ash'&&u.x!==null).length,0);for(const [i,u]of s.units.filter(u=>u.team==='ash').entries())G.place(s,u.id,[18,36,54,64][i],42);G.placeRocket(s,8,42);G.begin(s);return s;}
+function deploy(opponent){const s=G.createGame(opponent);AI.deployOpponent(s);assert.equal(s.units.filter(u=>u.team==='iron'&&u.x!==null).length,opponent==='empire'?5:4);assert.equal(s.units.filter(u=>u.team==='ash'&&u.x!==null).length,0);for(const [i,u]of s.units.filter(u=>u.team==='ash').entries())G.place(s,u.id,u.role==='wizard'?3.5:[18,36,54,64][i],42);G.placeRocket(s,8,42);G.begin(s,()=>0);return s;}
 
 for(const faction of ['empire','orc']){
  const s=deploy(faction);assert.equal(s.cannons.filter(c=>c.x!==null).length,faction==='empire'?2:0);

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import * as G from './dist/game.mjs';
 {
- const s=G.createGame();G.autoDeploy(s);G.begin(s);G.nextPhase(s);
+ const s=G.createGame();G.autoDeploy(s);G.begin(s,()=>0);G.nextPhase(s);
  const u=G.getUnit(s,'A1'),start={x:u.x,y:u.y,heading:u.heading};
  const back=G.commitOrder(s,'A1',{kind:'back',mode:'advance',distance:1,angle:0});
  assert.equal(back.cost,2);assert.equal(u.y,start.y+1);assert.equal(u.heading,start.heading);
@@ -14,7 +14,7 @@ import * as G from './dist/game.mjs';
 }
 const near=(a,b)=>assert.ok(Math.abs(a-b)<1e-7,`${a} != ${b}`);
 let count=0;function test(name,fn){fn();count++;console.log('PASS '+name);}
-function ready(){const s=G.createGame();G.autoDeploy(s);s.rocket.wounds=0;G.begin(s);G.nextPhase(s);return s;}
+function ready(){const s=G.createGame();G.autoDeploy(s);s.rocket.wounds=0;G.begin(s,()=>0);G.nextPhase(s);return s;}
 test('wheel cost uses the straight-line chord from the outer front corner',()=>{near(G.wheelCost(30),2*G.SIZE.w*Math.sin(Math.PI/12));near(G.wheelCost(-30),G.wheelCost(30));near(G.wheelCost(G.maxWheel('advance')),3);near(G.wheelCost(G.maxWheel('march')),6);});
 test('left and right wheel keep their respective leading corner fixed',()=>{const s=ready(),u=G.getUnit(s);for(const angle of [-30,30]){const original=G.localPoint(u,(angle<0?-1:1)*G.SIZE.w/2,-G.SIZE.h/2);const next=G.wheelPose(u,angle);const pinned=G.localPoint(next,(angle<0?-1:1)*G.SIZE.w/2,-G.SIZE.h/2);near(original.x,pinned.x);near(original.y,pinned.y);near(next.heading,G.normalize(angle));}});
 test('wheel and advance share a single allowance',()=>{const s=ready(),u=G.getUnit(s);assert.equal(G.orderError(s,u,{kind:'wheel',mode:'advance',angle:30,distance:.4}),null);assert.match(G.orderError(s,u,{kind:'wheel',mode:'advance',angle:30,distance:1}),/allowance/);const p=G.commitOrder(s,u.id,{kind:'wheel',mode:'advance',angle:30,distance:.4});assert.equal(u.moved,false);near(u.spent,p.cost);near(u.x,p.afterWheel.x+.2);near(u.y,p.afterWheel.y-Math.sqrt(3)/2*.4);});

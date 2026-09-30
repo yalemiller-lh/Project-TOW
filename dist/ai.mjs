@@ -16,6 +16,7 @@ export function deployOpponent(s){
  };
  for(const [id,x]of [['I1',18],['I2',36],['I3',54],['I4',64]])place(id,x);
  for(const [id,x]of [['I5',8],['I6',45]])if(s.cannons.some(c=>c.id===id))place(id,x,true);
+ if(s.units.some(u=>u.id==='I7'))place('I7',70);
 }
 
 export function humanDecision(s){
@@ -30,7 +31,7 @@ export function humanDecision(s){
 export function shouldAct(s){
  if(s.stage==='deployment')return false;
  if(s.team==='iron')return !humanDecision(s);
- return s.stage==='movement'&&s.movementStep==='declare'&&s.units.some(u=>u.team==='ash'&&u.charge?.status==='declared'&&u.charge.reaction==='pending'&&G.getUnit(s,u.charge.target)?.team==='iron');
+ return s.stage==='movement'&&s.movementStep==='declare'&&s.units.some(u=>u.team==='ash'&&u.charge?.status==='declared'&&u.charge.reaction==='pending'&&G.getUnit(s,u.charge.target)?.team==='iron')||s.stage==='combat'&&s.units.some(u=>u.team==='iron'&&u.role==='wizard'&&u.engaged&&u.spells.some(key=>['hammerhand','hashutFlames'].includes(key)&&G.canCast(s,u.id,key,u.engaged)));
 }
 
 function moveRegiment(s,u,random){
@@ -51,6 +52,7 @@ function moveRegiment(s,u,random){
 export function takeStep(s,random=Math.random){
  if(!shouldAct(s))return {message:'Waiting for the player.',wait:true};
  if(s.team==='ash'){
+  if(s.stage==='combat'){const cast=aiSpell(s,random);if(cast)return cast;return {message:'Waiting for the player.',wait:true};}
   const charger=s.units.find(u=>u.team==='ash'&&u.charge?.status==='declared'&&u.charge.reaction==='pending'&&G.getUnit(s,u.charge.target)?.team==='iron');
   const defender=G.getUnit(s,charger.charge.target),choice=defender.fleeing?'flee':G.canStandShoot(s,defender,charger)?'stand-shoot':'hold',point={x:charger.x,y:charger.y},out=G.chargeReaction(s,charger.id,choice,random);
   return {message:`${defender.id} chooses ${choice==='stand-shoot'?'Stand & Shoot':choice}.`,report:out.report,point};
@@ -59,6 +61,7 @@ export function takeStep(s,random=Math.random){
  if(s.stage==='strategy'){
   const u=s.units.find(u=>u.team==='iron'&&u.x!==null&&u.fleeing&&!u.rallyAttempted);
   if(u){s.selected=u.id;const out=G.rally(s,u.id,random);return {message:`${u.id} ${out.success?'rallies':'fails to rally'} (${out.dice.join('+')}).`};}
+  const cast=aiSpell(s,random);if(cast)return cast;
   G.nextPhase(s);return {message:'AI begins Movement.'};
  }
  if(s.stage==='movement'&&s.movementStep==='declare'){
@@ -74,9 +77,11 @@ export function takeStep(s,random=Math.random){
  }
  if(s.stage==='movement'){
   const u=s.units.find(u=>u.team==='iron'&&G.canAct(s,u));if(u)return moveRegiment(s,u,random);
+  const cast=aiSpell(s,random);if(cast)return cast;
   G.nextPhase(s);return {message:`AI begins ${s.stage}.`};
  }
  if(s.stage==='shooting'){
+  const cast=aiSpell(s,random);if(cast)return cast;
   const choices=s.units.filter(u=>u.team==='iron'&&G.canShoot(s,u)).flatMap(u=>G.shootingTargets(s,u).filter(t=>!t.plan.error).map(t=>({u,t}))).sort((a,b)=>a.t.plan.distance-b.t.plan.distance);
   if(choices.length){const {u,t}=choices[0],point={x:t.unit.x,y:t.unit.y};s.selected=u.id;const report=G.shoot(s,u.id,t.unit.id,random);return {message:`${u.id} fires at ${t.unit.id}: ${report.unsaved} slain.`,report,point};}
   for(const c of s.cannons){if(!G.canFireCannon(s,c.id))continue;const grape=G.cannonTargets(s,c.id,{mode:'grape'}).filter(t=>!t.error),ball=G.cannonTargets(s,c.id,{mode:'ball',aimShort:6}).filter(t=>!t.error),targets=grape.length?grape:ball;
@@ -84,6 +89,7 @@ export function takeStep(s,random=Math.random){
   G.nextPhase(s);return {message:'AI begins Combat.'};
  }
  if(s.stage==='combat'){
+  const cast=aiSpell(s,random);if(cast)return cast;
   const p=s.pendingCombat;
   if(p?.stage==='break'){const out=G.rollCombatBreak(s,random);return {message:`${p.loser} ${out.outcome.replace('-',' ')} (${out.dice.join('+')}).`};}
   if(p?.stage==='loser-choice'){G.chooseLoserAction(s,p.shieldwallAvailable?'shieldwall':'fall-back');return {message:`${p.loser} chooses ${p.loserChoice}.`};}
@@ -96,3 +102,5 @@ export function takeStep(s,random=Math.random){
  }
  return {message:'Waiting for the player.',wait:true};
 }
+
+function aiSpell(s,random){const wizard=s.units.find(u=>u.team==='iron'&&u.role==='wizard'&&alive(u));if(!wizard)return null;for(const key of wizard.spells){const targets=G.spellTargets(s,wizard.id,key).filter(t=>G.canCast(s,wizard.id,key,t.id));if(!targets.length)continue;const target=key==='shield'?wizard:targets.sort((a,b)=>G.gap(wizard,a)-G.gap(wizard,b))[0],enemy=s.units.find(u=>u.team==='ash'&&u.role==='wizard'&&alive(u)&&!u.fleeing&&(!u.engaged||u.engaged===target.id)&&distance(wizard,u)<=18),dispel=enemy?'wizard':s.fatedDispelUsed?'none':'fated',point=key==='pillar'?(()=>{const victim=nearest(s,wizard);if(!victim)return {x:wizard.x,y:wizard.y};const d=distance(wizard,victim),f=Math.min(10,d)/d;return {x:Math.max(1.5,Math.min(70.5,wizard.x+(victim.x-wizard.x)*f)),y:Math.max(1.5,Math.min(46.5,wizard.y+(victim.y-wizard.y)*f))};})():null;const report=G.castSpell(s,wizard.id,key,target.id,random,{dispel,point});s.selected=wizard.id;return {message:`${wizard.name} casts ${G.BATTLE_MAGIC[key].name}: ${report.cast?'success':'failed'}${report.dispel?.success?' (dispelled)':''}.`,spell:true,report,point:{x:target.x,y:target.y}};}return null;}
