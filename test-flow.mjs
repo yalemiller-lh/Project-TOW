@@ -54,5 +54,5 @@ test('available rally, charge, shooting, and combat actions prevent auto skips',
 });
 test('a moved Orc does not keep empty charge declarations open',()=>{
  const s=G.createGame('orc');G.autoDeploy(s);G.begin(s);s.team='iron';s.stage='movement';s.movementStep='declare';const orc=G.getUnit(s,'I1'),target=G.getUnit(s,'A1');orc.x=18;orc.y=22;target.x=18;target.y=28;for(const u of s.units.filter(u=>u.team==='iron'))u.moved=true;
- assert.equal(G.phaseHasActions(s),false);const skipped=G.skipEmptySteps(s);assert.ok(skipped.includes('Movement · declare'));assert.equal(s.team,'ash');assert.equal(s.movementStep,'remaining');
+ assert.equal(G.phaseHasActions(s),false);const skipped=G.skipEmptySteps(s);assert.deepEqual(skipped.slice(0,2),['Movement · declare','Movement · remaining']);assert.equal(s.team,'ash');
 });
