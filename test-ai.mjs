@@ -7,7 +7,7 @@ function deploy(opponent){const s=G.createGame(opponent);AI.deployOpponent(s);as
 for(const faction of ['empire','orc']){
  const s=deploy(faction);assert.equal(s.cannons.filter(c=>c.x!==null).length,faction==='empire'?2:0);
  s.team='iron';s.stage='strategy';let steps=0,choices=0,shots=0;
- while(s.team==='iron'&&steps++<250){const needed=AI.humanDecision(s);if(needed){choices++;if(needed.kind==='reaction'){const charger=s.units.find(u=>u.team==='iron'&&u.charge?.reaction==='pending');G.chargeReaction(s,charger.id,'hold');}else if(needed.kind==='shieldwall')G.chooseLoserAction(s,'fall-back');else G.winnerCombat(s,'follow');continue;}assert.equal(AI.shouldAct(s),true);const result=AI.takeStep(s,()=>.55);assert.ok(result.message);if(result.report)shots++;}
+ while(s.team==='iron'&&steps++<250){const needed=AI.humanDecision(s);if(needed){choices++;if(needed.kind==='reaction'){const charger=s.units.find(u=>u.team==='iron'&&u.charge?.reaction==='pending');G.chargeReaction(s,charger.id,'hold');}else if(needed.kind==='shieldwall')G.chooseLoserAction(s,'fall-back');else if(needed.kind==='dispel')G.resolveDispel(s,'none');else G.winnerCombat(s,'follow');continue;}assert.equal(AI.shouldAct(s),true);const result=AI.takeStep(s,()=>.55);assert.ok(result.message);if(result.report)shots++;}
  assert.ok(steps<250,`${faction} AI turn did not finish`);assert.equal(s.team,'ash');assert.equal(s.stage,'strategy');if(faction==='empire')assert.ok(shots>0,'Empire AI should fire at least one weapon');assert.ok(choices>=0);
 }
 

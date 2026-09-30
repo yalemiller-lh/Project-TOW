@@ -21,7 +21,7 @@ function prepare(s,key,phase='strategy',caster='A6'){s.stage=phase;s.team=caster
  const s=battle(),u=prepare(s,'fireball','shooting'),t=G.getUnit(s,'I1');t.x=4;t.y=24;const out=G.castSpell(s,u.id,'fireball',t.id,sequence(.9,.9,.9,.9,.9,.9,0));assert.equal(out.cast,true);assert.ok(out.effect.hits>=2);assert.ok(out.effect.unsaved>=0);
 }
 {
- const s=battle(),u=prepare(s,'pillar','shooting');const out=G.castSpell(s,u.id,'pillar',u.id,()=>.8,{point:{x:u.x,y:u.y-5}});assert.equal(out.cast,true);assert.equal(s.vortices.length,1);assert.equal(s.vortices[0].radius,1.5);const drift=G.driftVortices(s,()=>.5);assert.equal(drift.length,1);assert.equal(drift[0].distance,4);assert.equal(G.dispelVortex(s,u.id,()=>.99,'fated').success,true);assert.equal(s.vortices.length,0);
+ const s=battle(),u=prepare(s,'pillar','shooting');const out=G.castSpell(s,u.id,'pillar',u.id,()=>.8,{point:{x:u.x,y:u.y-5}});assert.equal(out.cast,true);assert.equal(s.vortices.length,1);assert.equal(s.vortices[0].radius,1.5);const drift=G.driftVortices(s,()=>.5);assert.equal(drift.length,1);assert.equal(drift[0].distance,4);assert.throws(()=>G.dispelVortex(s,u.id,()=>.99,'fated'),/Strategy/);Object.assign(s,{stage:'strategy',team:u.team==='ash'?'iron':'ash'});assert.equal(G.dispelVortex(s,u.id,()=>.99,'fated').success,true);assert.equal(s.vortices.length,0);
 }
 {
  const s=battle(),u=prepare(s,'coward'),t=G.getUnit(s,'I1');t.x=4;t.y=30;const out=G.castSpell(s,u.id,'coward',t.id,sequence(.8,.8,.99));assert.equal(out.cast,true);assert.equal(out.effect.passed,false);assert.equal(t.fleeing||t.destroyed,true);

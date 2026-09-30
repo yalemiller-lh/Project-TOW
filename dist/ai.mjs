@@ -20,6 +20,7 @@ export function deployOpponent(s){
 }
 
 export function humanDecision(s){
+ if(s.pendingSpell&&G.getUnit(s,s.pendingSpell.caster)?.team==='iron')return {id:s.pendingSpell.caster,kind:'dispel',message:`Choose how to dispel ${G.BATTLE_MAGIC[s.pendingSpell.key].name}.`};
  const charge=s.units.find(u=>u.team==='iron'&&u.charge?.status==='declared'&&u.charge.reaction==='pending');
  if(charge)return {id:charge.charge.target,kind:'reaction',message:`Choose a reaction for ${charge.charge.target} against ${charge.id}.`};
  const p=s.pendingCombat;
@@ -46,6 +47,7 @@ function resolveCombatDecision(s,random){
 
 export function shouldAct(s){
  if(s.stage==='deployment')return false;
+ if(s.pendingSpell)return G.getUnit(s,s.pendingSpell.caster)?.team==='ash';
  if(s.team==='iron')return !humanDecision(s);
  return s.stage==='movement'&&s.movementStep==='declare'&&s.units.some(u=>u.team==='ash'&&u.charge?.status==='declared'&&u.charge.reaction==='pending'&&G.getUnit(s,u.charge.target)?.team==='iron')||!!combatDecision(s)||s.stage==='combat'&&s.units.some(u=>u.team==='iron'&&u.role==='wizard'&&u.engaged&&u.spells.some(key=>['hammerhand','hashutFlames'].includes(key)&&G.canCast(s,u.id,key,u.engaged)));
 }
@@ -65,8 +67,15 @@ function moveRegiment(s,u,random){
  G.hold(s,u.id);return {message:`${u.id} holds position.`};
 }
 
+function aiDispel(s,random){
+ const options=G.dispelOptions(s),wizard=[...options.wizards].sort((a,b)=>b.bonus-a.bonus)[0],choice=wizard?.id??(options.fated?'fated':'none');
+ const out=G.resolveDispel(s,choice,random),name=G.BATTLE_MAGIC[out.spell].name;
+ if(!out.dispel)return {message:`The computer lets ${name} through.`};
+ return {message:`${out.dispel.kind==='fated'?'Fated Dispel':out.dispel.by+' tries to dispel'}: ${out.dispel.dice.join('+')} = ${out.dispel.total} vs ${out.casting} · ${out.dispel.success?name+' dispelled':name+' takes effect'}${out.dispel.miscast?' · '+out.dispel.miscast.kind:''}.`,roll:{label:`${out.dispel.by??options.caster} · ${out.dispel.kind==='fated'?'Fated Dispel':'Dispel'}`,dice:out.dispel.dice,team:'iron'},report:out,spell:true,point:G.getUnit(s,out.target)};
+}
 export function takeStep(s,random=Math.random){
  if(!shouldAct(s))return {message:'Waiting for the player.',wait:true};
+ if(s.pendingSpell)return aiDispel(s,random);
  if(s.team==='ash'){
   if(s.stage==='combat'){if(combatDecision(s))return resolveCombatDecision(s,random);const cast=aiSpell(s,random);if(cast)return cast;return {message:'Waiting for the player.',wait:true};}
   const charger=s.units.find(u=>u.team==='ash'&&u.charge?.status==='declared'&&u.charge.reaction==='pending'&&G.getUnit(s,u.charge.target)?.team==='iron');
@@ -115,4 +124,4 @@ export function takeStep(s,random=Math.random){
  return {message:'Waiting for the player.',wait:true};
 }
 
-function aiSpell(s,random){const wizard=s.units.find(u=>u.team==='iron'&&u.role==='wizard'&&alive(u));if(!wizard)return null;for(const key of wizard.spells){const targets=G.spellTargets(s,wizard.id,key).filter(t=>G.canCast(s,wizard.id,key,t.id));if(!targets.length)continue;const target=key==='shield'?wizard:targets.sort((a,b)=>G.gap(wizard,a)-G.gap(wizard,b))[0],enemy=s.units.find(u=>u.team==='ash'&&u.role==='wizard'&&alive(u)&&!u.fleeing&&(!u.engaged||u.engaged===target.id)&&distance(wizard,u)<=18),dispel=enemy?'wizard':s.fatedDispelUsed?'none':'fated',point=key==='pillar'?(()=>{const victim=nearest(s,wizard);if(!victim)return {x:wizard.x,y:wizard.y};const d=distance(wizard,victim),f=Math.min(10,d)/d;return {x:Math.max(1.5,Math.min(70.5,wizard.x+(victim.x-wizard.x)*f)),y:Math.max(1.5,Math.min(46.5,wizard.y+(victim.y-wizard.y)*f))};})():null;const report=G.castSpell(s,wizard.id,key,target.id,random,{dispel,point});s.selected=wizard.id;return {message:`${wizard.name} casts ${G.BATTLE_MAGIC[key].name}: ${report.cast?'success':'failed'}${report.dispel?.success?' (dispelled)':''}.`,spell:true,report,point:{x:target.x,y:target.y}};}return null;}
+function aiSpell(s,random){const wizard=s.units.find(u=>u.team==='iron'&&u.role==='wizard'&&alive(u));if(!wizard)return null;for(const key of wizard.spells){const targets=G.spellTargets(s,wizard.id,key).filter(t=>G.canCast(s,wizard.id,key,t.id));if(!targets.length)continue;const target=key==='shield'?wizard:targets.sort((a,b)=>G.gap(wizard,a)-G.gap(wizard,b))[0],point=key==='pillar'?(()=>{const victim=nearest(s,wizard);if(!victim)return {x:wizard.x,y:wizard.y};const d=distance(wizard,victim),f=Math.min(10,d)/d;return {x:Math.max(1.5,Math.min(70.5,wizard.x+(victim.x-wizard.x)*f)),y:Math.max(1.5,Math.min(46.5,wizard.y+(victim.y-wizard.y)*f))};})():null;const report=G.attemptSpell(s,wizard.id,key,target.id,random,{point});s.selected=wizard.id;return {message:`${wizard.name} casts ${G.BATTLE_MAGIC[key].name}: ${report.dice.join('+')} = ${report.casting} · ${report.pending?'cast — choose a dispel':report.cast?'cast':'failed'}.`,roll:{label:`${wizard.id} · ${G.BATTLE_MAGIC[key].name} casting`,dice:report.dice,team:'iron'},spell:true,report,point:{x:target.x,y:target.y}};}return null;}
