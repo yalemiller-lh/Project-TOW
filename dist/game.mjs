@@ -408,7 +408,7 @@ export function modelSquares(s,u){
  const edge=face==='front'?row:face==='rear'?3-row:face==='left flank'?col:face==='right flank'?4-col:Infinity;
  const dead=(u.deadModels??[]).includes(i);
  const fighting=!dead&&!!enemy&&edge<depth&&polygonGap(poly,corners(enemy))<=profile(u).M+EPS;
- return {index:i,row,col,x,y,size:base,command:COMMAND_SLOTS[i]??null,dead,fighting,contact:!dead&&!!enemy&&polygonGap(poly,corners(enemy))<EPS};
+ return {index:i,row,col,rank:edge,x,y,size:base,command:COMMAND_SLOTS[i]??null,dead,fighting,contact:!dead&&!!enemy&&polygonGap(poly,corners(enemy))<EPS};
  });
 }
 
@@ -424,23 +424,28 @@ export function woundTarget(attacker,defender){return Math.max(2,Math.min(6,4+pr
 export function saveTarget(defender,attacker){let target=profile(defender).save-(!['missile','wizard','warmachine'].includes(defender.role)&&FACTIONS[defender.faction??'chaos'].shield?1:0)+(FACTIONS[attacker.faction??'chaos'].choppas&&attacker.charge?.status==='success'?1:0)+(attacker.role==='wizard'&&attacker.faction==='chaos'?1:0);return Math.max(2,Math.min(7,target));}
 function rankBonus(u){return Math.min(2,Math.max(0,Math.floor((aliveCount(u)-1)/5)));}
 export function leadership(u,kind='normal'){const base=commandAlive(u,'C')?Math.max(profile(u).Ld,championProfile(u).Ld):profile(u).Ld;return Math.min(10,base+(FACTIONS[u.faction??'chaos'].warband&&kind!=='restraint'&&!u.fleeing?rankBonus(u):0)+(commandAlive(u,'M')&&(kind==='march'||kind==='rally')?1:0));}
-function attackStage(s,attacker,defender,random){
- const fighting=modelSquares(s,attacker).filter(m=>m.fighting),faction=FACTIONS[attacker.faction??'chaos'],chopping=faction.choppas&&attacker.charge?.status==='success',dice={hit:[],wound:[],reroll:[],save:[]};
+// Casualties already suffered in this combat count against the first fighting rank, then the
+// second (never the champion); the models that stepped forward from the rear cannot attack.
+function stepForward(models,lost){let drop=lost;return [...models].sort((a,b)=>(a.rank??0)-(b.rank??0)).filter(m=>{if(drop>0&&m.command!=='C'){drop--;return false;}return true;});}
+function attackStage(s,attacker,defender,random,lost=0){
+ const fighting=stepForward(modelSquares(s,attacker).filter(m=>m.fighting),['wizard','warmachine'].includes(attacker.role)?0:lost),faction=FACTIONS[attacker.faction??'chaos'],chopping=faction.choppas&&attacker.charge?.status==='success',dice={hit:[],wound:[],reroll:[],save:[]};
  const furious=faction.furious&&attacker.charge?.status==='success'&&attacker.charge.distance>=3?1:0;
  const attacks=fighting.reduce((total,model)=>total+(model.command==='C'?championProfile(attacker).A:profile(attacker).A)+furious,0);dice.hit=combatDice(attacks,random);
  const toHit=Math.min(6,hitTarget(attacker,defender)+stormPenalty(s,attacker)),toWound=woundTarget(attacker,defender),toSave=saveTarget(defender,attacker),hits=dice.hit.filter(n=>n>=toHit).length;dice.wound=combatDice(hits,random);
  if(chopping){dice.reroll=combatDice(dice.wound.filter(n=>n===1).length,random);}
  const wounds=dice.wound.filter(n=>n>=toWound).length+dice.reroll.filter(n=>n>=toWound).length;dice.save=combatDice(wounds,random);
  let unsaved=Math.min(remainingWounds(defender),dice.save.filter(n=>n<toSave).length);if(defender.oakenShield){dice.ward=combatDice(unsaved,random);unsaved=dice.ward.filter(n=>n<5).length;}
- return {from:attacker.id,to:defender.id,initiative:combatInitiative(attacker),fighters:fighting.length,attacks,hits,wounds,saved:wounds-unsaved,unsaved,toHit,toWound,toSave,dice};
+ return {from:attacker.id,to:defender.id,initiative:combatInitiative(attacker),fighters:fighting.length,lostBefore:lost,attacks,hits,wounds,saved:wounds-unsaved,unsaved,toHit,toWound,toSave,dice};
 }
-function removeCasualties(s,u,count){
+export function removeCasualties(s,u,count){
  if(u.role==='warmachine'){u.wounds=Math.max(0,u.wounds-count);u.crew=Math.min(u.crew,u.wounds);if(!u.wounds){const enemy=u.engaged?getUnit(s,u.engaged):null;if(enemy)enemy.engaged=null;destroyUnit(u);}return;}
  if(u.role==='wizard'){u.wounds=Math.max(0,u.wounds-count);if(!u.wounds){if(u.engaged){const enemy=getUnit(s,u.engaged);if(enemy)enemy.engaged=null;}s.vortices=s.vortices.filter(v=>v.caster!==u.id);destroyUnit(u);}return;}
+ // Models are physically removed from the right-hand end of the rear rank, so the survivors
+ // stay together and the fighting rank stays full; the musician, then the standard bearer,
+ // then the champion go only when no ordinary warriors remain.
  const n=Math.min(count,aliveCount(u));for(let i=0;i<n;i++){
-  const live=modelSquares(s,u).filter(m=>!m.dead);
-  // The struck fighting rank loses models first; empty positions stay dark for a readable record.
-  const ordinary=live.filter(m=>!m.command),victim=ordinary.find(m=>m.contact)??ordinary.find(m=>m.fighting)??ordinary[0]??live.find(m=>m.command==='M')??live.find(m=>m.command==='S')??live[0];
+  const live=modelSquares(s,u).filter(m=>!m.dead),ordinary=live.filter(m=>!m.command),rear=Math.max(...ordinary.map(m=>m.row));
+  const victim=ordinary.filter(m=>m.row===rear).sort((a,b)=>b.col-a.col)[0]??live.find(m=>m.command==='M')??live.find(m=>m.command==='S')??live[0];
   u.deadModels.push(victim.index);
  }
 }
@@ -553,8 +558,8 @@ export function resolveCombat(s,id,random=Math.random){
  const groups=[...new Set([combatInitiative(a),combatInitiative(b)])].sort((x,y)=>y-x),stages=[],damage={[a.id]:0,[b.id]:0};
  for(const init of groups){
   const simultaneous=[];
-  if(combatInitiative(a)===init&&aliveCount(a)>0)simultaneous.push(attackStage(s,a,b,random));
-  if(combatInitiative(b)===init&&aliveCount(b)>0)simultaneous.push(attackStage(s,b,a,random));
+  if(combatInitiative(a)===init&&aliveCount(a)>0)simultaneous.push(attackStage(s,a,b,random,damage[a.id]));
+  if(combatInitiative(b)===init&&aliveCount(b)>0)simultaneous.push(attackStage(s,b,a,random,damage[b.id]));
   for(const stage of simultaneous){stages.push(stage);damage[stage.to]+=stage.unsaved;}
   for(const stage of simultaneous)removeCasualties(s,getUnit(s,stage.to),stage.unsaved);
  }
@@ -580,8 +585,8 @@ export function beginCombat(s,id){
 export function fightCombatStep(s,random=Math.random){
  const c=s.combatSession;if(s.stage!=='combat'||c?.phase!=='attacks')throw Error('Show Initiative before rolling attacks.');
  const a=getUnit(s,c.a),b=getUnit(s,c.b),initiative=c.groups[c.step],stages=[];
- if(c.initiative[a.id]===initiative&&aliveCount(a)>0)stages.push(attackStage(s,a,b,random));
- if(c.initiative[b.id]===initiative&&aliveCount(b)>0)stages.push(attackStage(s,b,a,random));
+ if(c.initiative[a.id]===initiative&&aliveCount(a)>0)stages.push(attackStage(s,a,b,random,c.damage[a.id]));
+ if(c.initiative[b.id]===initiative&&aliveCount(b)>0)stages.push(attackStage(s,b,a,random,c.damage[b.id]));
  for(const stage of stages){c.stages.push(stage);c.damage[stage.to]+=stage.unsaved;}
  for(const stage of stages)removeCasualties(s,getUnit(s,stage.to),stage.unsaved);
  c.step++;if(c.step>=c.groups.length)c.phase='compare';
@@ -626,10 +631,10 @@ function fleeMove(s,u,distance,random=Math.random,depth=0){
  else{
   const square=(pose,m)=>[[m.x,m.y],[m.x+m.size,m.y],[m.x+m.size,m.y+m.size],[m.x,m.y+m.size]].map(([x,y])=>localPoint(pose,x,y)),models=modelSquares(s,u).filter(m=>!m.dead);
   for(const enemy of crossed.filter(v=>v.team!==u.team))for(const m of models){
-   if(u.role==='wizard'?u.wounds<=0:u.deadModels.includes(m.index))continue;
+   if(aliveCount(u)===0)break;
    if(polygonGap(hull([...square(leave,m),...square(end,m)]),corners(enemy))>=EPS)continue;
    const roll=rollD6(1,random)[0],lost=roll<=3;report.peril.push({enemy:enemy.id,model:m.index,roll,lost});
-   if(lost){if(u.role==='wizard')u.wounds--;else u.deadModels.push(m.index);}
+   if(lost)removeCasualties(s,u,1);
   }
   Object.assign(u,{x:end.x,y:end.y});
   if(aliveCount(u)===0){s.vortices=s.vortices.filter(v=>v.caster!==u.id);destroyUnit(u);}
