@@ -56,3 +56,18 @@ test('a moved Orc does not keep empty charge declarations open',()=>{
  const s=G.createGame('orc');G.autoDeploy(s);G.begin(s);s.team='iron';s.stage='movement';s.movementStep='declare';const orc=G.getUnit(s,'I1'),target=G.getUnit(s,'A1');orc.x=18;orc.y=22;target.x=18;target.y=28;for(const u of s.units.filter(u=>u.team==='iron'))u.moved=true;
  assert.equal(G.phaseHasActions(s),false);const skipped=G.skipEmptySteps(s);assert.deepEqual(skipped.slice(0,2),['Movement · declare','Movement · remaining']);assert.equal(s.team,'ash');
 });
+test('Movement can be reopened from Shooting until the army acts, with its moves still undoable',()=>{
+ const s=battle();G.nextPhase(s);assert.equal(s.movementStep,'remaining');G.move(s,'A1',3,'advance');G.nextPhase(s);assert.equal(s.stage,'shooting');
+ assert.equal(G.canReturnToMovement(s),true);G.returnToMovement(s);assert.equal(s.stage,'movement');assert.equal(s.movementStep,'remaining');
+ assert.deepEqual(G.skipEmptySteps(s),[]);G.undo(s);assert.equal(G.getUnit(s,'A1').y,42);G.move(s,'A1',2,'advance');G.nextPhase(s);assert.equal(s.stage,'shooting');assert.equal(s.movementReopened,false);
+ const target=G.rocketTargets(s).find(t=>!t.error);G.fireRocket(s,target.unit.id,'demolition',{artillery:2,scatter:'hit'},()=>0);
+ assert.equal(G.canReturnToMovement(s),false);assert.throws(()=>G.returnToMovement(s),/reopened/);
+});
+test('an automatically skipped Shooting phase still lets Combat return to Movement before any fight',()=>{
+ const s=battle();s.rocket.wounds=0;G.nextPhase(s);G.hold(s,'A1');G.nextPhase(s);assert.equal(s.stage,'combat');assert.equal(s.shootingSkipped,true);
+ assert.equal(G.canReturnToMovement(s),true);G.getUnit(s,'A2').combatResolved=true;assert.equal(G.canReturnToMovement(s),false);G.getUnit(s,'A2').combatResolved=false;
+ G.returnToMovement(s);assert.equal(s.history.length,1);G.undo(s);assert.equal(G.getUnit(s,'A1').moved,false);
+});
+test('Movement cannot be reopened from Strategy or after a missile unit acts',()=>{
+ const s=battle();assert.equal(G.canReturnToMovement(s),false);G.nextPhase(s);G.nextPhase(s);assert.equal(s.stage,'shooting');G.getUnit(s,'A4').shot=true;assert.equal(G.canReturnToMovement(s),false);
+});
