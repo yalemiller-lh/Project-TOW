@@ -15,25 +15,29 @@ export function combatants(s){return [...s.units,s.rocket,...(s.cannons??[])].fi
 export const PROFILE={M:3,WS:4,BS:3,S:3,T:4,W:1,I:2,A:1,Ld:9,save:4};
 export const SIZE={w:125/25.4,h:100/25.4};
 export const FACTIONS={chaos:{name:'Chaos Dwarf Warriors',army:'Chaos Dwarfs',color:'#b63229',bright:'#ff3f39',base:25,equipment:'Hand weapons · heavy armour · shields',profile:PROFILE,heavy:true,shield:true,shieldwall:true,resolute:true},orc:{name:'Orc Mob',army:'Orc & Goblin Tribes',color:'#418248',bright:'#54ef53',base:30,equipment:'Hand weapons · light armour',profile:{M:4,WS:3,BS:3,S:3,T:4,W:1,I:3,A:1,Ld:6,save:6},choppas:true,furious:true,warband:true,impetuous:true},empire:{name:'State Troops',army:'Empire of Man',color:'#286a9a',bright:'#32aaff',base:25,equipment:'Hand weapons · light armour · shields',profile:{M:4,WS:3,BS:3,S:3,T:3,W:1,I:3,A:1,Ld:7,save:5},shield:true}};
-export const MISSILE={chaos:{name:'Blunderbuss Decimators',equipment:'Hand weapons · blunderbusses · heavy armour',profile:{M:3,WS:3,BS:3,S:3,T:4,W:1,I:2,A:1,Ld:9,save:5},weapon:{name:'Blunderbuss',range:12,strength:3,ap:1,multiple:'D3',volley:true,ignoreLong:true,ignoreStand:true}},empire:{name:'State Missile Troops',equipment:'Hand weapons · crossbows',profile:{M:4,WS:3,BS:3,S:3,T:3,W:1,I:3,A:1,Ld:7,save:7},weapon:{name:'Crossbow',range:30,strength:4,ap:0}},orc:{name:'Orc Mob · Warbows',equipment:'Hand weapons · warbows · light armour',profile:{M:4,WS:3,BS:3,S:3,T:4,W:1,I:3,A:1,Ld:6,save:6},weapon:{name:'Warbow',range:24,strength:3,ap:0}}};
+export const MISSILE={chaos:{name:'Blunderbuss Decimators',equipment:'Hand weapons · blunderbusses · heavy armour',profile:{M:3,WS:3,BS:3,S:3,T:4,W:1,I:2,A:1,Ld:9,save:5},weapon:{name:'Hailshot blunderbuss',range:12,strength:3,ap:1,multiple:'D3',volley:true,ignoreLong:true,ignoreStand:true,hailshot:true}},empire:{name:'State Missile Troops',equipment:'Hand weapons · crossbows',profile:{M:4,WS:3,BS:3,S:3,T:3,W:1,I:3,A:1,Ld:7,save:7},weapon:{name:'Crossbow',range:30,strength:4,ap:0}},orc:{name:'Orc Mob · Warbows',equipment:'Hand weapons · warbows · light armour',profile:{M:4,WS:3,BS:3,S:3,T:4,W:1,I:3,A:1,Ld:6,save:6},weapon:{name:'Warbow',range:24,strength:3,ap:0}}};
 export const WIZARDS={chaos:{name:'Daemonsmith Sorcerer',equipment:'Hand weapon · heavy armour · Blackshard armour · Ensorcelled weapon',profile:{M:3,WS:4,BS:4,S:4,T:4,W:2,I:2,A:2,Ld:9,save:5}},empire:{name:'Master Mage (Battlemage)',equipment:'Hand weapon',profile:{M:4,WS:3,BS:3,S:3,T:3,W:2,I:3,A:1,Ld:7,save:7}}};
-export const profile=u=>u?.role==='warmachine'?{...WAR_MACHINE_CREW[u.faction].profile,A:Math.max(0,u.crew)}:u?.role==='wizard'?{...WIZARDS[u.faction].profile,T:WIZARDS[u.faction].profile.T+(u.petrified??0)}:u?.role==='missile'?MISSILE[u.faction].profile:FACTIONS[u?.faction??'chaos'].profile;
-export const equipment=u=>u?.role==='wizard'?WIZARDS[u.faction].equipment:u?.role==='missile'?MISSILE[u.faction].equipment:FACTIONS[u?.faction??'chaos'].equipment;
+export const CHARACTERS={empireCaptain:{name:'Captain of the Empire',profile:{M:4,WS:5,BS:5,S:4,T:4,W:2,I:4,A:2,Ld:9},equipment:'Hand weapon'}};
+const ARMOUR_SAVE={fullPlate:4,heavy:5,light:6};
+export const isCharacter=u=>u?.role==='wizard'||u?.role==='character';
+export const profile=u=>u?.role==='character'?{...CHARACTERS[u.kind].profile,save:ARMOUR_SAVE[u.armour]??7}:u?.role==='warmachine'?{...WAR_MACHINE_CREW[u.faction].profile,A:Math.max(0,u.crew)}:u?.role==='wizard'?{...WIZARDS[u.faction].profile,T:WIZARDS[u.faction].profile.T+(u.petrified??0)}:u?.role==='missile'?MISSILE[u.faction].profile:FACTIONS[u?.faction??'chaos'].profile;
+export const equipment=u=>u?.role==='character'?[CHARACTERS[u.kind].equipment,u.weapon==='greatWeapon'?'great weapon':null,{fullPlate:'full plate armour',heavy:'heavy armour',light:'light armour'}[u.armour]].filter(Boolean).join(' · '):u?.role==='wizard'?WIZARDS[u.faction].equipment:u?.role==='missile'?MISSILE[u.faction].equipment:FACTIONS[u?.faction??'chaos'].equipment;
 export const missileWeapon=u=>u?.role==='missile'?MISSILE[u.faction].weapon:null;
 // A regiment's block is its files wide and as many ranks deep as its starting models need.
 export const startingModels=u=>u?.models??20,filesOf=u=>u?.files??5,ranksOf=u=>Math.ceil(startingModels(u)/filesOf(u));
-export const size=u=>{if(u?.role==='warmachine')return {w:ROCKET_BASE.w,h:ROCKET_BASE.h};const b=FACTIONS[u?.faction??'chaos'].base/25.4;return u?.role==='wizard'?{w:b,h:b}:{w:filesOf(u)*b,h:ranksOf(u)*b};};
+export const size=u=>{if(u?.role==='warmachine')return {w:ROCKET_BASE.w,h:ROCKET_BASE.h};const b=FACTIONS[u?.faction??'chaos'].base/25.4;return isCharacter(u)?{w:b,h:b}:{w:filesOf(u)*b,h:ranksOf(u)*b};};
 export const baseSize=u=>FACTIONS[u?.faction??'chaos'].base;
 export const COMMAND_SLOTS={1:'M',2:'S',3:'C'};
+export function hasShield(u){return u?.shields??(u?.role==='infantry'&&!!FACTIONS[u?.faction??'chaos'].shield);}
 // Purchased command stand in the middle of the front rank: musician, standard at the centre, champion.
 export function commandSlots(u){const c=Math.floor(filesOf(u)/2),bought=u?.command??{M:true,S:true,C:true},slots={};for(const [role,col]of [['M',c-1],['S',c],['C',c+1]])if(bought[role]&&col>=0&&col<filesOf(u)&&col<startingModels(u))slots[col]=role;return slots;}
-export function commandAlive(u,role){if(u?.role==='wizard'||u?.role==='warmachine')return false;const entry=Object.entries(commandSlots(u)).find(([,r])=>r===role);return !!entry&&aliveCount(u)>0&&!(u.deadModels??[]).includes(Number(entry[0]));}
+export function commandAlive(u,role){if(isCharacter(u)||u?.role==='warmachine')return false;const entry=Object.entries(commandSlots(u)).find(([,r])=>r===role);return !!entry&&aliveCount(u)>0&&!(u.deadModels??[]).includes(Number(entry[0]));}
 // Unit Strength = models x Unit Strength per model for the troop type (war machines: starting Wounds).
 export const TROOP_TYPES={regular:{name:'Regular Infantry',perModel:1,perRank:5},heavy:{name:'Heavy Infantry',perModel:1,perRank:4},character:{name:'Infantry character',perModel:1},warmachine:{name:'War Machine',perModel:'wounds'}};
-export function troopType(u){return u?.role==='warmachine'?'warmachine':u?.role==='wizard'?'character':u?.troop??(FACTIONS[u?.faction??'chaos'].heavy?'heavy':'regular');}
-export function startingWounds(u){return u?.role==='warmachine'||u?.role==='wizard'?(u.startingWounds??(u.role==='wizard'?2:3)):startingModels(u)*(profile(u).W??1);}
+export function troopType(u){return u?.role==='warmachine'?'warmachine':isCharacter(u)?'character':u?.troop??(FACTIONS[u?.faction??'chaos'].heavy?'heavy':'regular');}
+export function startingWounds(u){return u?.role==='warmachine'||isCharacter(u)?(u.startingWounds??(isCharacter(u)?profile(u).W:3)):startingModels(u)*(profile(u).W??1);}
 export function unitStrength(u){if(!u||aliveCount(u)===0||u.x===null&&!u.offBoardPursuit)return 0;const per=TROOP_TYPES[troopType(u)].perModel;return per==='wounds'?startingWounds(u):aliveCount(u)*per;}
-export function startingUnitStrength(u){const per=TROOP_TYPES[troopType(u)].perModel;return per==='wounds'?startingWounds(u):u?.role==='wizard'?1:startingModels(u)*per;}
+export function startingUnitStrength(u){const per=TROOP_TYPES[troopType(u)].perModel;return per==='wounds'?startingWounds(u):isCharacter(u)?1:startingModels(u)*per;}
 export function championProfile(u){return {...profile(u),A:u.role==='missile'&&u.faction==='empire'?1:2,BS:u.role==='missile'&&u.faction==='empire'?4:profile(u).BS,Ld:u.faction==='orc'?7:profile(u).Ld};}
 export function setOpponent(s,faction){if(s.stage!=='deployment')throw Error('Choose the opposing army before battle starts.');if(!['orc','empire','chaos'].includes(faction))throw Error('Unknown army.');s.units=s.units.filter(u=>u.id!=='I7');for(const u of s.units.filter(u=>u.team==='iron')){u.faction=faction;u.name=u.role==='missile'?MISSILE[faction].name:FACTIONS[faction].name;u.x=null;u.y=null;}if(faction==='empire')s.units.push(createWizard('iron','empire'));s.cannons=createCannons(faction);return faction;}
 export const PHASES=['strategy','movement','shooting','combat'];
@@ -41,7 +45,7 @@ export const armyName=(team,s)=>team==='ash'?'Chaos Dwarfs · Red':`${FACTIONS[s
 const EPS=1e-8,rad=d=>d*Math.PI/180;
 export function createWizard(team,faction){return {id:team==='ash'?'A6':'I7',team,faction,role:'wizard',name:WIZARDS[faction].name,level:2,spells:[],castThisTurn:[],wounds:2,petrified:0,engineerUsed:false,x:null,y:null,heading:team==='ash'?0:180,moved:false,shot:false,spent:0,movementMode:null,marchRequired:null,marchTest:null,engaged:null,charge:null,impetuousTest:null,combatResolved:false,fleeing:false,rallyAttempted:false,rallied:false,deadModels:[]};}
 const runtime=()=>({x:null,y:null,moved:false,shot:false,spent:0,movementMode:null,marchRequired:null,marchTest:null,engaged:null,charge:null,impetuousTest:null,combatResolved:false,fleeing:false,rallyAttempted:false,rallied:false,shieldwallUsed:false,deadModels:[]});
-const REGIMENT_IDS={ash:['A1','A2','A3','A4','A7','A8','A9','A10'],iron:['I1','I2','I3','I4','I8','I9','I10','I11']};
+const REGIMENT_IDS={ash:['A1','A2','A3','A4','A7','A8','A9','A10'],iron:['I1','I2','I3','I4','I8','I9','I10','I11']},CHARACTER_IDS={ash:['A12','A13'],iron:['I12','I13']};
 // Units, the launcher and cannons for one side from its roster. The engine models one wizard,
 // one Deathshrieker (red) and Great Cannons (opponent) per side.
 function armyFromRoster(team,roster){
@@ -51,7 +55,8 @@ function armyFromRoster(team,roster){
   if(e.role==='wizard'){if(units.some(u=>u.role==='wizard'))throw Error('This engine supports one wizard per army.');units.push({...createWizard(team,faction),name:e.name,...paid});}
   else if(e.role==='warmachine'&&team==='ash'&&item.entry==='deathshrieker'){if(rocket)throw Error('This engine supports one Deathshrieker per army.');rocket={...paid};}
   else if(e.role==='warmachine'&&team==='iron'&&item.entry==='greatCannon'){if(cannons.length>=2)throw Error('This engine supports at most two Great Cannons.');cannons.push({id:'I'+(5+cannons.length),name:'Great Cannon '+'AB'[cannons.length],...machineFields('iron','empire'),x:null,y:null,heading:180,wounds:3,crew:3,shot:false,disabledUntil:0,lastShot:null,...paid});}
-  else if(e.role==='infantry'||e.role==='missile'){const id=REGIMENT_IDS[team][regiments++];if(!id)throw Error('Too many regiments for this engine.');units.push({id,team,faction,role:e.role,name:e.name,models:item.models,files:item.files??5,command:{C:!!item.command?.C,S:!!item.command?.S,M:!!item.command?.M},troop:e.troop,...paid,heading:team==='ash'?0:180,...runtime()});}
+  else if(e.role==='infantry'||e.role==='missile'){const id=REGIMENT_IDS[team][regiments++];if(!id)throw Error('Too many regiments for this engine.');units.push({id,team,faction,role:e.role,name:e.name,models:item.models,files:item.files??5,command:{C:!!item.command?.C,S:!!item.command?.S,M:!!item.command?.M},troop:e.troop,shields:!!(e.options?.shields&&(e.options.shields.required||item.options?.shields)),spears:!!item.options?.spears,...paid,heading:team==='ash'?0:180,...runtime()});}
+  else if(e.role==='character'){const id=CHARACTER_IDS[team][units.filter(u=>u.role==='character').length];if(!id)throw Error('Too many characters for this engine.');units.push({id,team,faction,role:'character',kind:e.kind,name:e.name,weapon:item.options?.greatWeapon?'greatWeapon':null,armour:item.options?.fullPlate?'fullPlate':null,wounds:CHARACTERS[e.kind].profile.W,...paid,heading:team==='ash'?0:180,...runtime()});}
   else throw Error(`${e.name} cannot be fielded by this engine for this side.`);
  }
  return {units,cannons,rocket};
@@ -59,7 +64,7 @@ function armyFromRoster(team,roster){
 export function createGame(opponent='chaos',{format='classic',board=null,points=null,deployment=null,rosters=null}={}){if(!FACTIONS[opponent])throw Error('Unknown army.');const fmt=F.format(format),field=F.boardFor(fmt,{board,points}),setup=deployment??(fmt.deployment?.map?{map:fmt.deployment.map,depth:fmt.deployment.depth}:null);
  if(fmt.id==='battle-march')return createRosterGame(opponent,fmt,field,setup,points,rosters);const units=Array.from({length:8},(_,i)=>{const faction=i<4?'chaos':opponent,role=i%4===3?'missile':'infantry';return {id:(i<4?'A':'I')+(i%4+1),team:i<4?'ash':'iron',faction,role,name:role==='missile'?MISSILE[faction].name:FACTIONS[faction].name,x:null,y:null,heading:i<4?0:180,moved:false,shot:false,spent:0,movementMode:null,marchRequired:null,marchTest:null,engaged:null,charge:null,impetuousTest:null,combatResolved:false,fleeing:false,rallyAttempted:false,rallied:false,shieldwallUsed:false,deadModels:[]};});units.push(createWizard('ash','chaos'));if(opponent==='empire')units.push(createWizard('iron','empire'));return {stage:'deployment',team:'ash',round:1,selected:'A1',rocket:{id:'A5',name:'Deathshrieker Rocket Launcher',...machineFields('ash','chaos'),x:null,y:null,heading:0,wounds:3,crew:3,shot:false,disabledUntil:0,lastShot:null},cannons:createCannons(opponent),units,history:[],vortices:[],fatedDispelUsed:false,format:{id:fmt.id,name:fmt.name,rulesVersion:fmt.rulesVersion,points:fmt.points?(points??fmt.points.default):null,rounds:fmt.rounds,deployment:setup,resultPolicy:fmt.resultPolicy??null,optional:{...(fmt.optional??{})}},board:field,zones:F.deploymentZones(fmt,field,setup??{}),firstPlayer:'ash',turnLog:[]};}
 function createRosterGame(opponent,fmt,field,setup,points,rosters){
- const limit=points??fmt.points.default,chosen={ash:rosters?.ash??A.PRESETS.chaos,iron:rosters?.iron??A.PRESETS[opponent]};
+ const limit=points??fmt.points.default,chosen={ash:rosters?.ash??A.defaultRoster('chaos',limit),iron:rosters?.iron??A.defaultRoster(opponent,limit)};
  if(!chosen.iron)throw Error(A.GAPS[opponent]?.[0]??`No Battle March army is available for ${opponent}.`);
  if(chosen.ash.faction!=='chaos'||chosen.iron.faction!==opponent)throw Error('Red must be Chaos Dwarfs and the opponent must match the chosen army.');
  const red=armyFromRoster('ash',chosen.ash),blue=armyFromRoster('iron',chosen.iron);
@@ -107,7 +112,7 @@ export function autoDeploy(s,{team=null}={}){if(s.stage!=='deployment')throw Err
 // Spread each army across the middle of its zone, trying the nearest legal spots.
 function searchDeploy(s,team){
  for(const side of team?[team]:['ash','iron']){
-  const pieces=[...s.units.filter(u=>u.team===side&&u.role!=='wizard'),...combatants(s).filter(m=>m.role==='warmachine'&&m.team===side),...s.units.filter(u=>u.team===side&&u.role==='wizard')];
+  const pieces=[...s.units.filter(u=>u.team===side&&!isCharacter(u)),...combatants(s).filter(m=>m.role==='warmachine'&&m.team===side),...s.units.filter(u=>u.team===side&&isCharacter(u))];
   for(const p of pieces){p.x=null;p.y=null;}
   const b=zoneBounds(s,side),middle=(b.top+b.bottom)/2;
   pieces.forEach((p,i)=>{
@@ -120,6 +125,46 @@ function searchDeploy(s,team){
 }
 export function begin(s,random=Math.random,{firstPlayer=null}={}){if(s.stage!=='deployment')throw Error('The battle already started.');if(s.units.some(u=>u.x===null)||s.rocket.x===null&&!s.rocket.absent||s.cannons.some(c=>c.x===null))throw Error('Deploy all units, the Deathshrieker, and Empire cannons before battle.');for(const u of s.units.filter(u=>u.role==='wizard'))u.spells=generateSpells(random);s.firstPlayer=firstPlayer??s.firstPlayer??'ash';s.stage='strategy';s.team=s.firstPlayer;s.selected=s.units.find(u=>u.team===s.team)?.id;}
 export function canAct(s,u){return s.stage==='movement'&&u?.team===s.team&&aliveCount(u)>0&&!u.moved&&!u.engaged&&!u.charge&&!u.fleeing&&u.x!==null;}
+// Why a unit cannot act right now, in plain words, or null when it can.
+export function inactionReason(s,u){
+ if(!u||s.stage==='deployment')return null;
+ if(s.stage==='finished')return 'The battle is over.';
+ if(u.destroyed||aliveCount(u)===0)return 'Destroyed.';
+ if(u.x===null)return u.offBoardPursuit?'Off the battlefield after pursuing; it returns in its next Movement phase.':'Not on the battlefield.';
+ if(u.team!==s.team)return 'Waiting: it is the other army’s turn.';
+ const spellNow=u.role==='wizard'&&u.spells.some(key=>BATTLE_MAGIC[key]?.phase===s.stage&&spellTargets(s,u.id,key).some(t=>canCast(s,u.id,key,t.id)));
+ if(s.stage==='strategy'){if(u.fleeing&&!u.rallyAttempted||spellNow)return null;if(u.fleeing)return 'Failed to rally this turn and is still fleeing.';return u.role==='wizard'?'No hex or enchantment can be cast now.':'Nothing to do in Strategy: only fleeing units rally and wizards cast here.';}
+ if(s.stage==='movement'){
+  if(u.engaged)return 'Engaged in combat: units in combat cannot move.';
+  if(u.fleeing)return 'Fleeing: it must rally in its Strategy phase before it can move.';
+  if(s.movementStep==='declare'){
+   if(u.charge)return 'Charge declared; waiting for charges to be rolled.';
+   if(canAct(s,u)&&availableCharges(s,u).length)return null;
+   if(u.rallied)return 'Rallied this turn, so it cannot charge.';
+   const enemies=combatants(s).filter(v=>v.team!==u.team&&v.x!==null&&aliveCount(v)>0),reasons=enemies.map(t=>chargePlan(s,u,t).error).filter(Boolean);
+   return 'Cannot charge: '+(reasons.find(r=>!/Beyond/.test(r))&&enemies.some(t=>gap(u,t)<=profile(u).M+6)?reasons.find(r=>!/Beyond/.test(r)):`no enemy within its ${profile(u).M+6}″ maximum charge range.`);
+  }
+  if(s.movementStep==='charges')return u.charge?.status==='declared'?null:'Waiting for declared charges to be rolled.';
+  if(canAct(s,u)||spellNow)return null;
+  if(u.charge?.status==='success')return 'Charged into combat this turn.';
+  if(u.charge?.status==='failed')return 'Failed its charge: it cannot move again this turn.';
+  if(u.moved)return 'Already moved this turn.';
+  return 'Cannot move now.';
+ }
+ if(s.stage==='shooting'){
+  if(u.role==='wizard')return spellNow?null:'No magic missile or vortex can be cast now.';
+  if(u.role!=='missile')return 'Not a missile unit: only missile troops, war machines and wizards act in Shooting.';
+  if(u.shot)return 'Already shot this phase.';
+  if(u.engaged)return 'Engaged in combat: it cannot shoot.';
+  if(u.fleeing)return 'Fleeing: it cannot shoot.';
+  if(u.charge)return 'Charged this turn: it cannot shoot.';
+  if(u.movementMode==='march')return 'Marched this turn: it cannot shoot.';
+  const plans=shootingTargets(s,u).map(t=>t.plan);if(plans.some(p=>!p.error))return null;
+  return 'No target: '+(plans.map(p=>p.error).find(e=>!/Choose an enemy/.test(e))??'no enemy is in range, arc and line of sight.');
+ }
+ if(u.engaged&&!u.combatResolved)return null;
+ return u.engaged?'Already fought this Combat phase.':'Not engaged in combat.';
+}
 export function phaseComplete(s,u){if(s.stage==='deployment'||u.team!==s.team)return false;if(aliveCount(u)===0)return true;if(s.stage==='movement')return u.moved||!!u.engaged;if(s.stage==='shooting')return u.role!=='missile'||u.shot||!!u.engaged||u.fleeing;return true;}
 export function needsMarchTest(s,u){if(u.marchRequired!==null&&u.marchRequired!==undefined)return u.marchRequired;return s.units.some(v=>v.team!==u.team&&v.x!==null&&gap(u,v)<=8+EPS);}
 export function marchTest(s,id,dice){const u=getUnit(s,id);if(!canAct(s,u))throw Error('Select an unmoved regiment from the active army.');if(!needsMarchTest(s,u))throw Error('No nearby enemy. This march needs no test.');if(u.marchTest!==null)throw Error('This regiment already took its march test this turn.');if(!Array.isArray(dice)||dice.length!==2||dice.some(d=>!Number.isInteger(d)||d<1||d>6))throw Error('A march test requires two D6.');enterRemaining(s);u.marchTest=dice.reduce((a,b)=>a+b,0)<=leadership(u,'march');return u.marchTest;}
@@ -319,9 +364,9 @@ function fireMissiles(s,u,t,plan,random=Math.random){
  const dice={shots:plan.weapon.multiple?shootDice(plan.shooters,random).map(d=>Math.ceil(d/2)):[],hit:[],reroll:[],wound:[],save:[],ward:[]};
  const shots=plan.weapon.multiple?dice.shots.reduce((a,b)=>a+b,0):plan.shooters,hitTargets=plan.models.flatMap((m,i)=>Array.from({length:plan.weapon.multiple?dice.shots[i]:1},()=>Math.max(2,Math.min(stormPenalty(s,u)?6:7,7-m.bs-(plan.modifiers.filter(v=>v.label!=='Long range').reduce((n,v)=>n+v.value,0))-(m.long&&!plan.weapon.ignoreLong? -1:0)+stormPenalty(s,u)))));
  dice.hit=shootDice(shots,random);if(t.arrowCurse){for(const [i,n]of dice.hit.entries())if(n===1){const reroll=shootDice(1,random)[0];dice.reroll.push(reroll);dice.hit[i]=reroll;}}const hits=dice.hit.filter((n,i)=>n>=hitTargets[i]).length;
- const toWound=Math.max(2,Math.min(6,4+profile(t).T-plan.weapon.strength));dice.wound=shootDice(hits,random);
+ const toWound=Math.max(2,Math.min(6,4+profile(t).T-plan.weapon.strength));dice.wound=shootDice(hits,random);if(plan.weapon.hailshot&&plan.shooters>=10){dice.woundReroll=[];for(const [i,n]of dice.wound.entries())if(n===1){const r=shootDice(1,random)[0];dice.woundReroll.push(r);dice.wound[i]=r;}}
  const wounds=dice.wound.filter(n=>n>=toWound).length;
- const toSave=Math.min(7,Math.max(2,profile(t).save-(FACTIONS[t.faction].shield&&t.role!=='missile'&&t.role!=='wizard'?1:0)+plan.weapon.ap));dice.save=shootDice(wounds,random);
+ const toSave=Math.min(7,Math.max(2,profile(t).save-(hasShield(t)?1:0)+plan.weapon.ap));dice.save=shootDice(wounds,random);
  let unsaved=Math.min(remainingWounds(t),dice.save.filter(n=>n<toSave).length);if(t.oakenShield){dice.ward=shootDice(unsaved,random);unsaved=dice.ward.filter(n=>n<5).length;}removeCasualties(s,t,unsaved);if(aliveCount(t)===0){t.destroyed=true;t.engaged=null;u.engaged=null;}
  return {...plan,from:u.id,to:t.id,shots,hits,wounds,unsaved,toWound,toSave,hitTargets,dice};
 }
@@ -474,8 +519,8 @@ export function resolveCharge(s,id,dice){
 
 export function modelSquares(s,u){
  if(u.role==='warmachine'){const {w,h}=size(u),enemy=u.engaged?getUnit(s,u.engaged):null,poly=corners(u),gapToEnemy=enemy?polygonGap(poly,corners(enemy)):Infinity;return [{index:0,row:0,col:0,x:-w/2,y:-h/2,size:w,command:null,dead:aliveCount(u)===0,fighting:gapToEnemy<=profile(u).M+EPS,contact:gapToEnemy<EPS}];}
- if(u.role==='wizard'){const base=baseSize(u)/25.4,enemy=u.engaged?getUnit(s,u.engaged):null,poly=corners(u);return [{index:0,row:0,col:0,x:-base/2,y:-base/2,size:base,command:null,dead:aliveCount(u)===0,fighting:!!enemy&&polygonGap(poly,corners(enemy))<=profile(u).M+EPS,contact:!!enemy&&polygonGap(poly,corners(enemy))<EPS}];}
- const base=baseSize(u)/25.4,footprint=size(u),enemy=u.engaged?getUnit(s,u.engaged):null,face=enemy?chargeFace(enemy,u):null,depth=u.charge?.status==='success'?1:2;
+ if(isCharacter(u)){const base=baseSize(u)/25.4,enemy=u.engaged?getUnit(s,u.engaged):null,poly=corners(u);return [{index:0,row:0,col:0,x:-base/2,y:-base/2,size:base,command:null,dead:aliveCount(u)===0,fighting:!!enemy&&polygonGap(poly,corners(enemy))<=profile(u).M+EPS,contact:!!enemy&&polygonGap(poly,corners(enemy))<EPS}];}
+ const base=baseSize(u)/25.4,footprint=size(u),enemy=u.engaged?getUnit(s,u.engaged):null,face=enemy?chargeFace(enemy,u):null,depth=u.charge?.status==='success'?1:u.spears?3:2;
  const files=filesOf(u),ranks=ranksOf(u),slots=commandSlots(u);
  return Array.from({length:startingModels(u)},(_,i)=>{const row=Math.floor(i/files),col=i%files,x=-footprint.w/2+col*base,y=-footprint.h/2+row*base;
  const poly=[[x,y],[x+base,y],[x+base,y+base],[x,y+base]].map(([a,b])=>localPoint(u,a,b));
@@ -488,14 +533,14 @@ export function modelSquares(s,u){
 
 export function movementRemaining(u,mode=u.movementMode??'advance'){return u.moved||u.engaged||u.charge||u.fleeing?0:Math.max(0,(mode==='march'?2*profile(u).M:profile(u).M)-(u.spent??0));}
 
-export function aliveCount(u){return u.destroyed?0:u.role==='wizard'||u.role==='warmachine'?(u.wounds>0?1:0):startingModels(u)-(u.deadModels?.length??0);}
-export function remainingWounds(u){return u.role==='wizard'||u.role==='warmachine'?Math.max(0,u.wounds):aliveCount(u);}
+export function aliveCount(u){return u.destroyed?0:isCharacter(u)||u.role==='warmachine'?(u.wounds>0?1:0):startingModels(u)-(u.deadModels?.length??0);}
+export function remainingWounds(u){return isCharacter(u)||u.role==='warmachine'?Math.max(0,u.wounds):aliveCount(u);}
 export function combatPairs(s){const all=combatants(s);return all.filter(u=>u.engaged&&u.x!==null&&!u.combatResolved&&u.id< u.engaged&&all.some(v=>v.id===u.engaged&&v.x!==null&&!v.combatResolved)).map(u=>[u.id,u.engaged]);}
 function combatDice(count,random){return count?rollD6(count,random):[];}
-function combatInitiative(u){if(u.charge?.status!=='success')return profile(u).I;return profile(u).I+Math.min(u.charge.face==='front'?3:4,Math.floor(u.charge.distance+EPS));}
+function combatInitiative(u,enemy=null){const base=u.weapon==='greatWeapon'?1:profile(u).I,braced=u.spears&&enemy?.charge?.status==='success'&&enemy.charge.target===u.id&&enemy.charge.face==='front'?1:0;if(u.charge?.status!=='success')return base+braced;return base+Math.min(u.charge.face==='front'?3:4,Math.floor(u.charge.distance+EPS));}
 export function hitTarget(attacker,defender){const a=profile(attacker).WS,d=profile(defender).WS;return a>2*d?2:a>d?3:d>2*a?5:4;}
-export function woundTarget(attacker,defender){return Math.max(2,Math.min(6,4+profile(defender).T-profile(attacker).S));}
-export function saveTarget(defender,attacker){let target=profile(defender).save-(!['missile','wizard','warmachine'].includes(defender.role)&&FACTIONS[defender.faction??'chaos'].shield?1:0)+(FACTIONS[attacker.faction??'chaos'].choppas&&attacker.charge?.status==='success'?1:0)+(attacker.role==='wizard'&&attacker.faction==='chaos'?1:0);return Math.max(2,Math.min(7,target));}
+export function woundTarget(attacker,defender){return Math.max(2,Math.min(6,4+profile(defender).T-profile(attacker).S-(attacker.weapon==='greatWeapon'?2:0)));}
+export function saveTarget(defender,attacker){let target=profile(defender).save-(hasShield(defender)?1:0)+(attacker.weapon==='greatWeapon'?2:0)+(FACTIONS[attacker.faction??'chaos'].choppas&&attacker.charge?.status==='success'?1:0)+(attacker.role==='wizard'&&attacker.faction==='chaos'?1:0);return Math.max(2,Math.min(7,target));}
 // Ranks behind the first count when they hold at least the troop type's models per rank
 // (5 regular, 4 heavy infantry); casualties come off the rear, so the front ranks stay full.
 function rankBonus(u){const alive=aliveCount(u),files=filesOf(u),full=Math.floor(alive/files),partial=alive%files,need=Math.min(files,TROOP_TYPES[troopType(u)].perRank??files);return full<1?0:Math.min(2,full-1+(partial>=need?1:0));}
@@ -504,18 +549,19 @@ export function leadership(u,kind='normal'){const base=commandAlive(u,'C')?Math.
 // second (never the champion); the models that stepped forward from the rear cannot attack.
 function stepForward(models,lost){let drop=lost;return [...models].sort((a,b)=>(a.rank??0)-(b.rank??0)).filter(m=>{if(drop>0&&m.command!=='C'){drop--;return false;}return true;});}
 function attackStage(s,attacker,defender,random,lost=0){
- const fighting=stepForward(modelSquares(s,attacker).filter(m=>m.fighting),['wizard','warmachine'].includes(attacker.role)?0:lost),faction=FACTIONS[attacker.faction??'chaos'],chopping=faction.choppas&&attacker.charge?.status==='success',dice={hit:[],wound:[],reroll:[],save:[]};
+ const fighting=stepForward(modelSquares(s,attacker).filter(m=>m.fighting),isCharacter(attacker)||attacker.role==='warmachine'?0:lost),faction=FACTIONS[attacker.faction??'chaos'],chopping=faction.choppas&&attacker.charge?.status==='success',dice={hit:[],wound:[],reroll:[],save:[]};
  const furious=faction.furious&&attacker.charge?.status==='success'&&attacker.charge.distance>=3?1:0;
  const attacks=fighting.reduce((total,model)=>total+(model.command==='C'?championProfile(attacker).A:profile(attacker).A)+furious,0);dice.hit=combatDice(attacks,random);
  const toHit=Math.min(6,hitTarget(attacker,defender)+stormPenalty(s,attacker)),toWound=woundTarget(attacker,defender),toSave=saveTarget(defender,attacker),hits=dice.hit.filter(n=>n>=toHit).length;dice.wound=combatDice(hits,random);
  if(chopping){dice.reroll=combatDice(dice.wound.filter(n=>n===1).length,random);}
  const wounds=dice.wound.filter(n=>n>=toWound).length+dice.reroll.filter(n=>n>=toWound).length;dice.save=combatDice(wounds,random);
- let unsaved=Math.min(remainingWounds(defender),dice.save.filter(n=>n<toSave).length);if(defender.oakenShield){dice.ward=combatDice(unsaved,random);unsaved=dice.ward.filter(n=>n<5).length;}
- return {from:attacker.id,to:defender.id,initiative:combatInitiative(attacker),fighters:fighting.length,lostBefore:lost,attacks,hits,wounds,saved:wounds-unsaved,unsaved,toHit,toWound,toSave,dice};
+ const bane=attacker.weapon==='greatWeapon'?[...dice.wound,...dice.reroll].filter(n=>n===6).length:0;
+ let unsaved=Math.min(remainingWounds(defender),dice.save.filter((n,i)=>n<(i<bane?Math.min(7,toSave+1):toSave)).length);if(defender.oakenShield){dice.ward=combatDice(unsaved,random);unsaved=dice.ward.filter(n=>n<5).length;}
+ return {from:attacker.id,to:defender.id,initiative:combatInitiative(attacker,defender),fighters:fighting.length,lostBefore:lost,attacks,hits,wounds,saved:wounds-unsaved,unsaved,toHit,toWound,toSave,dice};
 }
 export function removeCasualties(s,u,count){
  if(u.role==='warmachine'){u.wounds=Math.max(0,u.wounds-count);u.crew=Math.min(u.crew,u.wounds);if(!u.wounds){const enemy=u.engaged?getUnit(s,u.engaged):null;if(enemy)enemy.engaged=null;destroyUnit(u);}return;}
- if(u.role==='wizard'){u.wounds=Math.max(0,u.wounds-count);if(!u.wounds){if(u.engaged){const enemy=getUnit(s,u.engaged);if(enemy)enemy.engaged=null;}s.vortices=s.vortices.filter(v=>v.caster!==u.id);destroyUnit(u);}return;}
+ if(isCharacter(u)){u.wounds=Math.max(0,u.wounds-count);if(!u.wounds){if(u.engaged){const enemy=getUnit(s,u.engaged);if(enemy)enemy.engaged=null;}s.vortices=s.vortices.filter(v=>v.caster!==u.id);destroyUnit(u);}return;}
  // Models are physically removed from the right-hand end of the rear rank, so the survivors
  // stay together and the fighting rank stays full; the musician, then the standard bearer,
  // then the champion go only when no ordinary warriors remain.
@@ -618,7 +664,7 @@ export function fireCannon(s,id,targetId,mode,dice,random=Math.random,{aimShort=
  c.lastShot=report;return report;
 }
 function GprofileT(u){return profile(u).T;}
-function profileOfSave(u){return profile(u).save-(u.role!=='missile'&&u.role!=='wizard'&&FACTIONS[u.faction].shield?1:0);}
+function profileOfSave(u){return profile(u).save-(hasShield(u)?1:0);}
 function combatScore(s,u,enemy,inflicted){
  const alive=aliveCount(u),face=chargeFace(enemy,u),disrupted=(face==='left flank'||face==='right flank'||face==='rear')&&aliveCount(enemy)>=10;
  const ranks=disrupted?0:rankBonus(u);
@@ -631,11 +677,11 @@ export function resolveCombat(s,id,random=Math.random){
  if(s.stage!=='combat'||s.pendingCombat)throw Error('Finish the current combat outcome first.');
  const a=getUnit(s,id),b=getUnit(s,a?.engaged);
  if(!a||!b||!a.engaged||a.combatResolved||b.combatResolved)throw Error('Select an unresolved engaged regiment.');
- const groups=[...new Set([combatInitiative(a),combatInitiative(b)])].sort((x,y)=>y-x),stages=[],damage={[a.id]:0,[b.id]:0};
+ const groups=[...new Set([combatInitiative(a,b),combatInitiative(b,a)])].sort((x,y)=>y-x),stages=[],damage={[a.id]:0,[b.id]:0};
  for(const init of groups){
   const simultaneous=[];
-  if(combatInitiative(a)===init&&aliveCount(a)>0)simultaneous.push(attackStage(s,a,b,random,damage[a.id]));
-  if(combatInitiative(b)===init&&aliveCount(b)>0)simultaneous.push(attackStage(s,b,a,random,damage[b.id]));
+  if(combatInitiative(a,b)===init&&aliveCount(a)>0)simultaneous.push(attackStage(s,a,b,random,damage[a.id]));
+  if(combatInitiative(b,a)===init&&aliveCount(b)>0)simultaneous.push(attackStage(s,b,a,random,damage[b.id]));
   for(const stage of simultaneous){stages.push(stage);damage[stage.to]+=stage.unsaved;}
   for(const stage of simultaneous)removeCasualties(s,getUnit(s,stage.to),stage.unsaved);
  }
@@ -655,8 +701,8 @@ export function resolveCombat(s,id,random=Math.random){
 export function beginCombat(s,id){
  if(s.stage!=='combat'||s.combatSession||s.pendingCombat)throw Error('Finish the current combat first.');
  const a=getUnit(s,id),b=getUnit(s,a?.engaged);if(!a||!b||a.combatResolved||b.combatResolved)throw Error('Select an unresolved engaged regiment.');
- const groups=[...new Set([combatInitiative(a),combatInitiative(b)])].sort((x,y)=>y-x);
- return s.combatSession={a:a.id,b:b.id,initiative:{[a.id]:combatInitiative(a),[b.id]:combatInitiative(b)},groups,step:0,phase:'attacks',stages:[],damage:{[a.id]:0,[b.id]:0}};
+ const groups=[...new Set([combatInitiative(a,b),combatInitiative(b,a)])].sort((x,y)=>y-x);
+ return s.combatSession={a:a.id,b:b.id,initiative:{[a.id]:combatInitiative(a,b),[b.id]:combatInitiative(b,a)},groups,step:0,phase:'attacks',stages:[],damage:{[a.id]:0,[b.id]:0}};
 }
 export function fightCombatStep(s,random=Math.random){
  const c=s.combatSession;if(s.stage!=='combat'||c?.phase!=='attacks')throw Error('Show Initiative before rolling attacks.');
@@ -730,12 +776,13 @@ function fleeFrom(s,u,enemy,distance,random){
  const dx=u.x-enemy.x,dy=u.y-enemy.y,len=Math.hypot(dx,dy)||1,dir={x:dx/len,y:dy/len};u.heading=normalize(Math.atan2(dir.x,-dir.y)*180/Math.PI);
  const flee=fleeMove(s,u,distance,random);return {moved:flee.distance,offBoard:flee.fledOffBoard,dir,flee};
 }
+function stillTouching(a,b){return a.x!==null&&b.x!==null&&aliveCount(a)>0&&aliveCount(b)>0&&!a.fleeing&&!b.fleeing&&!a.engaged&&!b.engaged&&gap(a,b)<EPS;}
 function retreatPose(s,u,enemy,distance,stopNear=true){
  const dx=u.x-enemy.x,dy=u.y-enemy.y,len=Math.hypot(dx,dy)||1,dir={x:dx/len,y:dy/len},start={x:u.x,y:u.y};let moved=0;
  for(let i=1;i<=Math.ceil(distance*20);i++){
   const d=Math.min(distance,i/20),pose={...u,x:start.x+dir.x*d,y:start.y+dir.y*d};
   if(offBoard(pose,s))return {moved,offBoard:true,dir};
-  const obstructed=combatants(s).some(v=>v.x!==null&&v.id!==u.id&&v.id!==enemy.id&&gap(pose,v)<(v.team===u.team?0:1)-EPS);
+  const obstructed=combatants(s).some(v=>v.x!==null&&v.id!==u.id&&v.id!==enemy.id&&gap(pose,v)<1-EPS);
   if(obstructed)break;
   Object.assign(u,{x:pose.x,y:pose.y});moved=d;
  }
@@ -752,7 +799,9 @@ function pursuitAdvance(s,winner,distance,dir,ignoredId,originalId){
   const obstacle=combatants(s).find(v=>v.id!==winner.id&&v.id!==ignoredId&&v.x!==null&&aliveCount(v)>0&&(v.team===winner.team||v.engaged&&v.engaged!==winner.id?gap(pose,v)<1-EPS:gap(pose,v)<EPS));
   if(obstacle){
    if(obstacle.team!==winner.team&&!obstacle.engaged){
-    Object.assign(winner,{x:pose.x,y:pose.y});moved=d;contact=obstacle.id;
+    // Move only as far as first contact rather than to the step that overlaps.
+    let lo=moved,hi=d;for(let k=0;k<24;k++){const mid=(lo+hi)/2;if(gap({...winner,x:start.x+dir.x*mid,y:start.y+dir.y*mid},obstacle)<EPS)hi=mid;else lo=mid;}
+    Object.assign(winner,{x:start.x+dir.x*hi,y:start.y+dir.y*hi});moved=hi;contact=obstacle.id;
     if(!obstacle.fleeing){const aligned=alignedContact(winner,obstacle);if(!offBoard(aligned,s)&&!s.units.some(v=>v.id!==winner.id&&v.id!==obstacle.id&&v.x!==null&&gap(aligned,v)<1-EPS))Object.assign(winner,{x:aligned.x,y:aligned.y,heading:aligned.heading});}
     if(obstacle.fleeing)destroyUnit(obstacle);
     else{winner.engaged=obstacle.id;obstacle.engaged=winner.id;if(obstacle.id!==originalId){winner.charge={target:obstacle.id,status:'success',distance:moved,face:chargeFace(winner,obstacle),pursuit:true};winner.pursuitPending=true;winner.combatResolved=obstacle.combatResolved=true;}}
@@ -778,7 +827,7 @@ export function moveCombatLoser(s,random=Math.random){
  if(p.outcome==='break'&&loser.x!==null)loser.fleeing=true;
  Object.assign(p,{stage:'winner-choice',retreat,retreatDice:dice,fleeDistance:distance,loserDestroyed:!!retreat.offBoard||!!loser.destroyed});
  s.lastCombat={...s.lastCombat,loserMove:{distance:retreat.moved,dice,outcome:p.outcome,offBoard:!!retreat.offBoard,flee:retreat.flee??null}};
- const finished=winner.role==='warmachine';if(finished){s.pendingCombat=null;s.lastCombat.aftermath={winner:p.winner,loser:p.loser,outcome:p.outcome,choice:'restrain',rolls:{},movement:{loser:retreat.moved},loserDestroyed:!!retreat.offBoard};}
+ const finished=winner.role==='warmachine';if(finished&&stillTouching(winner,loser)){winner.engaged=loser.id;loser.engaged=winner.id;}if(finished){s.pendingCombat=null;s.lastCombat.aftermath={winner:p.winner,loser:p.loser,outcome:p.outcome,choice:'restrain',rolls:{},movement:{loser:retreat.moved},loserDestroyed:!!retreat.offBoard};}
  s.combatHistory[s.combatHistory.length-1]=s.lastCombat;
  return {loser:p.loser,outcome:p.outcome,distance:retreat.moved,dice,offBoard:!!retreat.offBoard,flee:retreat.flee??null,finished};
 }
@@ -809,6 +858,8 @@ export function winnerCombat(s,choice='follow',random=Math.random,reformHeading=
  }
  if(choice==='follow-reform'&&out.loserDestroyed&&!out.contact&&winner.x!==null){const dice=combatDice(2,random);out.rolls.reform=dice;if(dice[0]+dice[1]<=leadership(winner,'restraint'))reform();else out.reform={passed:false,heading:heading(winner),error:'Leadership test failed.'};}
  if(p.outcome==='overrun')out.overrun=follow;
+ // A loser that could not move away is still in the fight: the combat continues next turn.
+ if(!out.loserDestroyed&&stillTouching(winner,loser)){winner.engaged=loser.id;loser.engaged=winner.id;out.stillEngaged=true;}
  s.pendingCombat=null;s.lastCombat={...s.lastCombat,aftermath:out};s.combatHistory[s.combatHistory.length-1]=s.lastCombat;return out;
 }
 export function finishCombat(s,choice='follow',random=Math.random,reformHeading=null){

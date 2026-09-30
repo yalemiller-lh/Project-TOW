@@ -26,8 +26,8 @@ function lanesCut(s,candidate){let cut=0;for(const f of [...s.units.filter(u=>u.
 function tryPlace(s,u,x,y){try{if(u.role==='warmachine')G.placeCannon(s,u.id,x,y);else G.place(s,u.id,x,y);return true;}catch{return false;}}
 // Place at the best-scoring legal spot on the given row.
 function placeBest(s,u,row,score){
- const mid=s.board.width/2,options=candidateXs(s).map(x=>({x,y:row,score:score(pose(u,x,row))})).sort((a,b)=>b.score-a.score||Math.abs(a.x-mid)-Math.abs(b.x-mid));
- for(const o of options)if(tryPlace(s,u,o.x,o.y))return o;
+ const mid=s.board.width/2,z=G.zoneBounds(s,'iron'),h=G.size(u).h,rows=[row,(z.top+z.bottom)/2,z.top+h/2+.01,z.bottom-h/2-.01].filter((y,i,a)=>a.indexOf(y)===i);
+ for(const y of rows){const options=candidateXs(s).map(x=>({x,y,score:score(pose(u,x,y))})).sort((a,b)=>b.score-a.score||Math.abs(a.x-mid)-Math.abs(b.x-mid));for(const o of options)if(tryPlace(s,u,o.x,o.y))return o;}
  throw Error(`No legal deployment space for ${u.id}.`);
 }
 export function deployOpponent(s){
@@ -55,7 +55,8 @@ export function deployOpponent(s){
   for(const u of missile)placeBest(s,u,frontRow(s,u),p=>shots(s,p,reach(u))-Math.abs(p.x-s.board.width/2)*.01);
   for(const c of cannons)placeBest(s,c,frontRow(s,c),p=>shots(s,p,60));
  }
- if(wizard){const line=s.units.filter(u=>u.team==='iron'&&u.x!==null&&u.role!=='wizard'),mid=line.reduce((n,u)=>n+u.x,0)/Math.max(1,line.length);placeBest(s,wizard,backRow(s,wizard),p=>-Math.abs(p.x-mid)-5*lanesCut(s,p)+(line.some(u=>Math.abs(u.x-p.x)<G.size(u).w/2)?2:0));}
+ for(const hero of mine.filter(u=>u.role==='character')){const line=s.units.filter(u=>u.team==='iron'&&u.x!==null&&!G.isCharacter(u)),mid=line.reduce((n,u)=>n+u.x,0)/Math.max(1,line.length);placeBest(s,hero,backRow(s,hero),p=>-Math.abs(p.x-mid)-5*lanesCut(s,p));}
+ if(wizard){const line=s.units.filter(u=>u.team==='iron'&&u.x!==null&&!G.isCharacter(u)),mid=line.reduce((n,u)=>n+u.x,0)/Math.max(1,line.length);placeBest(s,wizard,backRow(s,wizard),p=>-Math.abs(p.x-mid)-5*lanesCut(s,p)+(line.some(u=>Math.abs(u.x-p.x)<G.size(u).w/2)?2:0));}
 }
 
 export function humanDecision(s){
@@ -163,4 +164,4 @@ export function takeStep(s,random=Math.random){
  return {message:'Waiting for the player.',wait:true};
 }
 
-function aiSpell(s,random){const wizard=s.units.find(u=>u.team==='iron'&&u.role==='wizard'&&alive(u));if(!wizard)return null;for(const key of wizard.spells){const targets=G.spellTargets(s,wizard.id,key).filter(t=>G.canCast(s,wizard.id,key,t.id));if(!targets.length)continue;const target=key==='shield'?wizard:targets.sort((a,b)=>G.gap(wizard,a)-G.gap(wizard,b))[0],point=key==='pillar'?(()=>{const victim=nearest(s,wizard);if(!victim)return {x:wizard.x,y:wizard.y};const d=distance(wizard,victim),f=Math.min(10,d)/d;return {x:Math.max(1.5,Math.min(70.5,wizard.x+(victim.x-wizard.x)*f)),y:Math.max(1.5,Math.min(46.5,wizard.y+(victim.y-wizard.y)*f))};})():null;const report=G.attemptSpell(s,wizard.id,key,target.id,random,{point});s.selected=wizard.id;return {message:`${wizard.name} casts ${G.BATTLE_MAGIC[key].name}: ${report.dice.join('+')} = ${report.casting} · ${report.pending?'cast — choose a dispel':report.cast?'cast':'failed'}.`,roll:{label:`${wizard.id} · ${G.BATTLE_MAGIC[key].name} casting`,dice:report.dice,team:'iron'},spell:true,report,point:{x:target.x,y:target.y}};}return null;}
+function aiSpell(s,random){const wizard=s.units.find(u=>u.team==='iron'&&u.role==='wizard'&&alive(u));if(!wizard)return null;for(const key of wizard.spells){const targets=G.spellTargets(s,wizard.id,key).filter(t=>G.canCast(s,wizard.id,key,t.id));if(!targets.length)continue;const target=key==='shield'?wizard:targets.sort((a,b)=>G.gap(wizard,a)-G.gap(wizard,b))[0],point=key==='pillar'?(()=>{const victim=nearest(s,wizard);if(!victim)return {x:wizard.x,y:wizard.y};const d=distance(wizard,victim),f=Math.min(10,d)/d;return {x:Math.max(1.5,Math.min(s.board.width-1.5,wizard.x+(victim.x-wizard.x)*f)),y:Math.max(1.5,Math.min(s.board.height-1.5,wizard.y+(victim.y-wizard.y)*f))};})():null;const report=G.attemptSpell(s,wizard.id,key,target.id,random,{point});s.selected=wizard.id;return {message:`${wizard.name} casts ${G.BATTLE_MAGIC[key].name}: ${report.dice.join('+')} = ${report.casting} · ${report.pending?'cast — choose a dispel':report.cast?'cast':'failed'}.`,roll:{label:`${wizard.id} · ${G.BATTLE_MAGIC[key].name} casting`,dice:report.dice,team:'iron'},spell:true,report,point:{x:target.x,y:target.y}};}return null;}

@@ -46,6 +46,7 @@ dialog{color:#282e23;background:#f5f0d9;border:5px double #424a36;border-radius:
 .shooting-arc{pointer-events:none;stroke-width:1.6;vector-effect:non-scaling-stroke}
 .zone-area{stroke:#e9e2bf;stroke-opacity:.8;stroke-dasharray:7 8;pointer-events:none}
 .roster-summary{display:grid;gap:8px;margin-top:6px}
+.tooltip-why{margin:-2px -2px 6px;padding:5px 7px;background:#f3dfc9;border-left:4px solid #9b3e2a;color:#4a2217;font-size:12px;line-height:1.35}
 .roster-card{border:1px solid #b8ad8b;background:#fbf6e6;padding:6px 8px;font-size:12px;color:#302c22}
 .roster-card header{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px}
 .roster-card.ash header b{color:#7a2f22}.roster-card.iron header b{color:#274b66}

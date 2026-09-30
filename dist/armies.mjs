@@ -15,12 +15,13 @@ export const ENTRIES={
  chaos:{
   daemonsmith:{name:'Daemonsmith Sorcerer',category:'characters',role:'wizard',base:85,options:{level2:{name:'Wizard Level 2',cost:30,required:true}},general:true},
   warriors:{name:'Chaos Dwarf Warriors',category:'core',role:'infantry',troop:'heavy',perModel:7,minModels:5,options:{shields:{name:'Shields',perModel:1,required:true}},command:{C:{name:'Veteran Warrior',cost:6},S:{name:'Standard Bearer',cost:6},M:{name:'Musician',cost:6}}},
-  decimators:{name:'Blunderbuss Decimators',category:'core',role:'missile',troop:'heavy',perModel:10,minModels:5,command:{C:{name:'Veteran Warrior',cost:6},S:{name:'Standard Bearer',cost:6},M:{name:'Musician',cost:6}}},
+  decimators:{name:'Blunderbuss Decimators',category:'core',role:'missile',troop:'heavy',perModel:10,minModels:5,options:{shields:{name:'Shields',perModel:1}},command:{C:{name:'Veteran Warrior',cost:6},S:{name:'Standard Bearer',cost:6},M:{name:'Musician',cost:6}}},
   deathshrieker:{name:'Deathshrieker Rocket Launcher',category:'special',role:'warmachine',base:110,restricted:'0–2 per 1,000 points'},
  },
  empire:{
+  captain:{name:'Captain of the Empire',category:'characters',role:'character',kind:'empireCaptain',base:45,options:{greatWeapon:{name:'Great weapon',cost:4},fullPlate:{name:'Full plate armour',cost:6}},general:true},
   masterMage:{name:'Master Mage',category:'characters',role:'wizard',base:60,options:{level2:{name:'Wizard Level 2',cost:30,required:true}},general:true},
-  stateTroops:{name:'State Troops',category:'core',role:'infantry',troop:'regular',perModel:5,minModels:10,options:{shields:{name:'Shields',perModel:1,required:true}},command:{C:{name:'Sergeant',cost:5},S:{name:'Standard Bearer',cost:5},M:{name:'Musician',cost:5}}},
+  stateTroops:{name:'State Troops',category:'core',role:'infantry',troop:'regular',perModel:5,minModels:10,options:{spears:{name:'Thrusting spears',perModel:1},shields:{name:'Shields',perModel:1}},command:{C:{name:'Sergeant',cost:5},S:{name:'Standard Bearer',cost:5},M:{name:'Musician',cost:5}}},
   missileTroops:{name:'State Missile Troops (crossbows)',category:'core',role:'missile',troop:'regular',perModel:7,minModels:10,command:{C:{name:'Sergeant',cost:5},S:{name:'Standard Bearer',cost:5},M:{name:'Musician',cost:5}}},
   greatCannon:{name:'Great Cannon',category:'special',role:'warmachine',base:125,restricted:"1 single 'per 1000 points' selection in Battle March"},
  },
@@ -41,7 +42,7 @@ export function entryCost(faction,item){
  for(const [k,c]of Object.entries(e.command??{}))if(item.command?.[k])cost+=c.cost;
  return cost;
 }
-export function entryUnitStrength(faction,item){const e=entryOf(faction,item.entry);return e.role==='warmachine'?3:e.role==='wizard'?1:item.models*(US_PER_MODEL[e.troop]??1);}
+export function entryUnitStrength(faction,item){const e=entryOf(faction,item.entry);return e.role==='warmachine'?3:e.role==='wizard'||e.role==='character'?1:item.models*(US_PER_MODEL[e.troop]??1);}
 export function rosterCost(roster){return roster.entries.reduce((n,item)=>n+entryCost(roster.faction,item),0);}
 
 // Battle March muster rules, as given in the Battle March brief, plus the Grand Army category
@@ -80,7 +81,28 @@ export function validateRoster(roster,points,{format='battle-march'}={}){
  return {legal:errors.length===0,errors,total,points};
 }
 
-// Ready-made 750-point Battle March armies; validated before they are ever shown as legal.
+// The player's 500-point Battle March lists.
+export const LISTS={
+ 'chaos-500':{name:'Chaos Dwarfs · 500',faction:'chaos',points:500,entries:[
+  {entry:'daemonsmith',general:true},
+  {entry:'warriors',models:19,command:{C:true,S:true,M:true}},
+  {entry:'decimators',models:9,options:{shields:true},command:{M:true}},
+  {entry:'deathshrieker'},
+ ]},
+ 'empire-500':{name:'Empire of Man · 500',faction:'empire',points:500,entries:[
+  {entry:'captain',general:true,options:{greatWeapon:true,fullPlate:true}},
+  {entry:'masterMage'},
+  {entry:'stateTroops',models:20,options:{spears:true,shields:true},command:{C:true,S:true,M:true}},
+  {entry:'missileTroops',models:10,command:{M:true}},
+  {entry:'greatCannon'},
+ ]},
+ 'orc-500':{name:'Orc & Goblin Tribes · 500 (squigs)',faction:'orc',points:500,entries:[],playable:false,
+  missing:['Night Goblin Warboss on Giant Cave Squig (General)','Night Goblin Oddgit, Level 2 (Lore of Illusion)','20 Night Goblins with shields, full command and a Fanatic','Night Goblin Squig Herd (5 Cave Squigs, 1 Herder)','6 Night Goblin Squig Hoppers with cavalry spears','Mangler Squig']},
+};
+// Every roster offered for a faction, best match for the points limit first.
+export function rostersFor(faction,points){const all=[...Object.entries(LISTS).filter(([,l])=>l.faction===faction).map(([id,l])=>({id,...l})),...Object.entries(PRESETS).filter(([,l])=>l.faction===faction).map(([id,l])=>({id:'sample-'+id,points:750,...l,name:l.name+' · 750 sample'}))];return all.sort((x,y)=>(x.points<=points?0:1)-(y.points<=points?0:1)||Math.abs(points-x.points)-Math.abs(points-y.points));}
+export function defaultRoster(faction,points){return rostersFor(faction,points).find(r=>r.playable!==false)??null;}
+// Sample 750-point Battle March armies; validated before they are ever shown as legal.
 export const PRESETS={
  chaos:{name:'Chaos Dwarf warband',faction:'chaos',entries:[
   {entry:'daemonsmith',general:true},
@@ -91,9 +113,9 @@ export const PRESETS={
  ]},
  empire:{name:'Empire gun line',faction:'empire',entries:[
   {entry:'masterMage',general:true},
-  {entry:'stateTroops',models:20,command:{C:true,S:true,M:true}},
-  {entry:'stateTroops',models:20,command:{C:true,S:true,M:true}},
-  {entry:'stateTroops',models:15,command:{C:true,S:true,M:true}},
+  {entry:'stateTroops',models:20,options:{shields:true},command:{C:true,S:true,M:true}},
+  {entry:'stateTroops',models:20,options:{shields:true},command:{C:true,S:true,M:true}},
+  {entry:'stateTroops',models:15,options:{shields:true},command:{C:true,S:true,M:true}},
   {entry:'missileTroops',models:20,command:{C:true,S:true,M:true}},
   {entry:'greatCannon'},
  ]},

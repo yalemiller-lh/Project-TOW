@@ -9,7 +9,7 @@ const errors=(roster,points=750)=>A.validateRoster(roster,points).errors;
 
 test('entry costs include every purchased upgrade and command model',()=>{
  assert.equal(A.entryCost('chaos',{entry:'daemonsmith'}),115);assert.equal(A.entryCost('chaos',warriors(20)),178);assert.equal(A.entryCost('chaos',warriors(20,{})),160);
- assert.equal(A.entryCost('chaos',{entry:'decimators',models:15,command:{C:true,S:true,M:true}}),168);assert.equal(A.entryCost('empire',{entry:'stateTroops',models:20,command:{C:true,S:true,M:true}}),135);
+ assert.equal(A.entryCost('chaos',{entry:'decimators',models:15,command:{C:true,S:true,M:true}}),168);assert.equal(A.entryCost('empire',{entry:'stateTroops',models:20,options:{shields:true},command:{C:true,S:true,M:true}}),135);assert.equal(A.entryCost('empire',{entry:'stateTroops',models:20,command:{C:true,S:true,M:true}}),115);
 });
 test('the preset armies pass Battle March validation at 750 points',()=>{
  for(const faction of ['chaos','empire']){const v=A.validateRoster(A.PRESETS[faction],750);assert.deepEqual(v.errors,[],faction);assert.ok(v.total<=750&&v.total>=740,faction+' '+v.total);}

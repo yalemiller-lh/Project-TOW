@@ -15,6 +15,7 @@ export function themeForTeam(state,team){return THEMES[team==='ash'?'ash':state.
 export function themeFor(state){return themeForTeam(state,state.team);}
 export function unitName(unit){
  if(!unit)return 'No unit selected';
+ if(unit.role==='character')return unit.name;
  if(unit.role==='warmachine')return unit.name;
  if(unit.role==='wizard')return unit.name;
  if(unit.role==='missile')return unit.name;
@@ -22,6 +23,7 @@ export function unitName(unit){
 }
 export function shortName(unit){
  if(!unit)return '';
+ if(unit.role==='character')return unit.kind==='empireCaptain'?'Captain':unit.name;
  if(unit.role==='warmachine')return unit.faction==='chaos'?'Deathshrieker':unit.name;
  if(unit.role==='wizard')return unit.faction==='chaos'?'Daemonsmith':'Battlemage';
  if(unit.role==='missile')return unit.faction==='chaos'?'Decimators':unit.faction==='empire'?'Missile Troops':'Warbows';
@@ -33,7 +35,7 @@ export function fleeSummary(flee){
  const walk=f=>{if(f.passedThrough.length)parts.push(`${f.unit} flees through ${f.passedThrough.join(', ')}`);if(f.peril.length)parts.push(`${f.peril.length} Peril test${f.peril.length===1?'':'s'}, ${f.casualties} lost${f.destroyed&&!f.fledOffBoard?' — destroyed':''}`);if(f.fledOffBoard)parts.push(`${f.unit} flees off the battlefield`);for(const p of f.panic){parts.push(`${p.unit} ${p.passed?'passes its Panic test':'panics and flees'}`);if(p.flee)walk(p.flee);}};
  walk(flee);return parts.length?' '+parts.join('. ')+'.':'';
 }
-export function strengthLabel(unit,game){return unit.role==='warmachine'?`${unit.wounds} / 3 W · ${unit.crew} crew`:unit.role==='wizard'?`${unit.wounds} / 2 W`:`${game.aliveCount(unit)} / ${game.startingModels(unit)}`;}
+export function strengthLabel(unit,game){return unit.role==='warmachine'?`${unit.wounds} / 3 W · ${unit.crew} crew`:unit.role==='wizard'||unit.role==='character'?`${unit.wounds} / ${unit.role==='character'?2:2} W`:`${game.aliveCount(unit)} / ${game.startingModels(unit)}`;}
 export function scoreRows(state,game){
  const opponent=state.units.find(u=>u.team==='iron')?.faction??'empire';
  return ['ash','iron'].map(team=>{
