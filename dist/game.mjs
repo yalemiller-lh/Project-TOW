@@ -33,6 +33,7 @@ export function polygonGap(a,b){if(inside(a[0],b)||inside(b[0],a))return 0;let b
 function hull(points){const p=[...points].sort((a,b)=>a.x-b.x||a.y-b.y);const half=items=>{const out=[];for(const v of items){while(out.length>1&&cross(out.at(-2),out.at(-1),v)<=EPS)out.pop();out.push(v);}return out;};return [...half(p).slice(0,-1),...half([...p].reverse()).slice(0,-1)];}
 export function gap(a,b){return polygonGap(corners(a),corners(b));}
 function offBoard(u){const r=rectangle(u);return r.left< -EPS||r.right>BOARD.width+EPS||r.top< -EPS||r.bottom>BOARD.height+EPS;}
+function destroyUnit(u){Object.assign(u,{x:null,y:null,destroyed:true,fleeing:false,engaged:null});}
 export function checkPosition(state,unit,x,y,deployment=false){
   if(!Number.isFinite(x)||!Number.isFinite(y))return 'Enter valid coordinates.';
   const candidate={...unit,x,y},r=rectangle(candidate);
@@ -97,8 +98,8 @@ export function move(s,id,distance,mode){return commitOrder(s,id,{kind:'advance'
 export function hold(s,id){const u=getUnit(s,id);if(!canAct(s,u))throw Error('This regiment cannot take orders now.');enterRemaining(s);remember(s,u);u.moved=true;}
 export function undo(s){if(s.stage!=='movement')throw Error('Undo is available during Movement only.');const last=s.history.pop();if(!last)throw Error('No move to undo this turn.');const u=getUnit(s,last.id);Object.assign(u,{x:last.x,y:last.y,heading:last.heading,moved:last.moved,spent:last.spent,movementMode:last.movementMode,marchRequired:last.marchRequired});s.selected=u.id;}
 export function nextTurn(s){if(s.stage!=='combat')throw Error('Finish the Combat phase first.');s.stage='strategy';s.team=s.team==='ash'?'iron':'ash';if(s.team==='ash')s.round++;s.units.forEach(u=>{u.moved=false;u.shot=false;u.spent=0;u.movementMode=null;u.marchRequired=null;u.marchTest=null;u.charge=null;u.impetuousTest=null;u.combatResolved=false;u.rallyAttempted=false;});s.rocket.shot=false;s.rocket.lastShot=null;s.history=[];s.selected=s.units.find(u=>u.team===s.team).id;}
-export function nextPhase(s){if(s.stage==='strategy'&&s.units.some(u=>u.team===s.team&&u.fleeing&&!u.rallyAttempted))throw Error('Attempt to rally every fleeing regiment first.');if(s.units.some(u=>u.charge?.status==='declared'))throw Error('Resolve all declared charges first.');if(s.stage==='combat'&&(s.combatSession||s.pendingCombat||combatPairs(s).length))throw Error('Resolve every combat and its outcome first.');const i=PHASES.indexOf(s.stage);if(i<0)throw Error('Begin the battle first.');if(i===3)nextTurn(s);else{s.stage=PHASES[i+1];s.history=[];if(s.stage==='movement')s.movementStep=s.units.some(u=>u.team===s.team&&u.x!==null&&availableCharges(s,u).length)?'declare':'remaining';if(s.stage==='shooting'&&!availableShots(s).length&&!rocketTargets(s).some(t=>!t.error))s.stage='combat';if(s.stage==='combat')s.units.forEach(u=>u.combatResolved=false);}return s.stage;}
-export function rally(s,id,random=Math.random){const u=getUnit(s,id);if(s.stage!=='strategy'||u?.team!==s.team||!u.fleeing||u.rallyAttempted)throw Error('Select a fleeing regiment in its own Strategy phase.');const dice=rollD6(2,random),success=dice[0]+dice[1]<=leadership(u,'rally');u.rallyAttempted=true;u.rallied=success;if(success)u.fleeing=false;return {id,dice,success};}
+export function nextPhase(s){if(s.stage==='strategy'&&s.units.some(u=>u.team===s.team&&u.x!==null&&u.fleeing&&!u.rallyAttempted))throw Error('Attempt to rally every fleeing regiment first.');if(s.units.some(u=>u.charge?.status==='declared'))throw Error('Resolve all declared charges first.');if(s.stage==='combat'&&(s.combatSession||s.pendingCombat||combatPairs(s).length))throw Error('Resolve every combat and its outcome first.');const i=PHASES.indexOf(s.stage);if(i<0)throw Error('Begin the battle first.');if(i===3)nextTurn(s);else{s.stage=PHASES[i+1];s.history=[];if(s.stage==='movement')s.movementStep=s.units.some(u=>u.team===s.team&&u.x!==null&&availableCharges(s,u).length)?'declare':'remaining';if(s.stage==='shooting'&&!availableShots(s).length&&!rocketTargets(s).some(t=>!t.error))s.stage='combat';if(s.stage==='combat')s.units.forEach(u=>u.combatResolved=false);}return s.stage;}
+export function rally(s,id,random=Math.random){const u=getUnit(s,id);if(s.stage!=='strategy'||u?.team!==s.team||u.x===null||!u.fleeing||u.rallyAttempted)throw Error('Select a fleeing regiment in its own Strategy phase.');const dice=rollD6(2,random),success=dice[0]+dice[1]<=leadership(u,'rally');u.rallyAttempted=true;u.rallied=success;if(success)u.fleeing=false;return {id,dice,success};}
 export function rollD6(count,random=Math.random){if(!Number.isInteger(count)||count<1||count>20)throw Error('Choose 1 to 20 dice.');return Array.from({length:count},()=>1+Math.floor(random()*6));}
 
 // Ranged attacks are measured from individual model centres. The front 90-degree
@@ -225,9 +226,9 @@ export function chargeReaction(s,chargerId,choice,random=Math.random){
   const dx=defender.x-charger.x,dy=defender.y-charger.y;
   defender.heading=normalize(Math.atan2(dx,-dy)*180/Math.PI);
   const end=forwardPose(defender,fleeDistance);
-  if(offBoard(end)){defender.x=null;defender.y=null;defender.destroyed=true;}
+  if(offBoard(end))destroyUnit(defender);
   else{defender.x=end.x;defender.y=end.y;}
-  defender.fleeing=true;defender.moved=true;
+  defender.fleeing=!defender.destroyed;defender.moved=true;
  }
  charger.charge.reaction=choice;charger.charge.reactionReport=report;charger.charge.fleeDice=fleeDice;
  if(aliveCount(charger)===0){charger.charge.status='stopped';charger.moved=true;}
@@ -247,7 +248,7 @@ export function resolveCharge(s,id,dice){
  if(u.charge.reaction==='pending')throw Error('Choose the defender’s reaction first.');
  const t=getUnit(s,u.charge.target),fled=u.charge.reaction==='flee',p=t?.x!==null?chargePlan(s,u,t):{error:'Target fled off the table.'},route=p.error?u.charge.initialPlan:p,roll=Math.max(...dice),range=profile(u).M+roll,success=!p.error&&range+EPS>=p.cost;
  let end={...u},travel=0;
- if(success){end=p.end;travel=p.cost;if(fled){t.x=null;t.y=null;t.destroyed=true;}else{u.engaged=t.id;t.engaged=u.id;}}
+ if(success){end=p.end;travel=p.cost;if(fled)destroyUnit(t);else{u.engaged=t.id;t.engaged=u.id;}}
  else if(route?.start){
   const budget=fled?range:roll;
   const wheelAngle=route.wheelCost<=budget?route.angle:Math.sign(route.angle)*2*Math.asin(Math.min(1,budget/(2*size(u).w)))*180/Math.PI;
@@ -274,7 +275,7 @@ export function modelSquares(s,u){
 
 export function movementRemaining(u,mode=u.movementMode??'advance'){return u.moved||u.engaged||u.charge||u.fleeing?0:Math.max(0,(mode==='march'?2*profile(u).M:profile(u).M)-(u.spent??0));}
 
-export function aliveCount(u){return 20-(u.deadModels?.length??0);}
+export function aliveCount(u){return u.destroyed?0:20-(u.deadModels?.length??0);}
 export function combatPairs(s){return s.units.filter(u=>u.engaged&&u.x!==null&&!u.combatResolved&&u.id< u.engaged).map(u=>[u.id,u.engaged]);}
 function combatDice(count,random){return count?rollD6(count,random):[];}
 function combatInitiative(u){if(u.charge?.status!=='success')return profile(u).I;return profile(u).I+Math.min(u.charge.face==='front'?3:4,Math.floor(u.charge.distance+EPS));}
@@ -347,7 +348,7 @@ export function fireRocket(s,targetId,profileKey,dice,random=Math.random,{indire
  }
  if(profileKey==='incendiary')for(const unit of s.units.filter(u=>report.affected.some(a=>a.unit===u.id&&a.slain)&&u.x!==null)){
   const panic=rollD6(2,random);report.panic??=[];report.panic.push({unit:unit.id,dice:panic,passed:panic[0]+panic[1]<=leadership(unit)});
-  if(panic[0]+panic[1]>leadership(unit)){unit.fleeing=true;unit.moved=true;const away=Math.atan2(unit.x-s.rocket.x,-(unit.y-s.rocket.y))*180/Math.PI;unit.heading=normalize(away);const flee=rollD6(2,random);const end=forwardPose(unit,flee[0]+flee[1]);if(offBoard(end)){unit.x=null;unit.y=null;unit.destroyed=true;}else Object.assign(unit,{x:end.x,y:end.y});report.panic.at(-1).fleeDice=flee;}
+  if(panic[0]+panic[1]>leadership(unit)){unit.fleeing=true;unit.moved=true;const away=Math.atan2(unit.x-s.rocket.x,-(unit.y-s.rocket.y))*180/Math.PI;unit.heading=normalize(away);const flee=rollD6(2,random);const end=forwardPose(unit,flee[0]+flee[1]),fledOffBoard=offBoard(end);if(fledOffBoard)destroyUnit(unit);else Object.assign(unit,{x:end.x,y:end.y});Object.assign(report.panic.at(-1),{fleeDice:flee,fledOffBoard});}
  }
  s.rocket.lastShot=report;return report;
 }
