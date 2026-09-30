@@ -102,7 +102,7 @@ function drawUnit(u,layer,ghost=false){
 }
 function draw(){
   hideUnitTooltip();const layer=$('unitsLayer'),measure=$('measureLayer'),rocketLayer=$('rocketLayer');layer.replaceChildren();measure.replaceChildren();rocketLayer.replaceChildren();
-  state.units.filter(u=>u.x!==null).forEach(u=>drawUnit(u,layer));drawRocket(layer);drawCannons(layer);drawRocketTemplate(rocketLayer);drawCannonTrace(rocketLayer);for(const v of state.vortices){svg('circle',{cx:v.x*S,cy:v.y*S,r:1.5*S,class:'rocket-template impact pillar-template'},rocketLayer);svg('text',{x:v.x*S,y:(v.y-2)*S,'text-anchor':'middle',class:'measure-label'},rocketLayer,'PILLAR OF FIRE');}drawDeclaredCharges(measure);const u=G.getUnit(state);
+  state.units.filter(u=>u.x!==null).forEach(u=>drawUnit(u,layer));drawRocket(layer);drawCannons(layer);drawRocketTemplate(rocketLayer);drawCannonTrace(rocketLayer);for(const v of state.vortices){svg('circle',{cx:v.x*S,cy:v.y*S,r:1.5*S,class:'rocket-template impact pillar-template'},rocketLayer);svg('text',{x:v.x*S,y:(v.y-2)*S,'text-anchor':'middle',class:'measure-label'},rocketLayer,'PILLAR OF FIRE');}drawDeclaredCharges(measure);drawRangeOverlays(measure);const u=G.getUnit(state);
   if(state.stage==='combat'&&u.engaged){const mate=$('unitsLayer').querySelector('[data-unit="'+u.engaged+'"]');mate?.classList.add('combat-target');}if(ordersOpen&&state.stage==='shooting'&&G.canShoot(state,u)){drawShootingArc(u,measure);return;}if(ordersOpen&&state.stage==='movement'&&state.movementStep!=='remaining'){if(u.team===state.team)drawCharge(u,measure);return;}if(!ordersOpen||!G.canAct(state,u))return;
   const order=currentOrder(),p=G.planMove(u,order),err=G.orderError(state,u,order);
   if(kind==='wheel'&&distance>0)drawUnit(p.afterWheel,measure,true).setAttribute('opacity','.4');
@@ -343,8 +343,23 @@ $('combatAutoButton').onclick=()=>autoCombat(true);$('combatInstantButton').oncl
 $('rallyButton').onclick=async()=>{if(rolling)return;try{const id=state.selected,ld=G.leadership(G.getUnit(state,id),'rally'),result=G.rally(state,id);await animatedRoll(2,'Rally · Leadership '+ld,result.dice);showDice(result.dice,'Rally '+result.id);render();notify(result.id+(result.success?' rallies and can act normally this turn, except charging.':' fails to rally and continues fleeing.'));}catch(e){notify(e.message,true);}};
 
 function movementStepName(){return {declare:'Declare Charges',charges:'Charge Moves',remaining:'Remaining Moves'}[state.movementStep]??'Remaining Moves';}
+// Range envelope: the footprint grown by the range on every side, which is how the rules
+// engine measures range (closest edge to closest edge).
+function rangeEnvelope(u,range,layer,kind,label=''){
+ const {w,h}=G.size(u),k=v=>v*S,hw=w/2,hh=h/2,r=range,arc=(x,y)=>`A${k(r)} ${k(r)} 0 0 1 ${k(x)} ${k(y)}`;
+ svg('path',{d:`M${k(-hw)} ${k(-hh-r)}H${k(hw)}${arc(hw+r,-hh)}V${k(hh)}${arc(hw,hh+r)}H${k(-hw)}${arc(-hw-r,hh)}V${k(-hh)}${arc(-hw,-hh-r)}Z`,transform:`translate(${k(u.x)} ${k(u.y)}) rotate(${G.heading(u)})`,class:'range-ring '+kind},layer);
+ if(label){const p=G.localPoint(u,0,-hh-r);svg('text',{x:k(p.x),y:k(p.y)-5,'text-anchor':'middle',class:'measure-label arc-label range-label'},layer,label);}
+}
+// Selected wizards show each spell castable in this phase; selected war machines show their weapon ranges.
+function drawRangeOverlays(layer){
+ const u=G.getUnit(state);
+ if(ordersOpen&&u?.role==='wizard'&&u.team===state.team&&u.x!==null)for(const key of u.spells){const spell=G.BATTLE_MAGIC[key];if(!spell?.range||spell.phase!==state.stage)continue;const ready=G.spellTargets(state,u.id,key).some(t=>G.canCast(state,u.id,key,t.id));rangeEnvelope(u,spell.range,layer,'spell'+(ready?'':' idle'),`${spell.name} · ${spell.range}″`);}
+ const r=state.rocket;if(rocketSelected&&state.stage==='shooting'&&state.team==='ash'&&r.x!==null){rangeEnvelope(r,48,layer,'far','Deathshrieker · 48″ max');rangeEnvelope(r,12,layer,'min','12″ minimum');}
+ const c=state.cannons.find(c=>c.id===cannonSelected);if(c&&state.stage==='shooting'&&state.team==='iron'&&c.x!==null){rangeEnvelope(c,60,layer,'far'+(cannonMode==='ball'?' chosen':' idle'),'Cannonball · 60″');rangeEnvelope(c,12,layer,'close'+(cannonMode==='grape'?' chosen':' idle'),'Grapeshot · 12″');}
+}
 function drawShootingArc(u,layer){
  const weapon=G.missileWeapon(u),{w,h}=G.size(u),poly=range=>[[-w/2,-h/2],[-w/2-range,-h/2-range],[w/2+range,-h/2-range],[w/2,-h/2]].map(([x,y])=>G.localPoint(u,x,y)).map(p=>`${p.x*S},${p.y*S}`).join(' ');
+ rangeEnvelope(u,weapon.range,layer,'far');rangeEnvelope(u,weapon.range/2,layer,'close');
  svg('polygon',{points:poly(weapon.range),class:'shooting-arc far-arc'},layer);svg('polygon',{points:poly(weapon.range/2),class:'shooting-arc close-arc'},layer);
  const mid=G.localPoint(u,0,-h/2-weapon.range/2),end=G.localPoint(u,0,-h/2-weapon.range);
  svg('text',{x:mid.x*S,y:mid.y*S-6,'text-anchor':'middle',class:'measure-label arc-label'},layer,`${weapon.range/2}″ · 50% / CLOSE`);
