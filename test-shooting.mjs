@@ -41,4 +41,10 @@ for(const [faction,name,range] of [['empire','State Missile Troops',30],['orc','
 {
  const s=duel('chaos');s.movementStep='declare';G.getUnit(s,'A4').y=22;G.declareCharge(s,'A4','I4');let i=0;const r=G.chargeReaction(s,'A4','stand-shoot',()=>i++<98?.99:0);assert.equal(r.report.toHit,4);assert.equal(r.report.shots,42);assert.equal(r.stopped,true);assert.equal(G.getUnit(s,'A4').charge.status,'stopped');G.finishDeclarations(s);assert.equal(s.movementStep,'remaining');
 }
-console.log('PASS missile units, arc/range, modifiers, casualties, and Stand & Shoot');
+{
+ const s=duel();G.nextPhase(s);const t=G.getUnit(s,'I4');assert.deepEqual(G.availableShots(s).map(u=>u.id),['A4']);t.engaged='A1';
+ assert.match(G.shootingPlan(s,G.getUnit(s,'A4'),t).error,/in combat/);assert.throws(()=>G.shoot(s,'A4','I4'),/in combat/);assert.deepEqual(G.availableShots(s).map(u=>u.id),[]);
+ const caster=G.getUnit(s,'A6'),wizard=G.getUnit(s,'I7');Object.assign(caster,{x:50,y:30,spells:['hashutCurse']});Object.assign(wizard,{x:50,y:20});
+ assert.equal(G.spellTargets(s,'A6','hashutCurse').includes(wizard),true);wizard.engaged='A2';assert.equal(G.spellTargets(s,'A6','hashutCurse').includes(wizard),false);
+}
+console.log('PASS missile units, arc/range, modifiers, casualties, Stand & Shoot, and no shots into combat');
