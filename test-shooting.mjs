@@ -45,6 +45,7 @@ for(const [faction,name,range] of [['empire','State Missile Troops',30],['orc','
  const s=duel();G.nextPhase(s);const t=G.getUnit(s,'I4');assert.deepEqual(G.availableShots(s).map(u=>u.id),['A4']);t.engaged='A1';
  assert.match(G.shootingPlan(s,G.getUnit(s,'A4'),t).error,/in combat/);assert.throws(()=>G.shoot(s,'A4','I4'),/in combat/);assert.deepEqual(G.availableShots(s).map(u=>u.id),[]);
  const caster=G.getUnit(s,'A6'),wizard=G.getUnit(s,'I7');Object.assign(caster,{x:50,y:30,spells:['hashutCurse']});Object.assign(wizard,{x:50,y:20});
- assert.equal(G.spellTargets(s,'A6','hashutCurse').includes(wizard),true);wizard.engaged='A2';assert.equal(G.spellTargets(s,'A6','hashutCurse').includes(wizard),false);
+ assert.equal(G.spellTargets(s,'A6','hashutCurse').includes(wizard),true);wizard.engaged='A2';assert.equal(G.spellTargets(s,'A6','hashutCurse').includes(wizard),true,'Curse of Hashut may target an engaged character');
+ caster.spells=['fireball'];assert.equal(G.spellTargets(s,'A6','fireball').includes(wizard),false,'Fireball cannot target a unit in combat');
 }
 console.log('PASS missile units, arc/range, modifiers, casualties, Stand & Shoot, and no shots into combat');
