@@ -46,7 +46,8 @@ The post-combat choice order follows this prototype's requested play flow: the l
 - `Play.html`: bundled, standalone game.
 - `dist/`: editable HTML, CSS and JavaScript source for a local server.
 - `dist/ai.mjs`: optional opponent decisions and turn sequencing.
-- `.github/workflows/pages.yml`: on every push to `main`, runs the tests and publishes `dist/` (plus `Play.html`) to GitHub Pages. Enable once under Settings → Pages → Source: GitHub Actions.
+- Live site: https://yalemiller-lh.github.io/Project-TOW/ — GitHub Pages deploys the `main` branch root on every push; `index.html` opens `Play.html`, and `.nojekyll` serves files as-is. Rebuild and commit `Play.html` with every `dist/` change.
+- `.github/workflows/tests.yml`: runs every test file on each push and pull request, and checks that `Play.html` matches `dist/`.
 - `package-standalone.mjs`: rebuilds `Play.html` from `dist/`.
 - `test-*.mjs`: movement, charges, model eligibility, movement budget, combat, cannon, AI, and presentation checks. Run each with Node.js.
 
