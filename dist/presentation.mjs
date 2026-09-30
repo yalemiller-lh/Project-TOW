@@ -14,16 +14,19 @@ export const PHASE_SUBSTEPS={
 export function themeFor(state){return THEMES[state.team==='ash'?'ash':state.units.find(u=>u.team==='iron')?.faction??'empire'];}
 export function unitName(unit){
  if(!unit)return 'No unit selected';
+ if(unit.role==='warmachine')return unit.name;
  if(unit.role==='wizard')return unit.name;
  if(unit.role==='missile')return unit.name;
  return `${unit.name} ${'ABC'[Number(unit.id.slice(1))-1]??unit.id}`;
 }
 export function shortName(unit){
  if(!unit)return '';
+ if(unit.role==='warmachine')return unit.faction==='chaos'?'Deathshrieker':unit.name;
  if(unit.role==='wizard')return unit.faction==='chaos'?'Daemonsmith':'Battlemage';
  if(unit.role==='missile')return unit.faction==='chaos'?'Decimators':unit.faction==='empire'?'Missile Troops':'Warbows';
  return `${unit.faction==='chaos'?'Warriors':unit.faction==='empire'?'State Troops':'Orc Mob'} ${'ABC'[Number(unit.id.slice(1))-1]??''}`;
 }
+export function strengthLabel(unit,game){return unit.role==='warmachine'?`${unit.wounds} / 3 W · ${unit.crew} crew`:unit.role==='wizard'?`${unit.wounds} / 2 W`:`${game.aliveCount(unit)} / 20`;}
 export function scoreRows(state,game){
  const opponent=state.units.find(u=>u.team==='iron')?.faction??'empire';
  return ['ash','iron'].map(team=>{
