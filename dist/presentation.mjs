@@ -26,6 +26,12 @@ export function shortName(unit){
  if(unit.role==='missile')return unit.faction==='chaos'?'Decimators':unit.faction==='empire'?'Missile Troops':'Warbows';
  return `${unit.faction==='chaos'?'Warriors':unit.faction==='empire'?'State Troops':'Orc Mob'} ${'ABC'[Number(unit.id.slice(1))-1]??''}`;
 }
+// One sentence per event in a flee move and any chain reaction it caused.
+export function fleeSummary(flee){
+ if(!flee)return '';const parts=[];
+ const walk=f=>{if(f.passedThrough.length)parts.push(`${f.unit} flees through ${f.passedThrough.join(', ')}`);if(f.peril.length)parts.push(`${f.peril.length} Peril test${f.peril.length===1?'':'s'}, ${f.casualties} lost${f.destroyed&&!f.fledOffBoard?' — destroyed':''}`);if(f.fledOffBoard)parts.push(`${f.unit} flees off the battlefield`);for(const p of f.panic){parts.push(`${p.unit} ${p.passed?'passes its Panic test':'panics and flees'}`);if(p.flee)walk(p.flee);}};
+ walk(flee);return parts.length?' '+parts.join('. ')+'.':'';
+}
 export function strengthLabel(unit,game){return unit.role==='warmachine'?`${unit.wounds} / 3 W · ${unit.crew} crew`:unit.role==='wizard'?`${unit.wounds} / 2 W`:`${game.aliveCount(unit)} / 20`;}
 export function scoreRows(state,game){
  const opponent=state.units.find(u=>u.team==='iron')?.faction??'empire';
