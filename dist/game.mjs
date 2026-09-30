@@ -109,8 +109,28 @@ export function movementError(s,u,distance,mode){return orderError(s,u,{kind:'ad
 export function move(s,id,distance,mode){return commitOrder(s,id,{kind:'advance',distance,mode,angle:0});}
 export function hold(s,id){const u=getUnit(s,id);if(!canAct(s,u))throw Error('This regiment cannot take orders now.');enterRemaining(s);remember(s,u);u.moved=true;}
 export function undo(s){if(s.stage!=='movement')throw Error('Undo is available during Movement only.');const last=s.history.pop();if(!last)throw Error('No move to undo this turn.');const u=getUnit(s,last.id);Object.assign(u,{x:last.x,y:last.y,heading:last.heading,moved:last.moved,spent:last.spent,movementMode:last.movementMode,marchRequired:last.marchRequired});s.selected=u.id;}
-export function nextTurn(s,random=Math.random){if(s.stage!=='combat')throw Error('Finish the Combat phase first.');s.stage='strategy';s.team=s.team==='ash'?'iron':'ash';if(s.team==='ash')s.round++;s.units.forEach(u=>{u.moved=false;u.shot=false;u.spent=0;u.movementMode=null;u.marchRequired=null;u.marchTest=null;u.charge=null;u.impetuousTest=null;u.combatResolved=false;u.rallyAttempted=false;u.arcaneUrgency=false;if(u.role==='wizard'){u.castThisTurn=[];u.magicExhausted=false;u.engineerUsed=false;if(u.team===s.team){u.oakenShield=false;u.ashStorm=false;}}if(u.arrowCurseCaster===s.team){u.arrowCurse=false;u.arrowCurseCaster=null;}});s.fatedDispelUsed=false;s.vortexReports=driftVortices(s,random);s.rocket.shot=false;s.rocket.lastShot=null;s.cannons.forEach(c=>{c.shot=false;c.lastShot=null;});s.history=[];s.selected=s.units.find(u=>u.team===s.team).id;}
-export function nextPhase(s){if(s.stage==='strategy'&&s.units.some(u=>u.team===s.team&&u.x!==null&&u.fleeing&&!u.rallyAttempted))throw Error('Attempt to rally every fleeing regiment first.');if(s.units.some(u=>u.charge?.status==='declared'))throw Error('Resolve all declared charges first.');if(s.stage==='combat'&&(s.combatSession||s.pendingCombat||combatPairs(s).length))throw Error('Resolve every combat and its outcome first.');const i=PHASES.indexOf(s.stage);if(i<0)throw Error('Begin the battle first.');if(i===3)nextTurn(s);else{s.stage=PHASES[i+1];s.history=[];if(s.stage==='movement')s.movementStep=s.units.some(u=>u.team===s.team&&u.x!==null&&availableCharges(s,u).length)?'declare':'remaining';if(s.stage==='shooting'&&!availableShots(s).length&&!rocketTargets(s).some(t=>!t.error)&&!s.cannons.some(c=>canFireCannon(s,c.id)&&cannonTargets(s,c.id).some(t=>!t.error))&&!s.units.some(u=>u.role==='wizard'&&u.team===s.team&&u.x!==null&&u.spells.some(key=>BATTLE_MAGIC[key].phase==='shooting'&&spellTargets(s,u.id,key).some(t=>canCast(s,u.id,key,t.id)))))s.stage='combat';if(s.stage==='combat')s.units.forEach(u=>u.combatResolved=false);}return s.stage;}
+export function nextTurn(s,random=Math.random){if(s.stage!=='combat')throw Error('Finish the Combat phase first.');s.stage='strategy';s.team=s.team==='ash'?'iron':'ash';if(s.team==='ash')s.round++;s.units.forEach(u=>{u.moved=false;u.shot=false;u.spent=0;u.movementMode=null;u.marchRequired=null;u.marchTest=null;if(u.pursuitPending&&u.engaged)u.pursuitPending=false;else u.charge=null;u.impetuousTest=null;u.combatResolved=false;u.rallyAttempted=false;u.arcaneUrgency=false;if(u.role==='wizard'){u.castThisTurn=[];u.magicExhausted=false;u.engineerUsed=false;if(u.team===s.team){u.oakenShield=false;u.ashStorm=false;}}if(u.arrowCurseCaster===s.team){u.arrowCurse=false;u.arrowCurseCaster=null;}});s.fatedDispelUsed=false;s.vortexReports=driftVortices(s,random);s.rocket.shot=false;s.rocket.lastShot=null;s.cannons.forEach(c=>{c.shot=false;c.lastShot=null;});s.history=[];s.selected=s.units.find(u=>u.team===s.team).id;}
+export function nextPhase(s){if(s.stage==='strategy'&&s.units.some(u=>u.team===s.team&&u.x!==null&&u.fleeing&&!u.rallyAttempted))throw Error('Attempt to rally every fleeing regiment first.');if(s.units.some(u=>u.charge?.status==='declared'))throw Error('Resolve all declared charges first.');if(s.stage==='combat'&&(s.combatSession||s.pendingCombat||combatPairs(s).length))throw Error('Resolve every combat and its outcome first.');const i=PHASES.indexOf(s.stage);if(i<0)throw Error('Begin the battle first.');if(i===3)nextTurn(s);else{s.stage=PHASES[i+1];s.history=[];if(s.stage==='movement')s.movementStep=s.units.some(u=>u.team===s.team&&canAct(s,u)&&availableCharges(s,u).length)?'declare':'remaining';if(s.stage==='shooting'&&!phaseHasActions(s))s.stage='combat';if(s.stage==='combat')s.units.forEach(u=>u.combatResolved=false);}return s.stage;}
+export function phaseHasActions(s){
+ if(s.stage==='deployment')return true;
+ const active=s.units.filter(u=>u.team===s.team&&u.x!==null&&aliveCount(u)>0);
+ const spells=phase=>active.some(u=>u.role==='wizard'&&u.spells.some(key=>BATTLE_MAGIC[key]?.phase===phase&&spellTargets(s,u.id,key).some(t=>canCast(s,u.id,key,t.id))));
+ if(s.stage==='strategy')return active.some(u=>u.fleeing&&!u.rallyAttempted)||spells('strategy')||s.round===1&&active.some(u=>u.role==='wizard'&&!u.castThisTurn.length&&u.spells.some(key=>SPELL_ROLL.includes(key))&&!u.spells.some(key=>['hammerhand','hashutCurse','ashStorm','hashutFlames'].includes(key)));
+ if(s.stage==='movement')return s.movementStep==='declare'?active.some(u=>u.charge?.status==='declared'||canAct(s,u)&&availableCharges(s,u).length):s.movementStep==='charges'?active.some(u=>u.charge?.status==='declared'):active.some(u=>canAct(s,u))||spells('movement');
+ if(s.stage==='shooting')return availableShots(s).length>0||canFireRocket(s)&&[false,true].some(indirect=>rocketTargets(s,{indirect}).some(t=>!t.error))||s.cannons.some(c=>canFireCannon(s,c.id)&&(cannonTargets(s,c.id,{mode:'grape'}).some(t=>!t.error)||Array.from({length:11},(_,aimShort)=>cannonTargets(s,c.id,{mode:'ball',aimShort}).some(t=>!t.error)).some(Boolean)))||spells('shooting');
+ return !!s.pendingCombat||!!s.combatSession||combatPairs(s).length>0;
+}
+export function skipEmptySteps(s){
+ const skipped=[];
+ for(let guard=0;guard<8&&s.stage!=='deployment'&&!phaseHasActions(s);guard++){
+  const before=s.stage==='movement'?`Movement · ${s.movementStep}`:s.stage;
+  if(s.stage==='movement'&&s.movementStep==='declare')finishDeclarations(s);
+  else if(s.stage==='movement'&&s.movementStep==='charges')enterRemaining(s);
+  else nextPhase(s);
+  skipped.push(before);
+ }
+ return skipped;
+}
 export function rally(s,id,random=Math.random){const u=getUnit(s,id);if(s.stage!=='strategy'||u?.team!==s.team||u.x===null||!u.fleeing||u.rallyAttempted)throw Error('Select a fleeing regiment in its own Strategy phase.');const dice=rollD6(2,random),success=dice[0]+dice[1]<=leadership(u,'rally');u.rallyAttempted=true;u.rallied=success;if(success)u.fleeing=false;return {id,dice,success};}
 export function rollD6(count,random=Math.random){if(!Number.isInteger(count)||count<1||count>20)throw Error('Choose 1 to 20 dice.');return Array.from({length:count},()=>1+Math.floor(random()*6));}
 
@@ -280,7 +300,7 @@ export function chargeReaction(s,chargerId,choice,random=Math.random){
 export function cancelCharge(s,id){if(s.movementStep!=='declare')throw Error('Declarations are locked after rolling begins.');const u=getUnit(s,id);if(u?.charge?.status==='declared'&&u.charge.reaction!=='pending')throw Error('A charge cannot be cancelled after its defender reacts.');if(u?.charge?.status==='declared')u.charge=null;}
 export function availableCharges(s,u){return s.units.filter(v=>v.team!==u.team&&v.x!==null&&!s.units.some(other=>other.id!==u.id&&other.charge?.status==='declared'&&other.charge.target===v.id)&&!chargePlan(s,u,v).error);}
 export function impetuousTest(s,id,dice){const u=getUnit(s,id);if(s.stage!=='movement'||s.movementStep!=='declare'||u?.team!==s.team||u.faction!=='orc'||u.impetuousTest!==null||!availableCharges(s,u).length)throw Error('Select an Orc Mob with an available charge.');if(!Array.isArray(dice)||dice.length!==2||dice.some(d=>!Number.isInteger(d)||d<1||d>6))throw Error('An Impetuous test requires two D6.');u.impetuousTest=dice[0]+dice[1]<=profile(u).Ld;return u.impetuousTest;}
-export function finishDeclarations(s){if(s.stage!=='movement'||s.movementStep!=='declare')throw Error('Not declaring charges.');if(s.units.some(u=>u.charge?.reaction==='pending'))throw Error('Choose every defender’s charge reaction first.');for(const u of s.units.filter(u=>u.team===s.team&&u.faction==='orc'&&!u.charge&&availableCharges(s,u).length)){if(u.impetuousTest===null)throw Error('Roll Impetuous for each Orc Mob able to charge.');if(u.impetuousTest===false)throw Error('An Impetuous Orc Mob must declare a charge.');}s.movementStep=s.units.some(u=>u.charge?.status==='declared')?'charges':'remaining';s.history=[];}
+export function finishDeclarations(s){if(s.stage!=='movement'||s.movementStep!=='declare')throw Error('Not declaring charges.');if(s.units.some(u=>u.charge?.reaction==='pending'))throw Error('Choose every defender’s charge reaction first.');for(const u of s.units.filter(u=>u.team===s.team&&u.faction==='orc'&&!u.charge&&canAct(s,u)&&availableCharges(s,u).length)){if(u.impetuousTest===null)throw Error('Roll Impetuous for each Orc Mob able to charge.');if(u.impetuousTest===false)throw Error('An Impetuous Orc Mob must declare a charge.');}s.movementStep=s.units.some(u=>u.charge?.status==='declared')?'charges':'remaining';s.history=[];}
 export function enterRemaining(s){
  if(s.units.some(u=>u.charge?.status==='declared'))throw Error('Resolve all declared charges before Remaining Moves.');
  s.movementStep='remaining';
@@ -471,7 +491,7 @@ export function resolveCombat(s,id,random=Math.random){
  a.combatResolved=b.combatResolved=true;
  const result={a:a.id,b:b.id,stages,damage,score:{[a.id]:scoreA,[b.id]:scoreB},winner,loser,outcome,breakDice,margin,round:s.round};
  s.lastCombat=result;(s.combatHistory??=[]).push(result);
- if(outcome==='destroyed'){for(const dead of [a,b].filter(u=>aliveCount(u)===0)){dead.x=null;dead.y=null;dead.destroyed=true;dead.engaged=null;}if(winner)getUnit(s,winner).engaged=null;}
+ if(outcome==='destroyed'){for(const dead of [a,b].filter(u=>aliveCount(u)===0))destroyUnit(dead);if(winner){getUnit(s,winner).engaged=null;s.pendingCombat={winner,loser,outcome:'overrun',stage:'winner-choice',loserDestroyed:true,retreat:{moved:0,dir:null}};}}
  else if(outcome!=='draw')s.pendingCombat={winner,loser,outcome,margin};
  return result;
 }
@@ -498,7 +518,7 @@ export function compareCombat(s){
  const loser=winner===a.id?b.id:winner===b.id?a.id:null,margin=Math.abs(scoreA.total-scoreB.total),outcome=aliveCount(a)===0||aliveCount(b)===0?'destroyed':winner?'await-break':'draw';
  const result={a:a.id,b:b.id,initiative:c.initiative,stages:c.stages,damage:c.damage,score:{[a.id]:scoreA,[b.id]:scoreB},winner,loser,outcome,breakDice:null,margin,round:s.round};
  a.combatResolved=b.combatResolved=true;s.lastCombat=result;(s.combatHistory??=[]).push(result);s.combatSession=null;
- if(outcome==='destroyed'){for(const dead of [a,b].filter(u=>aliveCount(u)===0)){dead.x=null;dead.y=null;dead.destroyed=true;dead.engaged=null;}if(winner)getUnit(s,winner).engaged=null;}
+ if(outcome==='destroyed'){for(const dead of [a,b].filter(u=>aliveCount(u)===0))destroyUnit(dead);if(winner){getUnit(s,winner).engaged=null;s.pendingCombat={winner,loser,outcome:'overrun',stage:'winner-choice',loserDestroyed:true,retreat:{moved:0,dir:null}};}}
  else if(winner)s.pendingCombat={winner,loser,margin,stage:'break'};
  return result;
 }
@@ -527,6 +547,24 @@ function retreatPose(s,u,enemy,distance,stopNear=true){
  }
  return {moved,offBoard:false,dir};
 }
+function pursuitAdvance(s,winner,distance,dir,ignoredId,originalId){
+ const start={x:winner.x,y:winner.y};let moved=0,contact=null,blocked=false;
+ for(let i=1;i<=Math.ceil(distance*20);i++){
+  const d=Math.min(distance,i/20),pose={...winner,x:start.x+dir.x*d,y:start.y+dir.y*d};
+  if(offBoard(pose)){blocked=true;break;}
+  const obstacle=s.units.find(v=>v.id!==winner.id&&v.id!==ignoredId&&v.x!==null&&aliveCount(v)>0&&(v.team===winner.team||v.engaged&&v.engaged!==winner.id?gap(pose,v)<1-EPS:gap(pose,v)<EPS));
+  if(obstacle){
+   if(obstacle.team!==winner.team&&!obstacle.engaged){
+    Object.assign(winner,{x:pose.x,y:pose.y});moved=d;contact=obstacle.id;
+    if(obstacle.fleeing)destroyUnit(obstacle);
+    else{winner.engaged=obstacle.id;obstacle.engaged=winner.id;if(obstacle.id!==originalId){winner.charge={target:obstacle.id,status:'success',distance:moved,face:chargeFace(obstacle,winner),pursuit:true};winner.pursuitPending=true;winner.combatResolved=obstacle.combatResolved=true;}}
+   }else blocked=true;
+   break;
+  }
+  Object.assign(winner,{x:pose.x,y:pose.y});moved=d;
+ }
+ return {distance:moved,contact,blocked};
+}
 export function moveCombatLoser(s,random=Math.random){
  const p=s.pendingCombat;if(s.stage!=='combat'||p?.stage!=='retreat')throw Error('Resolve the Break test and any Shieldwall choice first.');
  const loser=getUnit(s,p.loser),winner=getUnit(s,p.winner);winner.engaged=null;loser.engaged=null;
@@ -537,41 +575,37 @@ export function moveCombatLoser(s,random=Math.random){
  s.lastCombat={...s.lastCombat,loserMove:{distance:retreat.moved,dice,outcome:p.outcome,offBoard:!!retreat.offBoard}};s.combatHistory[s.combatHistory.length-1]=s.lastCombat;
  return {loser:p.loser,outcome:p.outcome,distance:retreat.moved,dice,offBoard:!!retreat.offBoard};
 }
-export function winnerCombat(s,choice='follow',random=Math.random){
+export function winnerCombat(s,choice='follow',random=Math.random,reformHeading=null){
  const p=s.pendingCombat;if(s.stage!=='combat'||p?.stage!=='winner-choice')throw Error('Move the losing regiment before the winner decides.');
- if(!['follow','restrain'].includes(choice))throw Error('Choose follow or restrain.');
+ if(!['follow','follow-reform','restrain'].includes(choice))throw Error('Choose follow, follow and reform, or restrain.');
  const winner=getUnit(s,p.winner),loser=getUnit(s,p.loser),out={winner:p.winner,loser:p.loser,outcome:p.outcome,choice,rolls:{},movement:{loser:p.retreat.moved},loserDestroyed:p.loserDestroyed};
- let follow=choice==='follow';if(choice==='restrain'){const dice=combatDice(2,random);out.rolls.restraint=dice;follow=dice[0]+dice[1]>leadership(winner,'restraint');out.restraintFailed=follow;}
- if(follow&&loser.x!==null){
+ if(reformHeading!==null&&(!Number.isFinite(reformHeading)||reformHeading<0||reformHeading>=360))throw Error('Choose a facing from 0° to 359°.');
+ const reform=()=>{const target={...winner,heading:normalize(reformHeading??heading(winner))},error=checkPosition(s,target,target.x,target.y);out.reform={passed:!error,heading:heading(winner),error};if(!error){winner.heading=target.heading;out.reform.heading=winner.heading;}};
+ let follow=choice!=='restrain';if(choice==='restrain'){const dice=combatDice(2,random);out.rolls.restraint=dice;follow=dice[0]+dice[1]>leadership(winner,'restraint');out.restraintFailed=follow;if(!follow&&p.outcome==='overrun')reform();}
+ if(follow){
   let advance=p.retreat.moved;
-  if(p.outcome!=='give-ground'){const dice=combatDice(2,random);out.rolls.pursuit=dice;const chase=Math.max(1,dice[0]+dice[1]-(FACTIONS[winner.faction??'chaos'].resolute?1:0));out.pursuitDistance=chase;
-   if(chase>=p.fleeDistance&&p.outcome==='break'){loser.x=null;loser.y=null;loser.destroyed=true;out.loserDestroyed=true;advance=0;}
-   else if(chase>=p.fleeDistance&&p.outcome==='fall-back')out.caughtInGoodOrder=true;
+  if(p.outcome!=='give-ground'){
+   const dice=combatDice(2,random);out.rolls.pursuit=dice;
+   const chase=Math.max(1,dice[0]+dice[1]-(FACTIONS[winner.faction??'chaos'].resolute?1:0));out.pursuitDistance=chase;
+   if(p.outcome==='overrun')advance=chase;
+   else if(p.outcome==='break'&&(p.loserDestroyed||chase>=p.fleeDistance)){if(loser.x!==null)destroyUnit(loser);out.loserDestroyed=true;advance=chase;}
+   else if(p.outcome==='fall-back'&&loser.x!==null&&chase>=p.fleeDistance){out.caughtInGoodOrder=true;advance=p.retreat.moved;}
    else advance=Math.min(chase,Math.max(0,p.retreat.moved-1));
   }
-  if(advance>0){const x=winner.x,y=winner.y;winner.x+=p.retreat.dir.x*advance;winner.y+=p.retreat.dir.y*advance;
-   const blocked=offBoard(winner)||s.units.some(v=>v.x!==null&&v.id!==winner.id&&v.id!==loser.id&&gap(winner,v)<1-EPS);
-   if(blocked){winner.x=x;winner.y=y;out.caughtInGoodOrder=false;}else{out.movement.winner=advance;if((p.outcome==='give-ground'||out.caughtInGoodOrder)&&gap(winner,loser)<EPS){winner.engaged=loser.id;loser.engaged=winner.id;}}
+  if(advance>0){
+   const dir=p.outcome==='overrun'?{x:Math.sin(rad(heading(winner))),y:-Math.cos(rad(heading(winner)))}:p.retreat.dir;
+   const moved=pursuitAdvance(s,winner,advance,dir,out.loserDestroyed?loser.id:null,loser.id);
+   out.movement.winner=moved.distance;out.contact=moved.contact;out.blocked=moved.blocked;
+   if(out.caughtInGoodOrder&&moved.distance+EPS<advance)out.caughtInGoodOrder=false;
+   if((p.outcome==='give-ground'||out.caughtInGoodOrder)&&loser.x!==null&&gap(winner,loser)<EPS){winner.engaged=loser.id;loser.engaged=winner.id;}
   }
  }
+ if(choice==='follow-reform'&&out.loserDestroyed&&!out.contact){const dice=combatDice(2,random);out.rolls.reform=dice;if(dice[0]+dice[1]<=leadership(winner,'restraint'))reform();else out.reform={passed:false,heading:heading(winner),error:'Leadership test failed.'};}
+ if(p.outcome==='overrun')out.overrun=follow;
  s.pendingCombat=null;s.lastCombat={...s.lastCombat,aftermath:out};s.combatHistory[s.combatHistory.length-1]=s.lastCombat;return out;
 }
-export function finishCombat(s,choice='follow',random=Math.random){
+export function finishCombat(s,choice='follow',random=Math.random,reformHeading=null){
  const pending=s.pendingCombat;if(s.stage!=='combat'||!pending)throw Error('No combat outcome is waiting.');
- if(!['follow','restrain'].includes(choice))throw Error('Choose follow or restrain.');
- const winner=getUnit(s,pending.winner),loser=getUnit(s,pending.loser),out={...pending,choice,rolls:{},movement:{}};
- let follow=choice==='follow';
- if(choice==='restrain'){const dice=combatDice(2,random);out.rolls.restraint=dice;follow=dice[0]+dice[1]>leadership(winner,'restraint');out.restraintFailed=follow;}
- winner.engaged=null;loser.engaged=null;
- if(pending.outcome==='give-ground'){
-  const retreat=retreatPose(s,loser,winner,2);out.movement.loser=retreat.moved;
-  if(retreat.offBoard){loser.x=null;loser.y=null;loser.destroyed=true;out.loserDestroyed=true;}
-  else if(follow&&retreat.moved>0){const x=winner.x,y=winner.y;winner.x+=retreat.dir.x*retreat.moved;winner.y+=retreat.dir.y*retreat.moved;const blocked=offBoard(winner)||s.units.some(v=>v.x!==null&&v.id!==winner.id&&v.id!==loser.id&&gap(winner,v)<1-EPS);if(blocked){winner.x=x;winner.y=y;}else{out.movement.winner=retreat.moved;if(gap(winner,loser)<EPS){winner.engaged=loser.id;loser.engaged=winner.id;}}}
- }else{
-  const dice=combatDice(2,random);out.rolls.flee=dice;const flee=Math.max(1,(pending.outcome==='fall-back'?Math.max(...dice):dice[0]+dice[1])-(FACTIONS[loser.faction??'chaos'].resolute?1:0));const retreat=retreatPose(s,loser,winner,flee);out.movement.loser=retreat.moved;
-  if(retreat.offBoard){loser.x=null;loser.y=null;loser.destroyed=true;out.loserDestroyed=true;}
-  if(follow){const pursuit=combatDice(2,random);out.rolls.pursuit=pursuit;const chase=Math.max(1,pursuit[0]+pursuit[1]-(FACTIONS[winner.faction??'chaos'].resolute?1:0));if(chase>=flee&&loser.x!==null){if(pending.outcome==='break'){loser.x=null;loser.y=null;loser.destroyed=true;out.loserDestroyed=true;}else{out.caughtInGoodOrder=true;const advance=retreat.moved,oldX=winner.x,oldY=winner.y;winner.x+=retreat.dir.x*advance;winner.y+=retreat.dir.y*advance;if(offBoard(winner)||s.units.some(v=>v.x!==null&&v.id!==winner.id&&v.id!==loser.id&&gap(winner,v)<1-EPS)){winner.x=oldX;winner.y=oldY;out.caughtInGoodOrder=false;}else{out.movement.winner=advance;winner.engaged=loser.id;loser.engaged=winner.id;}}}else if(loser.x!==null){const advance=Math.min(chase,Math.max(0,retreat.moved-1)),oldX=winner.x,oldY=winner.y;winner.x+=retreat.dir.x*advance;winner.y+=retreat.dir.y*advance;if(offBoard(winner)||s.units.some(v=>v.x!==null&&v.id!==winner.id&&v.id!==loser.id&&gap(winner,v)<1-EPS)){winner.x=oldX;winner.y=oldY;}else out.movement.winner=advance;}}
-  if(pending.outcome==='break'&&loser.x!==null)loser.fleeing=true;
- }
- s.pendingCombat=null;s.lastCombat={...s.lastCombat,aftermath:out};s.combatHistory[s.combatHistory.length-1]=s.lastCombat;return out;
+ if(pending.outcome!=='overrun'){pending.stage='retreat';moveCombatLoser(s,random);}
+ return winnerCombat(s,choice,random,reformHeading);
 }

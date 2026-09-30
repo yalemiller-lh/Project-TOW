@@ -95,3 +95,6 @@ input[type=range]{accent-color:var(--army-primary)}.charge-step{background:var(-
 .magic-spell select,.magic-controls select,.magic-spell input{max-width:100%;padding:6px;border:1px solid #ac9271;border-radius:5px;background:#fffaf0}
 .magic-spell button{width:100%}
 .wizard-glyph{font-size:24px;fill:#ffe4a0;filter:drop-shadow(0 0 4px #ffbd36)}
+
+.combat-reform{margin-top:8px;padding:10px;border:1px solid var(--line)}.combat-reform label{display:flex;align-items:center;gap:8px;font-size:12px}.combat-reform input{max-width:70px}.combat-reform button{margin-top:8px}
+
