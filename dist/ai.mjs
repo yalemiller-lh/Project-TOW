@@ -19,7 +19,7 @@ const pose=(u,x,y)=>({...u,x,y,heading:180});
 function blocked(s,from,to,ignore){return s.units.some(v=>v.x!==null&&!ignore.includes(v.id)&&G.aliveCount(v)>0&&G.polygonGap([from,to],G.corners(v))<1e-6)||s.cannons.some(c=>c.x!==null&&!ignore.includes(c.id)&&G.polygonGap([from,to],G.corners(c))<1e-6);}
 const targetValue=t=>t.role==='missile'?1.3:t.role==='wizard'?.5:1;
 // Enemy units a shooter at this spot could hit: inside its front arc, within reach, clear line.
-function shots(s,shooter,reach){return s.units.filter(t=>t.team==='ash'&&t.x!==null).reduce((sum,t)=>{const dy=t.y-shooter.y,dx=t.x-shooter.x;return dy>0&&Math.abs(dx)<=dy+G.size(t).w/2&&G.gap(shooter,t)<=reach&&!blocked(s,{x:shooter.x,y:shooter.y},{x:t.x,y:t.y},[shooter.id,t.id])?sum+targetValue(t):sum;},0);}
+function shots(s,shooter,reach){return s.units.filter(t=>t.team==='ash'&&t.x!==null).reduce((sum,t)=>{const dy=t.y-shooter.y,dx=t.x-shooter.x;return (shooter.role==='warmachine'||dy>0&&Math.abs(dx)<=dy+G.size(t).w/2)&&G.gap(shooter,t)<=reach&&!blocked(s,{x:shooter.x,y:shooter.y},{x:t.x,y:t.y},[shooter.id,t.id])?sum+targetValue(t):sum;},0);}
 // How many currently clear bot fire lanes a footprint at this spot would cut.
 function lanesCut(s,candidate){let cut=0;for(const f of [...s.units.filter(u=>u.team==='iron'&&u.x!==null&&u.role==='missile'),...s.cannons.filter(c=>c.x!==null)])for(const t of s.units.filter(t=>t.team==='ash'&&t.x!==null)){const a={x:f.x,y:f.y},b={x:t.x,y:t.y};if(!blocked(s,a,b,[f.id,t.id])&&G.polygonGap([a,b],G.corners(candidate))<1e-6)cut++;}return cut;}
 function tryPlace(s,u,x,y){try{if(u.role==='warmachine')G.placeCannon(s,u.id,x,y);else G.place(s,u.id,x,y);return true;}catch{return false;}}

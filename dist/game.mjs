@@ -101,7 +101,7 @@ export function orderError(s,u,order){
       const pose=wheelPose(u,angle*i/steps);if(offBoard(pose))return 'The wheel would leave the battlefield.';
       const front=corners(pose).slice(0,2),sweep=hull([...previous,...front]);
       for(const v of s.units){if(v.id===u.id||v.x===null)continue;if(polygonGap(sweep,corners(v))<1.0001-EPS)return 'Another regiment blocks the leading edge of this wheel.';}
-      if(s.cannons.some(c=>c.x!==null&&polygonGap(sweep,cannonFootprint(c.x,c.y))<1.0001-EPS))return 'A cannon blocks the leading edge of this wheel.';
+      if(combatants(s).some(m=>m.role==='warmachine'&&m.x!==null&&polygonGap(sweep,corners(m))<1.0001-EPS))return 'A war machine blocks the leading edge of this wheel.';
       previous=front;
     }
   }
@@ -279,7 +279,7 @@ function directChargePlan(s,u,t){
  const end=forwardPose(after,Math.max(0,distance)),cost=wheelCost(angle,u)+Math.max(0,distance),plan={start:{...u},afterWheel:after,contact:end,end,angle,distance:Math.max(0,distance),wheelCost:wheelCost(angle,u),alignAngle:0,cost,face,target:t.id};
  if(cost>profile(u).M+6+EPS)return {...plan,error:`The wheel and approach exceed the maximum ${profile(u).M+6}″ charge range.`};
  if(offBoard(end))return {...plan,error:'Charge ends off the battlefield.'};
- const others=s.units.filter(v=>v.x!==null&&v.id!==u.id&&v.id!==t.id);
+ const others=combatants(s).filter(v=>v.x!==null&&v.id!==u.id&&v.id!==t.id);
  if(others.some(v=>gap(end,v)<1-EPS))return {...plan,error:'Another regiment blocks the contact position.'};
  const steps=Math.max(1,Math.ceil(Math.abs(angle)/.25));let prev=corners(u).slice(0,2);
  for(let i=1;i<=steps;i++){
@@ -301,7 +301,7 @@ export function chargePlan(s,u,t){
  const direct=directChargePlan(s,u,t);if(!direct.error)return direct;
  if(!u||!t||u.x===null||t.x===null||u.team===t.team||u.engaged||t.engaged||u.fleeing||u.rallied||gap(u,t)>profile(u).M+6+EPS||/front arc/.test(direct.error))return direct;
  const face=chargeFace(u,t),offset={front:0,rear:180,'left flank':-90,'right flank':90}[face],out=normalize(heading(t)+offset),desired=normalize(out+180),own=size(u),theirs=size(t),depth=face.includes('flank')?theirs.w:theirs.h,width=face.includes('flank')?theirs.h:theirs.w;
- const oa=rad(out),normal={x:Math.sin(oa),y:-Math.cos(oa)},right={x:Math.cos(oa),y:Math.sin(oa)},others=s.units.filter(v=>v.x!==null&&v.id!==u.id&&v.id!==t.id),limit=profile(u).M+6;
+ const oa=rad(out),normal={x:Math.sin(oa),y:-Math.cos(oa)},right={x:Math.cos(oa),y:Math.sin(oa)},others=combatants(s).filter(v=>v.x!==null&&v.id!==u.id&&v.id!==t.id),limit=profile(u).M+6;
  let best=null;
  for(let angle=-90;angle<=90;angle+=5){
   const after=Math.abs(angle)>EPS?wheelPose(u,angle):{...u},wheel=wheelCost(angle,u);if(wheel>=limit||offBoard(after))continue;
@@ -452,13 +452,14 @@ export function removeCasualties(s,u,count){
 // The Deathshrieker is a separately based war machine. Its three crew bases are
 // drawn beside it; this first war-machine pass does not put crew into melee.
 export function canFireRocket(s){return s.stage==='shooting'&&s.team==='ash'&&s.rocket.x!==null&&s.rocket.wounds>0&&!s.rocket.engaged&&!s.rocket.shot&&s.round>s.rocket.disabledUntil;}
+// The facing a war machine pivots to when it shoots at a point.
+function facingTo(from,to){return normalize(Math.atan2(to.x-from.x,-(to.y-from.y))*180/Math.PI);}
 export function rocketPlan(s,target,{indirect=false}={}){
  const r=s.rocket;if(r.x===null)return {error:'Deploy the launcher first.'};if(!target||target.x===null||target.team==='ash'||aliveCount(target)===0)return {error:'Choose a surviving enemy regiment.'};if(target.engaged)return {error:'Cannot target a regiment in combat.'};
- const distance=polygonGap(rocketFootprint(r.x,r.y),corners(target)),dx=target.x-r.x,dy=target.y-r.y;
+ const facing=facingTo(r,target),distance=polygonGap(corners({...r,heading:facing}),corners(target));
  if(distance<12-EPS||distance>48+EPS)return {error:'Target must be between 12″ and 48″ away.',distance};
- if(dy>=0||Math.abs(dx)>-dy+EPS)return {error:'Target is outside the launcher’s front arc.',distance};
  if(!indirect&&sightBlocked(s,r,target,{x:r.x,y:r.y},{x:target.x,y:target.y}))return {error:'Another regiment blocks line of sight. Choose Indirect Fire.',distance};
- return {target:target.id,distance,aim:{x:target.x,y:target.y},indirect};
+ return {target:target.id,distance,aim:{x:target.x,y:target.y},indirect,facing};
 }
 export function rocketTargets(s,options={}){if(!canFireRocket(s))return [];return s.units.filter(u=>u.team==='iron'&&u.x!==null&&aliveCount(u)>0).map(u=>({unit:u,...rocketPlan(s,u,options)}));}
 export function rollRocketDice(random=Math.random){const face=Math.floor(random()*6),hit=Math.floor(random()*3)===0,angle=Math.floor(random()*8)*45;return {artillery:face===5?'misfire':(face+1)*2,scatter:hit?'hit':angle,hitArrow:angle};}
@@ -475,7 +476,7 @@ export function fireRocket(s,targetId,profileKey,dice,random=Math.random,{indire
  const profile=ROCKET_PROFILES[profileKey],target=getUnit(s,targetId),plan=rocketPlan(s,target,{indirect});if(!profile)throw Error('Choose a rocket profile.');if(plan.error)throw Error(plan.error);
  if(!dice||!([2,4,6,8,10,'misfire'].includes(dice.artillery))||!(dice.scatter==='hit'||Number.isInteger(dice.scatter)&&dice.scatter>=0&&dice.scatter<360))throw Error('Roll valid Artillery and Scatter dice.');
  const report={profile:profileKey,from:'A5',target:targetId,aim:plan.aim,impact:null,template:profile.template,artillery:dice.artillery,scatter:dice.scatter,indirect,misfire:null,affected:[],hits:0,unsaved:0};
- s.rocket.shot=true;
+ s.rocket.shot=true;s.rocket.heading=plan.facing;
  if(dice.artillery==='misfire'){
   const result=rollD6(1,random)[0];report.misfire=result;
   if(result===1){s.rocket.wounds=0;s.rocket.x=null;s.rocket.y=null;s.rocket.crew=0;}
@@ -506,14 +507,13 @@ export function cannonPlan(s,id,target,{mode='ball',aimShort=6}={}){
  const c=s.cannons.find(c=>c.id===id);if(!c||c.x===null)return {error:'Deploy the Great Cannon first.'};
  if(!target||target.x===null||target.team!=='ash'||aliveCount(target)===0||target.engaged)return {error:'Choose a surviving enemy regiment outside combat.'};
  if(!['ball','grape'].includes(mode))return {error:'Choose cannonball or grapeshot.'};
- const distance=polygonGap(cannonFootprint(c.x,c.y),corners(target)),dx=target.x-c.x,dy=target.y-c.y,range=mode==='ball'?60:12;
+ const facing=facingTo(c,target),distance=polygonGap(corners({...c,heading:facing}),corners(target)),dx=target.x-c.x,dy=target.y-c.y,range=mode==='ball'?60:12;
  if(distance>range+EPS)return {error:`Target is beyond ${range}″ range.`,distance};
- if(dy<=0||Math.abs(dx)>dy+EPS)return {error:'Target is outside the cannon’s front arc.',distance};
  if(sightBlocked(s,c,target,{x:c.x,y:c.y},{x:target.x,y:target.y}))return {error:'Another regiment blocks line of sight.',distance};
  if(!Number.isFinite(aimShort)||aimShort<0||aimShort>10)return {error:'Aim from 0″ to 10″ short of the target.'};
  const length=Math.hypot(dx,dy),direction={x:dx/length,y:dy/length},aim={x:target.x-direction.x*aimShort,y:target.y-direction.y*aimShort};
  if(mode==='ball'&&(Math.hypot(aim.x-c.x,aim.y-c.y)>60+EPS||aim.y<0||aim.y>BOARD.height||aim.x<0||aim.x>BOARD.width||Math.hypot(aim.x-c.x,aim.y-c.y)<CANNON_BASE.h/2))return {error:'Choose an aim point on the battlefield within cannon range.'};
- return {id,target:target.id,distance,direction,aim,mode,aimShort};
+ return {id,target:target.id,distance,direction,aim,mode,aimShort,facing};
 }
 export function cannonTargets(s,id,options={}){if(!canFireCannon(s,id))return [];return s.units.filter(u=>u.team==='ash'&&u.x!==null&&aliveCount(u)>0).map(unit=>({unit,...cannonPlan(s,id,unit,options)}));}
 function cannonMisfire(s,c,random){const result=rollD6(1,random)[0];if(result===1){c.wounds=0;c.crew=0;c.x=null;c.y=null;}else if(result<=4){c.wounds--;c.crew=Math.min(c.crew,c.wounds);c.disabledUntil=s.round+1;if(c.wounds<=0){c.crew=0;c.x=null;c.y=null;}}return result;}
@@ -530,7 +530,7 @@ function cannonballCells(s,start,end,direction){const length=Math.hypot(end.x-st
 export function fireCannon(s,id,targetId,mode,dice,random=Math.random,{aimShort=6}={}){
  if(!canFireCannon(s,id))throw Error('This Great Cannon cannot fire in this Shooting phase.');const c=s.cannons.find(c=>c.id===id),target=getUnit(s,targetId),plan=cannonPlan(s,id,target,{mode,aimShort});if(plan.error)throw Error(plan.error);
  if(!ARTILLERY_FACES.includes(dice?.strike)||(mode==='ball'&&!ARTILLERY_FACES.includes(dice?.bounce)))throw Error('Roll valid Artillery dice.');
- const report={from:id,target:targetId,mode,aim:plan.aim,strike:null,end:null,artillery:dice.strike,bounce:mode==='ball'?dice.bounce:null,misfire:null,hits:0,unsaved:0,affected:[]};c.shot=true;
+ const report={from:id,target:targetId,mode,aim:plan.aim,strike:null,end:null,artillery:dice.strike,bounce:mode==='ball'?dice.bounce:null,misfire:null,hits:0,unsaved:0,affected:[]};c.shot=true;c.heading=plan.facing;
  if(dice.strike==='misfire'){report.misfire=cannonMisfire(s,c,random);c.lastShot=report;return report;}
  let cells=[];
  if(mode==='grape'){cells=Array.from({length:dice.strike},()=>({unit:target,model:null}));}
@@ -659,7 +659,7 @@ function retreatPose(s,u,enemy,distance,stopNear=true){
  for(let i=1;i<=Math.ceil(distance*20);i++){
   const d=Math.min(distance,i/20),pose={...u,x:start.x+dir.x*d,y:start.y+dir.y*d};
   if(offBoard(pose))return {moved,offBoard:true,dir};
-  const obstructed=s.units.some(v=>v.x!==null&&v.id!==u.id&&v.id!==enemy.id&&gap(pose,v)<(v.team===u.team?0:1)-EPS);
+  const obstructed=combatants(s).some(v=>v.x!==null&&v.id!==u.id&&v.id!==enemy.id&&gap(pose,v)<(v.team===u.team?0:1)-EPS);
   if(obstructed)break;
   Object.assign(u,{x:pose.x,y:pose.y});moved=d;
  }
@@ -673,7 +673,7 @@ function pursuitAdvance(s,winner,distance,dir,ignoredId,originalId){
    const r=rectangle(pose),edge=r.left<0?'left':r.right>BOARD.width?'right':r.top<0?'top':'bottom';
    winner.offBoardPursuit={edge,x:winner.x,y:winner.y};winner.x=null;winner.y=null;offBoardPursuit=true;break;
   }
-  const obstacle=s.units.find(v=>v.id!==winner.id&&v.id!==ignoredId&&v.x!==null&&aliveCount(v)>0&&(v.team===winner.team||v.engaged&&v.engaged!==winner.id?gap(pose,v)<1-EPS:gap(pose,v)<EPS));
+  const obstacle=combatants(s).find(v=>v.id!==winner.id&&v.id!==ignoredId&&v.x!==null&&aliveCount(v)>0&&(v.team===winner.team||v.engaged&&v.engaged!==winner.id?gap(pose,v)<1-EPS:gap(pose,v)<EPS));
   if(obstacle){
    if(obstacle.team!==winner.team&&!obstacle.engaged){
     Object.assign(winner,{x:pose.x,y:pose.y});moved=d;contact=obstacle.id;
