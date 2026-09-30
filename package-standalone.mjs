@@ -1,15 +1,21 @@
 import {readFileSync,writeFileSync} from 'node:fs';
-const html=readFileSync(new URL('./dist/index.html',import.meta.url),'utf8');
-const css=readFileSync(new URL('./dist/style.css',import.meta.url),'utf8').replace(/^@import[^;]+;\s*/, '');
-const game=readFileSync(new URL('./dist/game.mjs',import.meta.url),'utf8');
-const presentation=readFileSync(new URL('./dist/presentation.mjs',import.meta.url),'utf8');
-const ai=readFileSync(new URL('./dist/ai.mjs',import.meta.url),'utf8');
-const names=[...game.matchAll(/export (?:const|function) (\w+)/g)].map(m=>m[1]);
-const bundledGame=`const G=(()=>{${game.replace(/export /g,'')}\nreturn {${names.join(',')}};})();`;
-const presentationNames=[...presentation.matchAll(/export (?:const|function) (\w+)/g)].map(m=>m[1]);
-const bundledPresentation=`const P=(()=>{${presentation.replace(/export /g,'')}\nreturn {${presentationNames.join(',')}};})();`;
-const aiNames=[...ai.matchAll(/export (?:const|function) (\w+)/g)].map(m=>m[1]);
-const bundledAi=`const AI=(()=>{${ai.replace("import * as G from './game.mjs';",'').replace(/export /g,'')}\nreturn {${aiNames.join(',')}};})();`;
-const app=readFileSync(new URL('./dist/app.mjs',import.meta.url),'utf8').replace("import * as G from './game.mjs';",bundledGame).replace("import * as P from './presentation.mjs';",bundledPresentation).replace("import * as AI from './ai.mjs';",bundledAi);
+// Bundles dist/ into Play.html, a standalone offline game. Modules are listed in dependency
+// order; each becomes `const Alias=(()=>{...; return {exports};})();` and every module must import
+// the others as `import * as Alias from './file.mjs';` using the aliases below.
+const MODULES=[['F','formats.mjs'],['G','game.mjs'],['BM','battlemarch.mjs'],['P','presentation.mjs'],['AI','ai.mjs']];
+const read=file=>readFileSync(new URL('./dist/'+file,import.meta.url),'utf8');
+const aliasOf=Object.fromEntries(MODULES.map(([alias,file])=>[file,alias]));
+function stripImports(source,file){
+ return source.replace(/import \* as (\w+) from '\.\/([\w.-]+)';\s*/g,(_,alias,dep)=>{
+  if(aliasOf[dep]!==alias)throw Error(`${file} imports ${dep} as ${alias}; the bundle expects ${aliasOf[dep]??'no such module'}.`);
+  return '';
+ });
+}
+const bundle=MODULES.map(([alias,file])=>{
+ const source=stripImports(read(file),file),names=[...source.matchAll(/export (?:const|function) (\w+)/g)].map(m=>m[1]);
+ return `const ${alias}=(()=>{${source.replace(/export (?=const|function)/g,'')}\nreturn {${names.join(',')}};})();`;
+}).join('\n');
+const app=bundle+'\n'+stripImports(read('app.mjs'),'app.mjs');
+const html=read('index.html'),css=read('style.css').replace(/^@import[^;]+;\s*/,'');
 writeFileSync(new URL('./Play.html',import.meta.url),html.replace('<link rel="stylesheet" href="style.css">',()=>`<style>${css}</style>`).replace('<script type="module" src="app.mjs"></script>',()=>`<script>\n${app}\n</script>`));
 console.log('Created Play.html, a standalone offline game.');

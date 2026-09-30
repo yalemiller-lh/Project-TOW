@@ -1,3 +1,4 @@
+import * as F from './formats.mjs';
 export const BOARD={width:72,height:48,zone:12};
 export const ROCKET_PROFILES={demolition:{name:'Demolition Rockets',template:3,strength:3,centreStrength:6,ap:0,centreAp:3},incendiary:{name:'Infernal Incendiaries',template:5,strength:3,centreStrength:3,ap:0,centreAp:0}};
 export const ROCKET_BASE={w:50/25.4,h:75/25.4};
@@ -28,7 +29,7 @@ export const PHASES=['strategy','movement','shooting','combat'];
 export const armyName=(team,s)=>team==='ash'?'Chaos Dwarfs · Red':`${FACTIONS[s?.units.find(u=>u.team==='iron')?.faction??'chaos'].army} · ${s?.units.find(u=>u.team==='iron')?.faction==='orc'?'Green':'Blue'}`;
 const EPS=1e-8,rad=d=>d*Math.PI/180;
 export function createWizard(team,faction){return {id:team==='ash'?'A6':'I7',team,faction,role:'wizard',name:WIZARDS[faction].name,level:2,spells:[],castThisTurn:[],wounds:2,petrified:0,engineerUsed:false,x:null,y:null,heading:team==='ash'?0:180,moved:false,shot:false,spent:0,movementMode:null,marchRequired:null,marchTest:null,engaged:null,charge:null,impetuousTest:null,combatResolved:false,fleeing:false,rallyAttempted:false,rallied:false,deadModels:[]};}
-export function createGame(opponent='chaos'){if(!FACTIONS[opponent])throw Error('Unknown army.');const units=Array.from({length:8},(_,i)=>{const faction=i<4?'chaos':opponent,role=i%4===3?'missile':'infantry';return {id:(i<4?'A':'I')+(i%4+1),team:i<4?'ash':'iron',faction,role,name:role==='missile'?MISSILE[faction].name:FACTIONS[faction].name,x:null,y:null,heading:i<4?0:180,moved:false,shot:false,spent:0,movementMode:null,marchRequired:null,marchTest:null,engaged:null,charge:null,impetuousTest:null,combatResolved:false,fleeing:false,rallyAttempted:false,rallied:false,shieldwallUsed:false,deadModels:[]};});units.push(createWizard('ash','chaos'));if(opponent==='empire')units.push(createWizard('iron','empire'));return {stage:'deployment',team:'ash',round:1,selected:'A1',rocket:{id:'A5',name:'Deathshrieker Rocket Launcher',...machineFields('ash','chaos'),x:null,y:null,heading:0,wounds:3,crew:3,shot:false,disabledUntil:0,lastShot:null},cannons:createCannons(opponent),units,history:[],vortices:[],fatedDispelUsed:false};}
+export function createGame(opponent='chaos',{format='classic',board=null,points=null,deployment=null}={}){if(!FACTIONS[opponent])throw Error('Unknown army.');const fmt=F.format(format),field=F.boardFor(fmt,{board,points}),setup=deployment??(fmt.deployment?.map?{map:fmt.deployment.map,depth:fmt.deployment.depth}:null);const units=Array.from({length:8},(_,i)=>{const faction=i<4?'chaos':opponent,role=i%4===3?'missile':'infantry';return {id:(i<4?'A':'I')+(i%4+1),team:i<4?'ash':'iron',faction,role,name:role==='missile'?MISSILE[faction].name:FACTIONS[faction].name,x:null,y:null,heading:i<4?0:180,moved:false,shot:false,spent:0,movementMode:null,marchRequired:null,marchTest:null,engaged:null,charge:null,impetuousTest:null,combatResolved:false,fleeing:false,rallyAttempted:false,rallied:false,shieldwallUsed:false,deadModels:[]};});units.push(createWizard('ash','chaos'));if(opponent==='empire')units.push(createWizard('iron','empire'));return {stage:'deployment',team:'ash',round:1,selected:'A1',rocket:{id:'A5',name:'Deathshrieker Rocket Launcher',...machineFields('ash','chaos'),x:null,y:null,heading:0,wounds:3,crew:3,shot:false,disabledUntil:0,lastShot:null},cannons:createCannons(opponent),units,history:[],vortices:[],fatedDispelUsed:false,format:{id:fmt.id,name:fmt.name,rulesVersion:fmt.rulesVersion,points:fmt.points?(points??fmt.points.default):null,rounds:fmt.rounds,deployment:setup,resultPolicy:fmt.resultPolicy??null,optional:{...(fmt.optional??{})}},board:field,zones:F.deploymentZones(fmt,field,setup??{}),firstPlayer:'ash',turnLog:[]};}
 export function getUnit(s,id=s.selected){return s.units.find(u=>u.id===id)??(id!==undefined&&id!==null?combatants(s).find(u=>u.id===id):undefined);}
 export function heading(u){return u.heading??(u.team==='ash'?0:180);}
 export function normalize(a){return ((a%360)+360)%360;}
@@ -42,23 +43,44 @@ function inside(p,poly){if(poly.length<3)return false;let sign=0;for(let i=0;i<p
 export function polygonGap(a,b){if(inside(a[0],b)||inside(b[0],a))return 0;let best=Infinity;for(let i=0;i<a.length;i++)for(let j=0;j<b.length;j++){const p=a[i],q=a[(i+1)%a.length],r=b[j],s=b[(j+1)%b.length];if(intersects(p,q,r,s))return 0;best=Math.min(best,pointSegment(p,r,s),pointSegment(q,r,s),pointSegment(r,p,q),pointSegment(s,p,q));}return best;}
 function hull(points){const p=[...points].sort((a,b)=>a.x-b.x||a.y-b.y);const half=items=>{const out=[];for(const v of items){while(out.length>1&&cross(out.at(-2),out.at(-1),v)<=EPS)out.pop();out.push(v);}return out;};return [...half(p).slice(0,-1),...half([...p].reverse()).slice(0,-1)];}
 export function gap(a,b){return polygonGap(corners(a),corners(b));}
-function offBoard(u){const r=rectangle(u);return r.left< -EPS||r.right>BOARD.width+EPS||r.top< -EPS||r.bottom>BOARD.height+EPS;}
+export const boardOf=s=>s?.board??BOARD;
+function offBoard(u,s){const r=rectangle(u),b=boardOf(s);return r.left< -EPS||r.right>b.width+EPS||r.top< -EPS||r.bottom>b.height+EPS;}
+function withinPolygon(p,poly){let inside=false;for(let i=0,j=poly.length-1;i<poly.length;j=i++){const a=poly[i],b=poly[j];if(pointSegment(p,a,b)<1e-6)return true;if((a.y>p.y)!==(b.y>p.y)&&p.x<(b.x-a.x)*(p.y-a.y)/(b.y-a.y)+a.x)inside=!inside;}return inside;}
+export function zoneOf(s,team){return (s?.zones??F.deploymentZones('classic',BOARD))[team];}
+// A footprint is inside a zone (which may be concave) when every corner is inside it and no
+// zone corner pokes into the footprint.
+export function inZone(s,team,footprint){const zone=zoneOf(s,team);return footprint.every(p=>withinPolygon(p,zone))&&!zone.some(z=>inside(z,footprint)&&!footprint.some((p,i)=>pointSegment(z,p,footprint[(i+1)%footprint.length])<1e-6));}
+export function zoneBounds(s,team){const z=zoneOf(s,team);return {left:Math.min(...z.map(p=>p.x)),right:Math.max(...z.map(p=>p.x)),top:Math.min(...z.map(p=>p.y)),bottom:Math.max(...z.map(p=>p.y))};}
 function destroyUnit(u){Object.assign(u,{x:null,y:null,destroyed:true,fleeing:false,engaged:null});}
 export function checkPosition(state,unit,x,y,deployment=false){
   if(!Number.isFinite(x)||!Number.isFinite(y))return 'Enter valid coordinates.';
   const candidate={...unit,x,y},r=rectangle(candidate);
-  if(offBoard(candidate))return 'The whole regiment must stay on the battlefield.';
-  if(deployment&&((unit.team==='ash'&&r.top<36-EPS)||(unit.team==='iron'&&r.bottom>12+EPS)))return 'Keep the entire block inside its own 12″ deployment zone.';
+  if(offBoard(candidate,state))return 'The whole regiment must stay on the battlefield.';
+  if(deployment&&!inZone(state,unit.team,corners(candidate)))return 'Keep the entire block inside its own deployment zone.';
   if(state.units.some(u=>u.id!==unit.id&&u.x!==null&&gap(candidate,u)<1-EPS))return 'Keep at least 1″ between regiments.';
   if(state.rocket?.x!==null&&polygonGap(corners(candidate),rocketFootprint(state.rocket.x,state.rocket.y))<1-EPS)return 'Keep at least 1″ between regiments and the Deathshrieker.';
   if(state.cannons?.some(c=>c.x!==null&&polygonGap(corners(candidate),cannonFootprint(c.x,c.y))<1-EPS))return 'Keep at least 1″ between regiments and cannons.';
   return null;
 }
 export function place(s,id,x,y){if(s.stage!=='deployment')throw Error('Deployment is finished.');const u=getUnit(s,id);if(!u)throw Error('Unknown regiment.');const error=checkPosition(s,u,x,y,true);if(error)throw Error(error);Object.assign(u,{x,y});return u;}
-export function placeRocket(s,x,y){if(s.stage!=='deployment')throw Error('Deploy the launcher before battle.');if(!Number.isFinite(x)||!Number.isFinite(y))throw Error('Enter valid coordinates.');const r={left:x-ROCKET_BASE.w/2,right:x+ROCKET_BASE.w/2,top:y-ROCKET_BASE.h/2,bottom:y+ROCKET_BASE.h/2};if(r.left<0||r.right>BOARD.width||r.top<36||r.bottom>BOARD.height)throw Error('Keep the whole launcher in the red deployment zone.');const footprint=rocketFootprint(x,y);if(s.units.some(u=>u.x!==null&&polygonGap(corners(u),footprint)<1-EPS))throw Error('Keep the launcher at least 1″ from regiments.');Object.assign(s.rocket,{x,y});return s.rocket;}
-export function placeCannon(s,id,x,y){if(s.stage!=='deployment')throw Error('Deploy cannons before battle.');const cannon=s.cannons.find(c=>c.id===id);if(!cannon)throw Error('Choose an Empire cannon.');if(!Number.isFinite(x)||!Number.isFinite(y))throw Error('Enter valid coordinates.');const footprint=cannonFootprint(x,y),r={left:x-CANNON_BASE.w/2,right:x+CANNON_BASE.w/2,top:y-CANNON_BASE.h/2,bottom:y+CANNON_BASE.h/2};if(r.left<0||r.right>BOARD.width||r.top<0||r.bottom>12)throw Error('Keep the whole cannon in the blue deployment zone.');if(s.units.some(u=>u.x!==null&&polygonGap(corners(u),footprint)<1-EPS)||s.cannons.some(c=>c.id!==id&&c.x!==null&&polygonGap(cannonFootprint(c.x,c.y),footprint)<1-EPS))throw Error('Keep cannons at least 1″ from other units.');Object.assign(cannon,{x,y});return cannon;}
-export function autoDeploy(s,{team=null}={}){if(s.stage!=='deployment')throw Error('Deployment is finished.');s.units.forEach((u,i)=>{if(!team||u.team===team)Object.assign(u,{x:u.id==='A6'?3.5:u.id==='I7'?70:[18,36,54,64][i%4],y:u.team==='ash'?42:6});});if(!team||team==='ash')placeRocket(s,8,42);if(!team||team==='iron')for(const [i,c]of s.cannons.entries())placeCannon(s,c.id,[8,45][i],6);}
-export function begin(s,random=Math.random){if(s.stage!=='deployment')throw Error('The battle already started.');if(s.units.some(u=>u.x===null)||s.rocket.x===null||s.cannons.some(c=>c.x===null))throw Error('Deploy all units, the Deathshrieker, and Empire cannons before battle.');for(const u of s.units.filter(u=>u.role==='wizard'))u.spells=generateSpells(random);s.stage='strategy';s.selected='A1';s.team='ash';}
+export function placeRocket(s,x,y){if(s.stage!=='deployment')throw Error('Deploy the launcher before battle.');if(!Number.isFinite(x)||!Number.isFinite(y))throw Error('Enter valid coordinates.');if(!inZone(s,'ash',corners({...s.rocket,x,y})))throw Error('Keep the whole launcher in the red deployment zone.');const footprint=rocketFootprint(x,y);if(s.units.some(u=>u.x!==null&&polygonGap(corners(u),footprint)<1-EPS))throw Error('Keep the launcher at least 1″ from regiments.');Object.assign(s.rocket,{x,y});return s.rocket;}
+export function placeCannon(s,id,x,y){if(s.stage!=='deployment')throw Error('Deploy cannons before battle.');const cannon=s.cannons.find(c=>c.id===id);if(!cannon)throw Error('Choose an Empire cannon.');if(!Number.isFinite(x)||!Number.isFinite(y))throw Error('Enter valid coordinates.');const footprint=cannonFootprint(x,y);if(!inZone(s,'iron',corners({...cannon,x,y})))throw Error('Keep the whole cannon in the blue deployment zone.');if(s.units.some(u=>u.x!==null&&polygonGap(corners(u),footprint)<1-EPS)||s.cannons.some(c=>c.id!==id&&c.x!==null&&polygonGap(cannonFootprint(c.x,c.y),footprint)<1-EPS))throw Error('Keep cannons at least 1″ from other units.');Object.assign(cannon,{x,y});return cannon;}
+export function autoDeploy(s,{team=null}={}){if(s.stage!=='deployment')throw Error('Deployment is finished.');if((s.format?.id??'classic')!=='classic')return searchDeploy(s,team);s.units.forEach((u,i)=>{if(!team||u.team===team)Object.assign(u,{x:u.id==='A6'?3.5:u.id==='I7'?70:[18,36,54,64][i%4],y:u.team==='ash'?42:6});});if(!team||team==='ash')placeRocket(s,8,42);if(!team||team==='iron')for(const [i,c]of s.cannons.entries())placeCannon(s,c.id,[8,45][i],6);}
+// Spread each army across the middle of its zone, trying the nearest legal spots.
+function searchDeploy(s,team){
+ for(const side of team?[team]:['ash','iron']){
+  const pieces=[...s.units.filter(u=>u.team===side&&u.role!=='wizard'),...combatants(s).filter(m=>m.role==='warmachine'&&m.team===side),...s.units.filter(u=>u.team===side&&u.role==='wizard')];
+  for(const p of pieces){p.x=null;p.y=null;}
+  const b=zoneBounds(s,side),middle=(b.top+b.bottom)/2;
+  pieces.forEach((p,i)=>{
+   const ideal=b.left+(b.right-b.left)*(i+1)/(pieces.length+1),{h}=size(p),rows=[middle,b.top+h/2+.01,b.bottom-h/2-.01];
+   const xs=Array.from({length:Math.ceil((b.right-b.left)*2)+1},(_,k)=>b.left+k/2).sort((a,c)=>Math.abs(a-ideal)-Math.abs(c-ideal));
+   for(const y of rows)for(const x of xs){try{if(p.role==='warmachine'&&p.team==='ash')placeRocket(s,x,y);else if(p.role==='warmachine')placeCannon(s,p.id,x,y);else place(s,p.id,x,y);return;}catch{}}
+   throw Error(`No legal deployment space for ${p.name??p.id}.`);
+  });
+ }
+}
+export function begin(s,random=Math.random,{firstPlayer=null}={}){if(s.stage!=='deployment')throw Error('The battle already started.');if(s.units.some(u=>u.x===null)||s.rocket.x===null||s.cannons.some(c=>c.x===null))throw Error('Deploy all units, the Deathshrieker, and Empire cannons before battle.');for(const u of s.units.filter(u=>u.role==='wizard'))u.spells=generateSpells(random);s.firstPlayer=firstPlayer??s.firstPlayer??'ash';s.stage='strategy';s.team=s.firstPlayer;s.selected=s.units.find(u=>u.team===s.team)?.id;}
 export function canAct(s,u){return s.stage==='movement'&&u?.team===s.team&&aliveCount(u)>0&&!u.moved&&!u.engaged&&!u.charge&&!u.fleeing&&u.x!==null;}
 export function phaseComplete(s,u){if(s.stage==='deployment'||u.team!==s.team)return false;if(aliveCount(u)===0)return true;if(s.stage==='movement')return u.moved||!!u.engaged;if(s.stage==='shooting')return u.role!=='missile'||u.shot||!!u.engaged||u.fleeing;return true;}
 export function needsMarchTest(s,u){if(u.marchRequired!==null&&u.marchRequired!==undefined)return u.marchRequired;return s.units.some(v=>v.team!==u.team&&v.x!==null&&gap(u,v)<=8+EPS);}
@@ -98,7 +120,7 @@ export function orderError(s,u,order){
     // clearance covers the sagitta between 0.25-degree subdivisions of the curve.
     const steps=Math.ceil(Math.abs(angle)/.25);let previous=corners(u).slice(0,2);
     for(let i=1;i<=steps;i++){
-      const pose=wheelPose(u,angle*i/steps);if(offBoard(pose))return 'The wheel would leave the battlefield.';
+      const pose=wheelPose(u,angle*i/steps);if(offBoard(pose,s))return 'The wheel would leave the battlefield.';
       const front=corners(pose).slice(0,2),sweep=hull([...previous,...front]);
       for(const v of s.units){if(v.id===u.id||v.x===null)continue;if(polygonGap(sweep,corners(v))<1.0001-EPS)return 'Another regiment blocks the leading edge of this wheel.';}
       if(combatants(s).some(m=>m.role==='warmachine'&&m.x!==null&&polygonGap(sweep,corners(m))<1.0001-EPS))return 'A war machine blocks the leading edge of this wheel.';
@@ -114,8 +136,21 @@ export function movementError(s,u,distance,mode){return orderError(s,u,{kind:'ad
 export function move(s,id,distance,mode){return commitOrder(s,id,{kind:'advance',distance,mode,angle:0});}
 export function hold(s,id){const u=getUnit(s,id);if(!canAct(s,u))throw Error('This regiment cannot take orders now.');enterRemaining(s);remember(s,u);u.moved=true;}
 export function undo(s){if(s.stage!=='movement')throw Error('Undo is available during Movement only.');const last=s.history.pop();if(!last)throw Error('No move to undo this turn.');const u=getUnit(s,last.id);Object.assign(u,{x:last.x,y:last.y,heading:last.heading,moved:last.moved,spent:last.spent,movementMode:last.movementMode,marchRequired:last.marchRequired});s.selected=u.id;}
-export function nextTurn(s,random=Math.random){if(s.stage!=='combat')throw Error('Finish the Combat phase first.');s.stage='strategy';s.team=s.team==='ash'?'iron':'ash';if(s.team==='ash')s.round++;s.units.forEach(u=>{u.moved=false;u.shot=false;u.spent=0;u.movementMode=null;u.marchRequired=null;u.marchTest=null;if(u.pursuitPending&&u.engaged)u.pursuitPending=false;else u.charge=null;u.impetuousTest=null;u.combatResolved=false;u.rallyAttempted=false;u.arcaneUrgency=false;if(u.role==='wizard'){u.castThisTurn=[];u.magicExhausted=false;u.engineerUsed=false;if(u.team===s.team){u.oakenShield=false;u.ashStorm=false;}}if(u.arrowCurseCaster===s.team){u.arrowCurse=false;u.arrowCurseCaster=null;}});s.fatedDispelUsed=false;s.vortexReports=driftVortices(s,random);s.rocket.shot=false;s.rocket.lastShot=null;s.cannons.forEach(c=>{c.shot=false;c.lastShot=null;});s.history=[];s.selected=s.units.find(u=>u.team===s.team).id;}
-export function nextPhase(s){if(s.pendingSpell)throw Error('Resolve the dispel of the spell just cast first.');if(s.stage==='strategy'&&s.units.some(u=>u.team===s.team&&u.x!==null&&u.fleeing&&!u.rallyAttempted))throw Error('Attempt to rally every fleeing regiment first.');if(s.units.some(u=>u.charge?.status==='declared'))throw Error('Resolve all declared charges first.');if(s.stage==='combat'&&(s.combatSession||s.pendingCombat||combatPairs(s).length))throw Error('Resolve every combat and its outcome first.');const i=PHASES.indexOf(s.stage);if(i<0)throw Error('Begin the battle first.');s.movementReopened=false;s.movementHistory=i===1?s.history:i===2?s.movementHistory:null;if(i===3)nextTurn(s);else{s.stage=PHASES[i+1];s.history=[];if(s.stage==='movement'){s.movementStep='declare';if(!s.units.some(u=>u.team===s.team&&canAct(s,u)&&availableCharges(s,u).length))beginRemaining(s);}s.shootingSkipped=false;if(s.stage==='shooting'&&!phaseHasActions(s)){s.stage='combat';s.shootingSkipped=true;}if(s.stage==='combat')combatants(s).forEach(u=>u.combatResolved=false);}return s.stage;}
+// Format rules modules (such as Battle March objectives and scoring) register what happens at
+// the end of each player's turn and at the end of the game.
+const FORMAT_RULES={};
+export function registerFormatRules(id,rules){FORMAT_RULES[id]=rules;}
+function formatRules(s){const id=s.format?.id??'classic';if(id==='classic')return null;const rules=FORMAT_RULES[id];if(!rules)throw Error(`The rules module for "${id}" is not loaded.`);return rules;}
+// Runs once per player turn, even when empty phases were skipped; the last turn ends the game.
+export function endOfPlayerTurn(s,team=s.team){
+ const key=`${s.round}:${team}`;s.turnLog??=[];if(s.turnLog.includes(key))return false;s.turnLog.push(key);
+ formatRules(s)?.endOfTurn?.(s,team);
+ if(s.format?.rounds&&s.round>=s.format.rounds&&team!==s.firstPlayer)finishGame(s,'The final round is complete.');
+ return true;
+}
+export function finishGame(s,reason){if(s.stage==='finished')return s.result;s.stage='finished';s.pendingCombat=null;s.combatSession=null;s.result={reason,...(formatRules(s)?.endOfGame?.(s)??{})};return s.result;}
+export function nextTurn(s,random=Math.random){if(s.stage!=='combat')throw Error('Finish the Combat phase first.');endOfPlayerTurn(s,s.team);if(s.stage==='finished')return;s.stage='strategy';s.team=s.team==='ash'?'iron':'ash';if(s.team===(s.firstPlayer??'ash'))s.round++;s.units.forEach(u=>{u.moved=false;u.shot=false;u.spent=0;u.movementMode=null;u.marchRequired=null;u.marchTest=null;if(u.pursuitPending&&u.engaged)u.pursuitPending=false;else u.charge=null;u.impetuousTest=null;u.combatResolved=false;u.rallyAttempted=false;u.arcaneUrgency=false;if(u.role==='wizard'){u.castThisTurn=[];u.magicExhausted=false;u.engineerUsed=false;if(u.team===s.team){u.oakenShield=false;u.ashStorm=false;}}if(u.arrowCurseCaster===s.team){u.arrowCurse=false;u.arrowCurseCaster=null;}});s.fatedDispelUsed=false;s.vortexReports=driftVortices(s,random);s.rocket.shot=false;s.rocket.lastShot=null;s.cannons.forEach(c=>{c.shot=false;c.lastShot=null;});s.history=[];s.selected=s.units.find(u=>u.team===s.team).id;}
+export function nextPhase(s){if(s.stage==='finished')throw Error('The battle is over.');if(s.pendingSpell)throw Error('Resolve the dispel of the spell just cast first.');if(s.stage==='strategy'&&s.units.some(u=>u.team===s.team&&u.x!==null&&u.fleeing&&!u.rallyAttempted))throw Error('Attempt to rally every fleeing regiment first.');if(s.units.some(u=>u.charge?.status==='declared'))throw Error('Resolve all declared charges first.');if(s.stage==='combat'&&(s.combatSession||s.pendingCombat||combatPairs(s).length))throw Error('Resolve every combat and its outcome first.');const i=PHASES.indexOf(s.stage);if(i<0)throw Error('Begin the battle first.');s.movementReopened=false;s.movementHistory=i===1?s.history:i===2?s.movementHistory:null;if(i===3)nextTurn(s);else{s.stage=PHASES[i+1];s.history=[];if(s.stage==='movement'){s.movementStep='declare';if(!s.units.some(u=>u.team===s.team&&canAct(s,u)&&availableCharges(s,u).length))beginRemaining(s);}s.shootingSkipped=false;if(s.stage==='shooting'&&!phaseHasActions(s)){s.stage='combat';s.shootingSkipped=true;}if(s.stage==='combat')combatants(s).forEach(u=>u.combatResolved=false);}return s.stage;}
 // Movement can be reopened until the active army acts in Shooting (or, when Shooting
 // was skipped, in Combat). Its undo history is kept so the last moves can be taken back.
 function castIn(s,phase){return s.units.some(u=>u.team===s.team&&u.role==='wizard'&&u.castThisTurn.some(key=>BATTLE_MAGIC[key]?.phase===phase));}
@@ -126,7 +161,7 @@ export function canReturnToMovement(s){
 }
 export function returnToMovement(s){if(!canReturnToMovement(s))throw Error('Movement can only be reopened before anything happens in Shooting or Combat.');Object.assign(s,{stage:'movement',movementStep:'remaining',history:s.movementHistory??[],movementHistory:null,movementReopened:true,shootingSkipped:false});return s.stage;}
 export function phaseHasActions(s){
- if(s.stage==='deployment'||s.pendingSpell)return true;
+ if(s.stage==='deployment'||s.stage==='finished'||s.pendingSpell)return true;
  const active=s.units.filter(u=>u.team===s.team&&u.x!==null&&aliveCount(u)>0);
  const spells=phase=>active.some(u=>u.role==='wizard'&&u.spells.some(key=>BATTLE_MAGIC[key]?.phase===phase&&spellTargets(s,u.id,key).some(t=>canCast(s,u.id,key,t.id))));
  if(s.stage==='strategy')return active.some(u=>u.fleeing&&!u.rallyAttempted)||spells('strategy')||s.round===1&&active.some(u=>u.role==='wizard'&&!u.castThisTurn.length&&u.spells.some(key=>SPELL_ROLL.includes(key))&&!u.spells.some(key=>['hammerhand','hashutCurse','ashStorm','hashutFlames'].includes(key)));
@@ -172,7 +207,7 @@ export function castSpell(s,id,key,targetId,random=Math.random,{dispel='none',di
  const report=attemptSpell(s,id,key,targetId,random,{point});if(!report.pending)return report;
  return resolveDispel(s,dispel==='wizard'?dispeller??dispelOptions(s).wizards[0].id:dispel,random);
 }
-export function attemptSpell(s,id,key,targetId,random=Math.random,{point=null}={}){if(!canCast(s,id,key,targetId))throw Error('This spell cannot be cast on that target now.');const u=getUnit(s,id),t=getUnit(s,targetId),spell=BATTLE_MAGIC[key];if(key==='pillar'&&point&&(!Number.isFinite(point.x)||!Number.isFinite(point.y)||Math.hypot(point.x-u.x,point.y-u.y)>12+EPS||point.x<1.5||point.x>BOARD.width-1.5||point.y<1.5||point.y>BOARD.height-1.5))throw Error('Place the 3″ Pillar within 12″ of the caster and on the battlefield.');const dice=rollD6(2,random),casting=dice[0]+dice[1]+Math.ceil(u.level/2)-(t.role==='wizard'&&t.faction==='empire'&&t.id!==id?1:0),report={caster:id,spell:key,target:targetId,dice,casting,cast:false,dispel:null,effect:null};u.castThisTurn.push(key);if(key==='pillar')s.vortices=s.vortices.filter(v=>v.caster!==id);if(dice[0]===1&&dice[1]===1){report.miscast=miscast(s,u,random);if(!report.miscast.cast)return report;report.casting=spell.cast;}else if(casting<spell.cast&&!(dice[0]===6&&dice[1]===6))return report;report.cast=true;
+export function attemptSpell(s,id,key,targetId,random=Math.random,{point=null}={}){if(!canCast(s,id,key,targetId))throw Error('This spell cannot be cast on that target now.');const u=getUnit(s,id),t=getUnit(s,targetId),spell=BATTLE_MAGIC[key];if(key==='pillar'&&point&&(!Number.isFinite(point.x)||!Number.isFinite(point.y)||Math.hypot(point.x-u.x,point.y-u.y)>12+EPS||point.x<1.5||point.x>boardOf(s).width-1.5||point.y<1.5||point.y>boardOf(s).height-1.5))throw Error('Place the 3″ Pillar within 12″ of the caster and on the battlefield.');const dice=rollD6(2,random),casting=dice[0]+dice[1]+Math.ceil(u.level/2)-(t.role==='wizard'&&t.faction==='empire'&&t.id!==id?1:0),report={caster:id,spell:key,target:targetId,dice,casting,cast:false,dispel:null,effect:null};u.castThisTurn.push(key);if(key==='pillar')s.vortices=s.vortices.filter(v=>v.caster!==id);if(dice[0]===1&&dice[1]===1){report.miscast=miscast(s,u,random);if(!report.miscast.cast)return report;report.casting=spell.cast;}else if(casting<spell.cast&&!(dice[0]===6&&dice[1]===6))return report;report.cast=true;
  report.perfect=dice[0]===6&&dice[1]===6||!!report.miscast?.undispellable;
  s.pendingSpell={caster:id,key,target:targetId,point,report};const options=dispelOptions(s);
  if(!report.perfect&&(options.wizards.length||options.fated)){report.pending=true;return report;}
@@ -207,7 +242,7 @@ function applySpell(s,{caster:id,key,target:targetId,point,report},random){const
  else if(key==='urgency'){t.moved=false;t.spent=0;t.movementMode=null;t.charge=null;t.arcaneUrgency=true;report.effect={moveAgain:true};}
  else if(key==='pillar'){const p=point??{x:t.x,y:t.y};s.vortices=s.vortices.filter(v=>v.caster!==id);s.vortices.push({caster:id,x:p.x,y:p.y,radius:1.5});report.effect={point:p};}
  return report;}
-export function driftVortices(s,random=Math.random){const reports=[];for(const v of s.vortices){const angle=Math.floor(random()*8)*Math.PI/4,distance=rollD6(1,random)[0],from={x:v.x,y:v.y};v.x+=Math.sin(angle)*distance;v.y-=Math.cos(angle)*distance;const affected=[];for(const u of s.units.filter(u=>u.x!==null&&u.team!==getUnit(s,v.caster)?.team)){const a={x:from.x,y:from.y},b={x:v.x,y:v.y},dx=b.x-a.x,dy=b.y-a.y,q=dx*dx+dy*dy,p=q?Math.max(0,Math.min(1,((u.x-a.x)*dx+(u.y-a.y)*dy)/q)):0;if(Math.hypot(u.x-a.x-p*dx,u.y-a.y-p*dy)<=1.5+Math.max(size(u).w,size(u).h)/2)affected.push({id:u.id,...magicDamage(s,u,Math.ceil(rollD6(1,random)[0]/2)+3,3,2,random,true)});}reports.push({caster:v.caster,from,to:{x:v.x,y:v.y},distance,affected});}s.vortices=s.vortices.filter(v=>v.x>=-1.5&&v.x<=BOARD.width+1.5&&v.y>=-1.5&&v.y<=BOARD.height+1.5&&getUnit(s,v.caster)?.x!==null);return reports;}
+export function driftVortices(s,random=Math.random){const reports=[];for(const v of s.vortices){const angle=Math.floor(random()*8)*Math.PI/4,distance=rollD6(1,random)[0],from={x:v.x,y:v.y};v.x+=Math.sin(angle)*distance;v.y-=Math.cos(angle)*distance;const affected=[];for(const u of s.units.filter(u=>u.x!==null&&u.team!==getUnit(s,v.caster)?.team)){const a={x:from.x,y:from.y},b={x:v.x,y:v.y},dx=b.x-a.x,dy=b.y-a.y,q=dx*dx+dy*dy,p=q?Math.max(0,Math.min(1,((u.x-a.x)*dx+(u.y-a.y)*dy)/q)):0;if(Math.hypot(u.x-a.x-p*dx,u.y-a.y-p*dy)<=1.5+Math.max(size(u).w,size(u).h)/2)affected.push({id:u.id,...magicDamage(s,u,Math.ceil(rollD6(1,random)[0]/2)+3,3,2,random,true)});}reports.push({caster:v.caster,from,to:{x:v.x,y:v.y},distance,affected});}s.vortices=s.vortices.filter(v=>v.x>=-1.5&&v.x<=boardOf(s).width+1.5&&v.y>=-1.5&&v.y<=boardOf(s).height+1.5&&getUnit(s,v.caster)?.x!==null);return reports;}
 export function vortexDispellers(s,casterId){const vortex=s.vortices.find(v=>v.caster===casterId);if(!vortex)return [];return s.units.filter(u=>u.role==='wizard'&&u.team!==getUnit(s,casterId)?.team&&u.x!==null&&aliveCount(u)>0&&!u.fleeing&&!u.engaged&&Math.hypot(u.x-vortex.x,u.y-vortex.y)<=(u.level>=3?24:18)+EPS);}
 export function canDispelVortex(s,casterId){return s.stage==='strategy'&&!s.pendingSpell&&s.vortices.some(v=>v.caster===casterId)&&getUnit(s,casterId)?.team!==s.team;}
 export function dispelVortex(s,casterId,random=Math.random,mode='wizard',dispellerId=null){const vortex=s.vortices.find(v=>v.caster===casterId);if(!vortex)throw Error('No Pillar of Fire remains in play.');if(!canDispelVortex(s,casterId))throw Error('Dispel a Remains in Play spell in your own Strategy phase (Conjuration).');if(!['wizard','fated'].includes(mode))throw Error('Choose a dispel method.');const wizard=mode==='wizard'?vortexDispellers(s,casterId).find(u=>!dispellerId||u.id===dispellerId):null;if(mode==='wizard'&&!wizard)throw Error('No opposing wizard is in dispel range.');if(mode==='fated'&&s.fatedDispelUsed)throw Error('Fated Dispel already used.');const dice=rollD6(2,random),double1=dice[0]===1&&dice[1]===1,total=dice[0]+dice[1]+(wizard?Math.ceil(wizard.level/2):0),success=!double1&&(dice[0]===6&&dice[1]===6||total>BATTLE_MAGIC.pillar.cast);if(mode==='fated')s.fatedDispelUsed=true;const result={mode,by:wizard?.id??null,dice,total,success};if(double1&&wizard)result.miscast=miscast(s,wizard,random);if(success)s.vortices=s.vortices.filter(v=>v!==vortex);return result;}
@@ -278,13 +313,13 @@ function directChargePlan(s,u,t){
  if(Math.abs(lateral)>Math.abs(own.w-targetWidth)/2+.02)return {error:'Line up the frontages first. Offset / closing-the-door charges are not supported yet.'};
  const end=forwardPose(after,Math.max(0,distance)),cost=wheelCost(angle,u)+Math.max(0,distance),plan={start:{...u},afterWheel:after,contact:end,end,angle,distance:Math.max(0,distance),wheelCost:wheelCost(angle,u),alignAngle:0,cost,face,target:t.id};
  if(cost>profile(u).M+6+EPS)return {...plan,error:`The wheel and approach exceed the maximum ${profile(u).M+6}″ charge range.`};
- if(offBoard(end))return {...plan,error:'Charge ends off the battlefield.'};
+ if(offBoard(end,s))return {...plan,error:'Charge ends off the battlefield.'};
  const others=combatants(s).filter(v=>v.x!==null&&v.id!==u.id&&v.id!==t.id);
  if(others.some(v=>gap(end,v)<1-EPS))return {...plan,error:'Another regiment blocks the contact position.'};
  const steps=Math.max(1,Math.ceil(Math.abs(angle)/.25));let prev=corners(u).slice(0,2);
  for(let i=1;i<=steps;i++){
   const pose=wheelPose(u,angle*i/steps),front=corners(pose).slice(0,2),sweep=hull([...prev,...front]);
-  if(offBoard(pose)||polygonGap(sweep,corners(t))<EPS||others.some(v=>polygonGap(sweep,corners(v))<1-EPS))return {...plan,error:'The charge wheel is obstructed.'};prev=front;
+  if(offBoard(pose,s)||polygonGap(sweep,corners(t))<EPS||others.some(v=>polygonGap(sweep,corners(v))<1-EPS))return {...plan,error:'The charge wheel is obstructed.'};prev=front;
  }
  const swept=hull([...corners(after),...corners(end)]);
  if(others.some(v=>polygonGap(swept,corners(v))<1-EPS))return {...plan,error:'Another regiment blocks the charge path.'};
@@ -304,18 +339,18 @@ export function chargePlan(s,u,t){
  const oa=rad(out),normal={x:Math.sin(oa),y:-Math.cos(oa)},right={x:Math.cos(oa),y:Math.sin(oa)},others=combatants(s).filter(v=>v.x!==null&&v.id!==u.id&&v.id!==t.id),limit=profile(u).M+6;
  let best=null;
  for(let angle=-90;angle<=90;angle+=5){
-  const after=Math.abs(angle)>EPS?wheelPose(u,angle):{...u},wheel=wheelCost(angle,u);if(wheel>=limit||offBoard(after))continue;
+  const after=Math.abs(angle)>EPS?wheelPose(u,angle):{...u},wheel=wheelCost(angle,u);if(wheel>=limit||offBoard(after,s))continue;
   let blocked=false,previous=corners(u).slice(0,2);
-  for(let i=1,n=Math.ceil(Math.abs(angle)/2);i<=n;i++){const pose=wheelPose(u,angle*i/n),front=corners(pose).slice(0,2),sweep=hull([...previous,...front]);if(offBoard(pose)||polygonGap(sweep,corners(t))<EPS||others.some(v=>polygonGap(sweep,corners(v))<1-EPS)){blocked=true;break;}previous=front;}
+  for(let i=1,n=Math.ceil(Math.abs(angle)/2);i<=n;i++){const pose=wheelPose(u,angle*i/n),front=corners(pose).slice(0,2),sweep=hull([...previous,...front]);if(offBoard(pose,s)||polygonGap(sweep,corners(t))<EPS||others.some(v=>polygonGap(sweep,corners(v))<1-EPS)){blocked=true;break;}previous=front;}
   if(blocked)continue;
   const remaining=limit-wheel;
   for(let d=.1;d<=remaining+.1;d+=.1){
-   const contact=forwardPose(after,Math.min(d,remaining));if(offBoard(contact)||others.some(v=>gap(contact,v)<1-EPS)){blocked=true;break;}
+   const contact=forwardPose(after,Math.min(d,remaining));if(offBoard(contact,s)||others.some(v=>gap(contact,v)<1-EPS)){blocked=true;break;}
    if(gap(contact,t)>.12)continue;
    if(chargeFace(contact,t)!==face)break;
    const end=alignedContact(contact,t,face);
    const alignAngle=((desired-heading(contact)+540)%360)-180;
-   if(Math.abs(alignAngle)>90+EPS||Math.hypot(end.x-contact.x,end.y-contact.y)>.2+2*own.w*Math.sin(rad(Math.abs(alignAngle))/2)||offBoard(end)||gap(end,t)>.02||others.some(v=>gap(end,v)<1-EPS))break;
+   if(Math.abs(alignAngle)>90+EPS||Math.hypot(end.x-contact.x,end.y-contact.y)>.2+2*own.w*Math.sin(rad(Math.abs(alignAngle))/2)||offBoard(end,s)||gap(end,t)>.02||others.some(v=>gap(end,v)<1-EPS))break;
    const swept=hull([...corners(after),...corners(contact)]);if(others.some(v=>polygonGap(swept,corners(v))<1-EPS))break;
    const plan={start:{...u},afterWheel:after,contact,end,angle,distance:Math.min(d,remaining),wheelCost:wheel,alignAngle,cost:wheel+Math.min(d,remaining),face,target:t.id};
    if(!best||plan.cost<best.cost)best=plan;break;
@@ -368,10 +403,10 @@ function beginRemaining(s){if(s.movementStep!=='remaining'){s.movementStep='rema
 function returnPursuers(s){
  for(const u of s.units.filter(u=>u.team===s.team&&u.offBoardPursuit)){
   const {edge,x,y}=u.offBoardPursuit,angle={top:180,bottom:0,left:90,right:270}[edge],depth=size(u).h/2;
-  for(let offset=0;offset<=BOARD.width+BOARD.height;offset+=.5){
+  for(let offset=0;offset<=boardOf(s).width+boardOf(s).height;offset+=.5){
    let found=false;
    for(const sign of offset===0?[1]:[1,-1]){
-    const along=(edge==='top'||edge==='bottom'?x:y)+offset*sign,pose={...u,heading:angle,x:edge==='left'?depth:edge==='right'?BOARD.width-depth:along,y:edge==='top'?depth:edge==='bottom'?BOARD.height-depth:along};
+    const along=(edge==='top'||edge==='bottom'?x:y)+offset*sign,pose={...u,heading:angle,x:edge==='left'?depth:edge==='right'?boardOf(s).width-depth:along,y:edge==='top'?depth:edge==='bottom'?boardOf(s).height-depth:along};
     if(checkPosition(s,pose,pose.x,pose.y))continue;
     Object.assign(u,{x:pose.x,y:pose.y,heading:angle,moved:true,offBoardPursuit:null});found=true;break;
    }
@@ -512,7 +547,7 @@ export function cannonPlan(s,id,target,{mode='ball',aimShort=6}={}){
  if(sightBlocked(s,c,target,{x:c.x,y:c.y},{x:target.x,y:target.y}))return {error:'Another regiment blocks line of sight.',distance};
  if(!Number.isFinite(aimShort)||aimShort<0||aimShort>10)return {error:'Aim from 0″ to 10″ short of the target.'};
  const length=Math.hypot(dx,dy),direction={x:dx/length,y:dy/length},aim={x:target.x-direction.x*aimShort,y:target.y-direction.y*aimShort};
- if(mode==='ball'&&(Math.hypot(aim.x-c.x,aim.y-c.y)>60+EPS||aim.y<0||aim.y>BOARD.height||aim.x<0||aim.x>BOARD.width||Math.hypot(aim.x-c.x,aim.y-c.y)<CANNON_BASE.h/2))return {error:'Choose an aim point on the battlefield within cannon range.'};
+ if(mode==='ball'&&(Math.hypot(aim.x-c.x,aim.y-c.y)>60+EPS||aim.y<0||aim.y>boardOf(s).height||aim.x<0||aim.x>boardOf(s).width||Math.hypot(aim.x-c.x,aim.y-c.y)<CANNON_BASE.h/2))return {error:'Choose an aim point on the battlefield within cannon range.'};
  return {id,target:target.id,distance,direction,aim,mode,aimShort,facing};
 }
 export function cannonTargets(s,id,options={}){if(!canFireCannon(s,id))return [];return s.units.filter(u=>u.team==='ash'&&u.x!==null&&aliveCount(u)>0).map(unit=>({unit,...cannonPlan(s,id,unit,options)}));}
@@ -624,9 +659,9 @@ export function chooseLoserAction(s,choice){
 function fleeMove(s,u,distance,random=Math.random,depth=0){
  const start={...u},others=combatants(s).filter(v=>v.id!==u.id&&v.x!==null&&aliveCount(v)>0);
  let travel=distance,end=forwardPose(start,travel);
- while(!offBoard(end)&&others.some(v=>gap(end,v)<1-EPS)){travel+=.05;end=forwardPose(start,travel);}
+ while(!offBoard(end,s)&&others.some(v=>gap(end,v)<1-EPS)){travel+=.05;end=forwardPose(start,travel);}
  const leave=forwardPose(start,Math.min(.02,travel)),path=hull([...corners(leave),...corners(end)]),crossed=others.filter(v=>polygonGap(path,corners(v))<EPS);
- const report={unit:u.id,distance:travel,passedThrough:crossed.map(v=>v.id),peril:[],panic:[],fledOffBoard:offBoard(end)};
+ const report={unit:u.id,distance:travel,passedThrough:crossed.map(v=>v.id),peril:[],panic:[],fledOffBoard:offBoard(end,s)};
  if(report.fledOffBoard)destroyUnit(u);
  else{
   const square=(pose,m)=>[[m.x,m.y],[m.x+m.size,m.y],[m.x+m.size,m.y+m.size],[m.x,m.y+m.size]].map(([x,y])=>localPoint(pose,x,y)),models=modelSquares(s,u).filter(m=>!m.dead);
@@ -658,7 +693,7 @@ function retreatPose(s,u,enemy,distance,stopNear=true){
  const dx=u.x-enemy.x,dy=u.y-enemy.y,len=Math.hypot(dx,dy)||1,dir={x:dx/len,y:dy/len},start={x:u.x,y:u.y};let moved=0;
  for(let i=1;i<=Math.ceil(distance*20);i++){
   const d=Math.min(distance,i/20),pose={...u,x:start.x+dir.x*d,y:start.y+dir.y*d};
-  if(offBoard(pose))return {moved,offBoard:true,dir};
+  if(offBoard(pose,s))return {moved,offBoard:true,dir};
   const obstructed=combatants(s).some(v=>v.x!==null&&v.id!==u.id&&v.id!==enemy.id&&gap(pose,v)<(v.team===u.team?0:1)-EPS);
   if(obstructed)break;
   Object.assign(u,{x:pose.x,y:pose.y});moved=d;
@@ -669,15 +704,15 @@ function pursuitAdvance(s,winner,distance,dir,ignoredId,originalId){
  const start={x:winner.x,y:winner.y};let moved=0,contact=null,blocked=false,offBoardPursuit=false;
  for(let i=1;i<=Math.ceil(distance*20);i++){
   const d=Math.min(distance,i/20),pose={...winner,x:start.x+dir.x*d,y:start.y+dir.y*d};
-  if(offBoard(pose)){
-   const r=rectangle(pose),edge=r.left<0?'left':r.right>BOARD.width?'right':r.top<0?'top':'bottom';
+  if(offBoard(pose,s)){
+   const r=rectangle(pose),edge=r.left<0?'left':r.right>boardOf(s).width?'right':r.top<0?'top':'bottom';
    winner.offBoardPursuit={edge,x:winner.x,y:winner.y};winner.x=null;winner.y=null;offBoardPursuit=true;break;
   }
   const obstacle=combatants(s).find(v=>v.id!==winner.id&&v.id!==ignoredId&&v.x!==null&&aliveCount(v)>0&&(v.team===winner.team||v.engaged&&v.engaged!==winner.id?gap(pose,v)<1-EPS:gap(pose,v)<EPS));
   if(obstacle){
    if(obstacle.team!==winner.team&&!obstacle.engaged){
     Object.assign(winner,{x:pose.x,y:pose.y});moved=d;contact=obstacle.id;
-    if(!obstacle.fleeing){const aligned=alignedContact(winner,obstacle);if(!offBoard(aligned)&&!s.units.some(v=>v.id!==winner.id&&v.id!==obstacle.id&&v.x!==null&&gap(aligned,v)<1-EPS))Object.assign(winner,{x:aligned.x,y:aligned.y,heading:aligned.heading});}
+    if(!obstacle.fleeing){const aligned=alignedContact(winner,obstacle);if(!offBoard(aligned,s)&&!s.units.some(v=>v.id!==winner.id&&v.id!==obstacle.id&&v.x!==null&&gap(aligned,v)<1-EPS))Object.assign(winner,{x:aligned.x,y:aligned.y,heading:aligned.heading});}
     if(obstacle.fleeing)destroyUnit(obstacle);
     else{winner.engaged=obstacle.id;obstacle.engaged=winner.id;if(obstacle.id!==originalId){winner.charge={target:obstacle.id,status:'success',distance:moved,face:chargeFace(winner,obstacle),pursuit:true};winner.pursuitPending=true;winner.combatResolved=obstacle.combatResolved=true;}}
    }else blocked=true;
