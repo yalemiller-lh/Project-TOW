@@ -71,3 +71,15 @@ test('an automatically skipped Shooting phase still lets Combat return to Moveme
 test('Movement cannot be reopened from Strategy or after a missile unit acts',()=>{
  const s=battle();assert.equal(G.canReturnToMovement(s),false);G.nextPhase(s);G.nextPhase(s);assert.equal(s.stage,'shooting');G.getUnit(s,'A4').shot=true;assert.equal(G.canReturnToMovement(s),false);
 });
+test('an overrun that contacts a fresh enemy at an angle wheels to align and counts as charging',()=>{
+ const {s,winner,loser}=combat(),fresh=G.getUnit(s,'I2');Object.assign(fresh,{x:19.5,y:10,heading:200});loser.x=null;loser.y=null;loser.destroyed=true;pending(s,winner,loser,'overrun',{destroyed:true,moved:0});
+ const out=G.winnerCombat(s,'follow',()=>.99);assert.equal(out.contact,'I2');assert.equal(winner.engaged,'I2');
+ assert.equal(G.heading(winner),20);assert.ok(G.gap(winner,fresh)<.02);assert.equal(winner.charge.face,'front');assert.equal(winner.charge.status,'success');
+});
+test('an overrun off the battlefield leaves the table and returns in its next Movement phase',()=>{
+ const {s,winner,loser}=combat();Object.assign(winner,{y:8});loser.x=null;loser.y=null;loser.destroyed=true;pending(s,winner,loser,'overrun',{destroyed:true,moved:0});
+ const out=G.winnerCombat(s,'follow-reform',()=>.99);assert.equal(out.leftTable,true);assert.equal(out.reform,undefined);assert.equal(winner.x,null);assert.ok(winner.offTable);
+ Object.assign(s,{team:'iron',stage:'strategy'});G.nextPhase(s);assert.equal(s.movementStep,'remaining');assert.equal(winner.x,null);
+ Object.assign(s,{team:'ash',stage:'strategy'});G.nextPhase(s);assert.equal(s.movementStep,'remaining');
+ assert.equal(G.heading(winner),180);assert.ok(Math.abs(winner.x-18)<.01);assert.ok(Math.abs(winner.y-G.SIZE.h/2)<.02);assert.equal(winner.offTable,null);assert.equal(winner.moved,true);assert.equal(G.canAct(s,winner),false);
+});

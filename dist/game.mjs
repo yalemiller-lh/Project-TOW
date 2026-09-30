@@ -115,7 +115,7 @@ export function move(s,id,distance,mode){return commitOrder(s,id,{kind:'advance'
 export function hold(s,id){const u=getUnit(s,id);if(!canAct(s,u))throw Error('This regiment cannot take orders now.');enterRemaining(s);remember(s,u);u.moved=true;}
 export function undo(s){if(s.stage!=='movement')throw Error('Undo is available during Movement only.');const last=s.history.pop();if(!last)throw Error('No move to undo this turn.');const u=getUnit(s,last.id);Object.assign(u,{x:last.x,y:last.y,heading:last.heading,moved:last.moved,spent:last.spent,movementMode:last.movementMode,marchRequired:last.marchRequired});s.selected=u.id;}
 export function nextTurn(s,random=Math.random){if(s.stage!=='combat')throw Error('Finish the Combat phase first.');s.stage='strategy';s.team=s.team==='ash'?'iron':'ash';if(s.team==='ash')s.round++;s.units.forEach(u=>{u.moved=false;u.shot=false;u.spent=0;u.movementMode=null;u.marchRequired=null;u.marchTest=null;if(u.pursuitPending&&u.engaged)u.pursuitPending=false;else u.charge=null;u.impetuousTest=null;u.combatResolved=false;u.rallyAttempted=false;u.arcaneUrgency=false;if(u.role==='wizard'){u.castThisTurn=[];u.magicExhausted=false;u.engineerUsed=false;if(u.team===s.team){u.oakenShield=false;u.ashStorm=false;}}if(u.arrowCurseCaster===s.team){u.arrowCurse=false;u.arrowCurseCaster=null;}});s.fatedDispelUsed=false;s.vortexReports=driftVortices(s,random);s.rocket.shot=false;s.rocket.lastShot=null;s.cannons.forEach(c=>{c.shot=false;c.lastShot=null;});s.history=[];s.selected=s.units.find(u=>u.team===s.team).id;}
-export function nextPhase(s){if(s.stage==='strategy'&&s.units.some(u=>u.team===s.team&&u.x!==null&&u.fleeing&&!u.rallyAttempted))throw Error('Attempt to rally every fleeing regiment first.');if(s.units.some(u=>u.charge?.status==='declared'))throw Error('Resolve all declared charges first.');if(s.stage==='combat'&&(s.combatSession||s.pendingCombat||combatPairs(s).length))throw Error('Resolve every combat and its outcome first.');const i=PHASES.indexOf(s.stage);if(i<0)throw Error('Begin the battle first.');s.movementReopened=false;s.movementHistory=i===1?s.history:i===2?s.movementHistory:null;if(i===3)nextTurn(s);else{s.stage=PHASES[i+1];s.history=[];if(s.stage==='movement')s.movementStep=s.units.some(u=>u.team===s.team&&canAct(s,u)&&availableCharges(s,u).length)?'declare':'remaining';s.shootingSkipped=false;if(s.stage==='shooting'&&!phaseHasActions(s)){s.stage='combat';s.shootingSkipped=true;}if(s.stage==='combat')combatants(s).forEach(u=>u.combatResolved=false);}return s.stage;}
+export function nextPhase(s){if(s.stage==='strategy'&&s.units.some(u=>u.team===s.team&&u.x!==null&&u.fleeing&&!u.rallyAttempted))throw Error('Attempt to rally every fleeing regiment first.');if(s.units.some(u=>u.charge?.status==='declared'))throw Error('Resolve all declared charges first.');if(s.stage==='combat'&&(s.combatSession||s.pendingCombat||combatPairs(s).length))throw Error('Resolve every combat and its outcome first.');const i=PHASES.indexOf(s.stage);if(i<0)throw Error('Begin the battle first.');s.movementReopened=false;s.movementHistory=i===1?s.history:i===2?s.movementHistory:null;if(i===3)nextTurn(s);else{s.stage=PHASES[i+1];s.history=[];if(s.stage==='movement'){s.movementStep='declare';if(!s.units.some(u=>u.team===s.team&&canAct(s,u)&&availableCharges(s,u).length))beginRemaining(s);}s.shootingSkipped=false;if(s.stage==='shooting'&&!phaseHasActions(s)){s.stage='combat';s.shootingSkipped=true;}if(s.stage==='combat')combatants(s).forEach(u=>u.combatResolved=false);}return s.stage;}
 // Movement can be reopened until the active army acts in Shooting (or, when Shooting
 // was skipped, in Combat). Its undo history is kept so the last moves can be taken back.
 function castIn(s,phase){return s.units.some(u=>u.team===s.team&&u.role==='wizard'&&u.castThisTurn.some(key=>BATTLE_MAGIC[key]?.phase===phase));}
@@ -254,6 +254,13 @@ function directChargePlan(s,u,t){
  if(others.some(v=>polygonGap(swept,corners(v))<1-EPS))return {...plan,error:'Another regiment blocks the charge path.'};
  return plan;
 }
+// The aligned pose after contact: flush against the face u meets, turned square to it and
+// slid no further than needed to keep maximum frontage (the free alignment wheel).
+function alignedContact(u,t,face=chargeFace(u,t)){
+ const out=normalize(heading(t)+{front:0,rear:180,'left flank':-90,'right flank':90}[face]),own=size(u),theirs=size(t),depth=face.includes('flank')?theirs.w:theirs.h,width=face.includes('flank')?theirs.h:theirs.w;
+ const oa=rad(out),normal={x:Math.sin(oa),y:-Math.cos(oa)},right={x:Math.cos(oa),y:Math.sin(oa)},lateral=(u.x-t.x)*right.x+(u.y-t.y)*right.y,limit=Math.abs(own.w-width)/2,centering=Math.max(-limit,Math.min(limit,lateral));
+ return {...u,x:t.x+normal.x*(own.h+depth)/2+right.x*centering,y:t.y+normal.y*(own.h+depth)/2+right.y*centering,heading:normalize(out+180)};
+}
 export function chargePlan(s,u,t){
  const direct=directChargePlan(s,u,t);if(!direct.error)return direct;
  if(!u||!t||u.x===null||t.x===null||u.team===t.team||u.engaged||t.engaged||u.fleeing||u.rallied||gap(u,t)>profile(u).M+6+EPS||/front arc/.test(direct.error))return direct;
@@ -270,8 +277,7 @@ export function chargePlan(s,u,t){
    const contact=forwardPose(after,Math.min(d,remaining));if(offBoard(contact)||others.some(v=>gap(contact,v)<1-EPS)){blocked=true;break;}
    if(gap(contact,t)>.12)continue;
    if(chargeFace(contact,t)!==face)break;
-   const rel={x:contact.x-t.x,y:contact.y-t.y},lateral=rel.x*right.x+rel.y*right.y,centering=Math.max(-Math.abs(own.w-width)/2,Math.min(Math.abs(own.w-width)/2,lateral));
-   const end={...u,x:t.x+normal.x*(own.h+depth)/2+right.x*centering,y:t.y+normal.y*(own.h+depth)/2+right.y*centering,heading:desired};
+   const end=alignedContact(contact,t,face);
    const alignAngle=((desired-heading(contact)+540)%360)-180;
    if(Math.abs(alignAngle)>90+EPS||Math.hypot(end.x-contact.x,end.y-contact.y)>.2+2*own.w*Math.sin(rad(Math.abs(alignAngle))/2)||offBoard(end)||gap(end,t)>.02||others.some(v=>gap(end,v)<1-EPS))break;
    const swept=hull([...corners(after),...corners(contact)]);if(others.some(v=>polygonGap(swept,corners(v))<1-EPS))break;
@@ -317,10 +323,29 @@ export function chargeReaction(s,chargerId,choice,random=Math.random){
 export function cancelCharge(s,id){if(s.movementStep!=='declare')throw Error('Declarations are locked after rolling begins.');const u=getUnit(s,id);if(u?.charge?.status==='declared'&&u.charge.reaction!=='pending')throw Error('A charge cannot be cancelled after its defender reacts.');if(u?.charge?.status==='declared')u.charge=null;}
 export function availableCharges(s,u){return combatants(s).filter(v=>v.team!==u.team&&v.x!==null&&aliveCount(v)>0&&!s.units.some(other=>other.id!==u.id&&other.charge?.status==='declared'&&other.charge.target===v.id)&&!chargePlan(s,u,v).error);}
 export function impetuousTest(s,id,dice){const u=getUnit(s,id);if(s.stage!=='movement'||s.movementStep!=='declare'||u?.team!==s.team||u.faction!=='orc'||u.impetuousTest!==null||!availableCharges(s,u).length)throw Error('Select an Orc Mob with an available charge.');if(!Array.isArray(dice)||dice.length!==2||dice.some(d=>!Number.isInteger(d)||d<1||d>6))throw Error('An Impetuous test requires two D6.');u.impetuousTest=dice[0]+dice[1]<=profile(u).Ld;return u.impetuousTest;}
-export function finishDeclarations(s){if(s.stage!=='movement'||s.movementStep!=='declare')throw Error('Not declaring charges.');if(s.units.some(u=>u.charge?.reaction==='pending'))throw Error('Choose every defender’s charge reaction first.');for(const u of s.units.filter(u=>u.team===s.team&&u.faction==='orc'&&!u.charge&&canAct(s,u)&&availableCharges(s,u).length)){if(u.impetuousTest===null)throw Error('Roll Impetuous for each Orc Mob able to charge.');if(u.impetuousTest===false)throw Error('An Impetuous Orc Mob must declare a charge.');}s.movementStep=s.units.some(u=>u.charge?.status==='declared')?'charges':'remaining';s.history=[];}
+export function finishDeclarations(s){if(s.stage!=='movement'||s.movementStep!=='declare')throw Error('Not declaring charges.');if(s.units.some(u=>u.charge?.reaction==='pending'))throw Error('Choose every defender’s charge reaction first.');for(const u of s.units.filter(u=>u.team===s.team&&u.faction==='orc'&&!u.charge&&canAct(s,u)&&availableCharges(s,u).length)){if(u.impetuousTest===null)throw Error('Roll Impetuous for each Orc Mob able to charge.');if(u.impetuousTest===false)throw Error('An Impetuous Orc Mob must declare a charge.');}if(s.units.some(u=>u.charge?.status==='declared'))s.movementStep='charges';else beginRemaining(s);s.history=[];}
 export function enterRemaining(s){
  if(s.units.some(u=>u.charge?.status==='declared'))throw Error('Resolve all declared charges before Remaining Moves.');
- s.movementStep='remaining';
+ beginRemaining(s);
+}
+function beginRemaining(s){if(s.movementStep!=='remaining'){s.movementStep='remaining';returnOffTable(s);}}
+// Place the unit just inside the edge it left by, facing into the battlefield, as near as
+// possible to its exit point. It counts as having moved this turn.
+function returnOffTable(s){
+ const back=[];
+ for(const u of s.units.filter(u=>u.team===s.team&&u.offTable&&!u.destroyed)){
+  const exit={...u,...u.offTable},r=rectangle(exit),{w,h}=size(u);
+  const edge=r.top<0?'top':r.bottom>BOARD.height?'bottom':r.left<0?'left':'right',faceIn={top:180,bottom:0,left:90,right:270}[edge];
+  const along=edge==='top'||edge==='bottom'?BOARD.width:BOARD.height,at=edge==='top'||edge==='bottom'?exit.x:exit.y;
+  const depth=h/2+.01,half=w/2;
+  for(let step=0;step<=2*along;step++){
+   const offset=(step%2?1:-1)*Math.ceil(step/2)*.5,c=Math.max(half,Math.min(along-half,at+offset));
+   const x=edge==='left'?depth:edge==='right'?BOARD.width-depth:c,y=edge==='top'?depth:edge==='bottom'?BOARD.height-depth:c,candidate={...u,x,y,heading:faceIn};
+   if(checkPosition(s,candidate,x,y))continue;
+   Object.assign(u,{x,y,heading:faceIn,offTable:null,moved:true});back.push(u.id);break;
+  }
+ }
+ return back;
 }
 export function resolveCharge(s,id,dice){
  const u=getUnit(s,id);if(s.stage!=='movement'||s.movementStep!=='charges'||u?.charge?.status!=='declared')throw Error('Select a declared charge to resolve.');
@@ -338,7 +363,7 @@ export function resolveCharge(s,id,dice){
  }
  Object.assign(u,{x:end.x,y:end.y,heading:heading(end),moved:true});
  u.charge={...u.charge,status:success?'success':'failed',dice:[...dice],roll,range,distance:travel,face:route?.face};s.history=[];
- if(!s.units.some(v=>v.charge?.status==='declared'))s.movementStep='remaining';
+ if(!s.units.some(v=>v.charge?.status==='declared'))beginRemaining(s);
  return {success,runDown:success&&fled,dice,roll,range,distance:travel,target:t.id,reason:p.error??null};
 }
 
@@ -566,17 +591,18 @@ function retreatPose(s,u,enemy,distance,stopNear=true){
  }
  return {moved,offBoard:false,dir};
 }
-function pursuitAdvance(s,winner,distance,dir,ignoredId,originalId){
+function pursuitAdvance(s,winner,distance,dir,ignoredId,originalId,{leaveTable=false}={}){
  const start={x:winner.x,y:winner.y};let moved=0,contact=null,blocked=false;
  for(let i=1;i<=Math.ceil(distance*20);i++){
   const d=Math.min(distance,i/20),pose={...winner,x:start.x+dir.x*d,y:start.y+dir.y*d};
-  if(offBoard(pose)){blocked=true;break;}
+  if(offBoard(pose)){if(!leaveTable){blocked=true;break;}winner.offTable={x:pose.x,y:pose.y,heading:heading(winner)};Object.assign(winner,{x:null,y:null});return {distance:d,contact:null,blocked:false,leftTable:true};}
   const obstacle=s.units.find(v=>v.id!==winner.id&&v.id!==ignoredId&&v.x!==null&&aliveCount(v)>0&&(v.team===winner.team||v.engaged&&v.engaged!==winner.id?gap(pose,v)<1-EPS:gap(pose,v)<EPS));
   if(obstacle){
    if(obstacle.team!==winner.team&&!obstacle.engaged){
     Object.assign(winner,{x:pose.x,y:pose.y});moved=d;contact=obstacle.id;
+    if(!obstacle.fleeing){const aligned=alignedContact(winner,obstacle);if(!offBoard(aligned)&&!s.units.some(v=>v.id!==winner.id&&v.id!==obstacle.id&&v.x!==null&&gap(aligned,v)<1-EPS))Object.assign(winner,{x:aligned.x,y:aligned.y,heading:aligned.heading});}
     if(obstacle.fleeing)destroyUnit(obstacle);
-    else{winner.engaged=obstacle.id;obstacle.engaged=winner.id;if(obstacle.id!==originalId){winner.charge={target:obstacle.id,status:'success',distance:moved,face:chargeFace(obstacle,winner),pursuit:true};winner.pursuitPending=true;winner.combatResolved=obstacle.combatResolved=true;}}
+    else{winner.engaged=obstacle.id;obstacle.engaged=winner.id;if(obstacle.id!==originalId){winner.charge={target:obstacle.id,status:'success',distance:moved,face:chargeFace(winner,obstacle),pursuit:true};winner.pursuitPending=true;winner.combatResolved=obstacle.combatResolved=true;}}
    }else blocked=true;
    break;
   }
@@ -622,13 +648,13 @@ export function winnerCombat(s,choice='follow',random=Math.random,reformHeading=
   }
   if(advance>0){
    const dir=p.outcome==='overrun'?{x:Math.sin(rad(heading(winner))),y:-Math.cos(rad(heading(winner)))}:p.retreat.dir;
-   const moved=pursuitAdvance(s,winner,advance,dir,out.loserDestroyed?loser.id:null,loser.id);
-   out.movement.winner=moved.distance;out.contact=moved.contact;out.blocked=moved.blocked;
+   const moved=pursuitAdvance(s,winner,advance,dir,out.loserDestroyed?loser.id:null,loser.id,{leaveTable:p.outcome==='overrun'});
+   out.movement.winner=moved.distance;out.contact=moved.contact;out.blocked=moved.blocked;out.leftTable=!!moved.leftTable;
    if(out.caughtInGoodOrder&&moved.distance+EPS<advance)out.caughtInGoodOrder=false;
    if((p.outcome==='give-ground'||out.caughtInGoodOrder)&&loser.x!==null&&gap(winner,loser)<EPS){winner.engaged=loser.id;loser.engaged=winner.id;}
   }
  }
- if(choice==='follow-reform'&&out.loserDestroyed&&!out.contact){const dice=combatDice(2,random);out.rolls.reform=dice;if(dice[0]+dice[1]<=leadership(winner,'restraint'))reform();else out.reform={passed:false,heading:heading(winner),error:'Leadership test failed.'};}
+ if(choice==='follow-reform'&&out.loserDestroyed&&!out.contact&&!out.leftTable){const dice=combatDice(2,random);out.rolls.reform=dice;if(dice[0]+dice[1]<=leadership(winner,'restraint'))reform();else out.reform={passed:false,heading:heading(winner),error:'Leadership test failed.'};}
  if(p.outcome==='overrun')out.overrun=follow;
  s.pendingCombat=null;s.lastCombat={...s.lastCombat,aftermath:out};s.combatHistory[s.combatHistory.length-1]=s.lastCombat;return out;
 }
