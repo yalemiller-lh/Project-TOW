@@ -26,7 +26,8 @@ export function scoreRows(state,game){
  const opponent=state.units.find(u=>u.team==='iron')?.faction??'empire';
  return ['ash','iron'].map(team=>{
   const mine=state.units.filter(u=>u.team===team),enemy=state.units.filter(u=>u.team!==team),rocket=team==='ash';
-  return {team,name:team==='ash'?'Chaos Dwarfs':opponent==='orc'?'Orc & Goblin Tribes':'Empire of Man',faction:team==='ash'?'chaos':opponent,units:mine.filter(u=>!u.destroyed&&game.aliveCount(u)>0).length+(rocket&&state.rocket.wounds>0?1:0),models:mine.reduce((n,u)=>n+game.aliveCount(u),0)+(rocket&&state.rocket.wounds>0?state.rocket.crew:0),engaged:mine.filter(u=>u.engaged&&u.x!==null).length,vp:enemy.filter(u=>u.destroyed||u.fleeing).length*100};
+  const cannons=team==='iron'?state.cannons??[]:[],enemyCannons=team==='ash'?state.cannons??[]:[];
+  return {team,name:team==='ash'?'Chaos Dwarfs':opponent==='orc'?'Orc & Goblin Tribes':'Empire of Man',faction:team==='ash'?'chaos':opponent,units:mine.filter(u=>!u.destroyed&&game.aliveCount(u)>0).length+(rocket&&state.rocket.wounds>0?1:0)+cannons.filter(c=>c.wounds>0).length,models:mine.reduce((n,u)=>n+game.aliveCount(u),0)+(rocket&&state.rocket.wounds>0?state.rocket.crew:0)+cannons.reduce((n,c)=>n+(c.wounds>0?c.crew:0),0),engaged:mine.filter(u=>u.engaged&&u.x!==null).length,vp:(enemy.filter(u=>u.destroyed||u.fleeing).length+enemyCannons.filter(c=>c.wounds<=0).length)*100};
  });
 }
 export function substepIndex(state,uiSub=0){

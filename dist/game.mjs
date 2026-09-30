@@ -2,6 +2,9 @@ export const BOARD={width:72,height:48,zone:12};
 export const ROCKET_PROFILES={demolition:{name:'Demolition Rockets',template:3,strength:3,centreStrength:6,ap:0,centreAp:3},incendiary:{name:'Infernal Incendiaries',template:5,strength:3,centreStrength:3,ap:0,centreAp:0}};
 export const ROCKET_BASE={w:50/25.4,h:75/25.4};
 export function rocketFootprint(x,y){return [{x:x-ROCKET_BASE.w/2,y:y-ROCKET_BASE.h/2},{x:x+ROCKET_BASE.w/2,y:y-ROCKET_BASE.h/2},{x:x+ROCKET_BASE.w/2,y:y+ROCKET_BASE.h/2},{x:x-ROCKET_BASE.w/2,y:y+ROCKET_BASE.h/2}];}
+export const CANNON_BASE={w:50/25.4,h:75/25.4};
+export function cannonFootprint(x,y){return [{x:x-CANNON_BASE.w/2,y:y-CANNON_BASE.h/2},{x:x+CANNON_BASE.w/2,y:y-CANNON_BASE.h/2},{x:x+CANNON_BASE.w/2,y:y+CANNON_BASE.h/2},{x:x-CANNON_BASE.w/2,y:y+CANNON_BASE.h/2}];}
+export function createCannons(opponent){return opponent==='empire'?[1,2].map(n=>({id:'I'+(n+4),name:'Great Cannon '+('AB'[n-1]),x:null,y:null,heading:180,wounds:3,crew:3,shot:false,disabledUntil:0,lastShot:null})):[];}
 export const PROFILE={M:3,WS:4,BS:3,S:3,T:4,W:1,I:2,A:1,Ld:9,save:4};
 export const SIZE={w:125/25.4,h:100/25.4};
 export const FACTIONS={chaos:{name:'Chaos Dwarf Warriors',army:'Chaos Dwarfs',color:'#b63229',bright:'#ff3f39',base:25,equipment:'Hand weapons · heavy armour · shields',profile:PROFILE,heavy:true,shield:true,shieldwall:true,resolute:true},orc:{name:'Orc Mob',army:'Orc & Goblin Tribes',color:'#418248',bright:'#54ef53',base:30,equipment:'Hand weapons · light armour',profile:{M:4,WS:3,BS:3,S:3,T:4,W:1,I:3,A:1,Ld:6,save:6},choppas:true,furious:true,warband:true,impetuous:true},empire:{name:'State Troops',army:'Empire of Man',color:'#286a9a',bright:'#32aaff',base:25,equipment:'Hand weapons · light armour · shields',profile:{M:4,WS:3,BS:3,S:3,T:3,W:1,I:3,A:1,Ld:7,save:5},shield:true}};
@@ -14,11 +17,11 @@ export const baseSize=u=>FACTIONS[u?.faction??'chaos'].base;
 export const COMMAND_SLOTS={1:'M',2:'S',3:'C'};
 export function commandAlive(u,role){const index=Number(Object.keys(COMMAND_SLOTS).find(i=>COMMAND_SLOTS[i]===role));return aliveCount(u)>0&&!(u.deadModels??[]).includes(index);}
 export function championProfile(u){return {...profile(u),A:u.role==='missile'&&u.faction==='empire'?1:2,BS:u.role==='missile'&&u.faction==='empire'?4:profile(u).BS,Ld:u.faction==='orc'?7:profile(u).Ld};}
-export function setOpponent(s,faction){if(s.stage!=='deployment')throw Error('Choose the opposing army before battle starts.');if(!['orc','empire','chaos'].includes(faction))throw Error('Unknown army.');for(const u of s.units.filter(u=>u.team==='iron')){u.faction=faction;u.name=u.role==='missile'?MISSILE[faction].name:FACTIONS[faction].name;u.x=null;u.y=null;}return faction;}
+export function setOpponent(s,faction){if(s.stage!=='deployment')throw Error('Choose the opposing army before battle starts.');if(!['orc','empire','chaos'].includes(faction))throw Error('Unknown army.');for(const u of s.units.filter(u=>u.team==='iron')){u.faction=faction;u.name=u.role==='missile'?MISSILE[faction].name:FACTIONS[faction].name;u.x=null;u.y=null;}s.cannons=createCannons(faction);return faction;}
 export const PHASES=['strategy','movement','shooting','combat'];
 export const armyName=(team,s)=>team==='ash'?'Chaos Dwarfs · Red':`${FACTIONS[s?.units.find(u=>u.team==='iron')?.faction??'chaos'].army} · ${s?.units.find(u=>u.team==='iron')?.faction==='orc'?'Green':'Blue'}`;
 const EPS=1e-8,rad=d=>d*Math.PI/180;
-export function createGame(opponent='chaos'){if(!FACTIONS[opponent])throw Error('Unknown army.');return {stage:'deployment',team:'ash',round:1,selected:'A1',rocket:{id:'A5',name:'Deathshrieker Rocket Launcher',x:null,y:null,heading:0,wounds:3,crew:3,shot:false,disabledUntil:0,lastShot:null},units:Array.from({length:8},(_,i)=>{const faction=i<4?'chaos':opponent,role=i%4===3?'missile':'infantry';return {id:(i<4?'A':'I')+(i%4+1),team:i<4?'ash':'iron',faction,role,name:role==='missile'?MISSILE[faction].name:FACTIONS[faction].name,x:null,y:null,heading:i<4?0:180,moved:false,shot:false,spent:0,movementMode:null,marchRequired:null,marchTest:null,engaged:null,charge:null,impetuousTest:null,combatResolved:false,fleeing:false,rallyAttempted:false,rallied:false,shieldwallUsed:false,deadModels:[]};}),history:[]};}
+export function createGame(opponent='chaos'){if(!FACTIONS[opponent])throw Error('Unknown army.');return {stage:'deployment',team:'ash',round:1,selected:'A1',rocket:{id:'A5',name:'Deathshrieker Rocket Launcher',x:null,y:null,heading:0,wounds:3,crew:3,shot:false,disabledUntil:0,lastShot:null},cannons:createCannons(opponent),units:Array.from({length:8},(_,i)=>{const faction=i<4?'chaos':opponent,role=i%4===3?'missile':'infantry';return {id:(i<4?'A':'I')+(i%4+1),team:i<4?'ash':'iron',faction,role,name:role==='missile'?MISSILE[faction].name:FACTIONS[faction].name,x:null,y:null,heading:i<4?0:180,moved:false,shot:false,spent:0,movementMode:null,marchRequired:null,marchTest:null,engaged:null,charge:null,impetuousTest:null,combatResolved:false,fleeing:false,rallyAttempted:false,rallied:false,shieldwallUsed:false,deadModels:[]};}),history:[]};}
 export function getUnit(s,id=s.selected){return s.units.find(u=>u.id===id);}
 export function heading(u){return u.heading??(u.team==='ash'?0:180);}
 export function normalize(a){return ((a%360)+360)%360;}
@@ -41,12 +44,14 @@ export function checkPosition(state,unit,x,y,deployment=false){
   if(deployment&&((unit.team==='ash'&&r.top<36-EPS)||(unit.team==='iron'&&r.bottom>12+EPS)))return 'Keep the entire block inside its own 12″ deployment zone.';
   if(state.units.some(u=>u.id!==unit.id&&u.x!==null&&gap(candidate,u)<1-EPS))return 'Keep at least 1″ between regiments.';
   if(state.rocket?.x!==null&&polygonGap(corners(candidate),rocketFootprint(state.rocket.x,state.rocket.y))<1-EPS)return 'Keep at least 1″ between regiments and the Deathshrieker.';
+  if(state.cannons?.some(c=>c.x!==null&&polygonGap(corners(candidate),cannonFootprint(c.x,c.y))<1-EPS))return 'Keep at least 1″ between regiments and cannons.';
   return null;
 }
 export function place(s,id,x,y){if(s.stage!=='deployment')throw Error('Deployment is finished.');const u=getUnit(s,id);if(!u)throw Error('Unknown regiment.');const error=checkPosition(s,u,x,y,true);if(error)throw Error(error);Object.assign(u,{x,y});return u;}
 export function placeRocket(s,x,y){if(s.stage!=='deployment')throw Error('Deploy the launcher before battle.');if(!Number.isFinite(x)||!Number.isFinite(y))throw Error('Enter valid coordinates.');const r={left:x-ROCKET_BASE.w/2,right:x+ROCKET_BASE.w/2,top:y-ROCKET_BASE.h/2,bottom:y+ROCKET_BASE.h/2};if(r.left<0||r.right>BOARD.width||r.top<36||r.bottom>BOARD.height)throw Error('Keep the whole launcher in the red deployment zone.');const footprint=rocketFootprint(x,y);if(s.units.some(u=>u.x!==null&&polygonGap(corners(u),footprint)<1-EPS))throw Error('Keep the launcher at least 1″ from regiments.');Object.assign(s.rocket,{x,y});return s.rocket;}
-export function autoDeploy(s){if(s.stage!=='deployment')throw Error('Deployment is finished.');s.units.forEach((u,i)=>Object.assign(u,{x:[18,36,54,64][i%4],y:u.team==='ash'?42:6}));placeRocket(s,8,42);}
-export function begin(s){if(s.stage!=='deployment')throw Error('The battle already started.');if(s.units.some(u=>u.x===null)||s.rocket.x===null)throw Error('Deploy all eight regiments and the Deathshrieker first.');s.stage='strategy';s.selected='A1';s.team='ash';}
+export function placeCannon(s,id,x,y){if(s.stage!=='deployment')throw Error('Deploy cannons before battle.');const cannon=s.cannons.find(c=>c.id===id);if(!cannon)throw Error('Choose an Empire cannon.');if(!Number.isFinite(x)||!Number.isFinite(y))throw Error('Enter valid coordinates.');const footprint=cannonFootprint(x,y),r={left:x-CANNON_BASE.w/2,right:x+CANNON_BASE.w/2,top:y-CANNON_BASE.h/2,bottom:y+CANNON_BASE.h/2};if(r.left<0||r.right>BOARD.width||r.top<0||r.bottom>12)throw Error('Keep the whole cannon in the blue deployment zone.');if(s.units.some(u=>u.x!==null&&polygonGap(corners(u),footprint)<1-EPS)||s.cannons.some(c=>c.id!==id&&c.x!==null&&polygonGap(cannonFootprint(c.x,c.y),footprint)<1-EPS))throw Error('Keep cannons at least 1″ from other units.');Object.assign(cannon,{x,y});return cannon;}
+export function autoDeploy(s){if(s.stage!=='deployment')throw Error('Deployment is finished.');s.units.forEach((u,i)=>Object.assign(u,{x:[18,36,54,64][i%4],y:u.team==='ash'?42:6}));placeRocket(s,8,42);for(const [i,c]of s.cannons.entries())placeCannon(s,c.id,[8,45][i],6);}
+export function begin(s){if(s.stage!=='deployment')throw Error('The battle already started.');if(s.units.some(u=>u.x===null)||s.rocket.x===null||s.cannons.some(c=>c.x===null))throw Error('Deploy all eight regiments, the Deathshrieker, and Empire cannons before battle.');s.stage='strategy';s.selected='A1';s.team='ash';}
 export function canAct(s,u){return s.stage==='movement'&&u?.team===s.team&&aliveCount(u)>0&&!u.moved&&!u.engaged&&!u.charge&&!u.fleeing&&u.x!==null;}
 export function phaseComplete(s,u){if(s.stage==='deployment'||u.team!==s.team)return false;if(aliveCount(u)===0)return true;if(s.stage==='movement')return u.moved||!!u.engaged;if(s.stage==='shooting')return u.role!=='missile'||u.shot||!!u.engaged||u.fleeing;return true;}
 export function needsMarchTest(s,u){if(u.marchRequired!==null&&u.marchRequired!==undefined)return u.marchRequired;return s.units.some(v=>v.team!==u.team&&v.x!==null&&gap(u,v)<=8+EPS);}
@@ -61,7 +66,7 @@ export function planMove(u,order){const kind=order.kind??'advance',mode=order.mo
   const end=kind==='pivot'?after:kind==='back'?forwardPose(after,-distance):kind==='side'?{...after,...localPoint(after,side*distance,0)}:forwardPose(after,distance);
   return {start:{...u},afterWheel:after,end,cost:cost+(kind==='pivot'?0:['back','side'].includes(kind)?2*distance:distance),wheelCost:kind==='wheel'?cost:0,allowance:mode==='march'?2*profile(u).M:profile(u).M,pivot,kind,mode,angle,distance,side};
 }
-function forwardError(s,u,start,end){const swept=hull([...corners(start),...corners(end)]);for(const v of s.units){if(v.id===u.id||v.x===null)continue;if(polygonGap(swept,corners(v))<1-EPS)return 'Another regiment blocks this path. Shorten the move.';}if(s.rocket?.x!==null&&polygonGap(swept,rocketFootprint(s.rocket.x,s.rocket.y))<1-EPS)return 'The Deathshrieker blocks this path. Shorten the move.';return null;}
+function forwardError(s,u,start,end){const swept=hull([...corners(start),...corners(end)]);for(const v of s.units){if(v.id===u.id||v.x===null)continue;if(polygonGap(swept,corners(v))<1-EPS)return 'Another regiment blocks this path. Shorten the move.';}if(s.rocket?.x!==null&&polygonGap(swept,rocketFootprint(s.rocket.x,s.rocket.y))<1-EPS)return 'The Deathshrieker blocks this path. Shorten the move.';if(s.cannons.some(c=>c.x!==null&&polygonGap(swept,cannonFootprint(c.x,c.y))<1-EPS))return 'A cannon blocks this path. Shorten the move.';return null;}
 export function orderError(s,u,order){
   if(!canAct(s,u))return 'Select an unmoved regiment from the active army.';
   const {kind='advance',mode='advance',angle=0,distance=0}=order;
@@ -87,6 +92,7 @@ export function orderError(s,u,order){
       const pose=wheelPose(u,angle*i/steps);if(offBoard(pose))return 'The wheel would leave the battlefield.';
       const front=corners(pose).slice(0,2),sweep=hull([...previous,...front]);
       for(const v of s.units){if(v.id===u.id||v.x===null)continue;if(polygonGap(sweep,corners(v))<1.0001-EPS)return 'Another regiment blocks the leading edge of this wheel.';}
+      if(s.cannons.some(c=>c.x!==null&&polygonGap(sweep,cannonFootprint(c.x,c.y))<1.0001-EPS))return 'A cannon blocks the leading edge of this wheel.';
       previous=front;
     }
   }
@@ -99,8 +105,8 @@ export function movementError(s,u,distance,mode){return orderError(s,u,{kind:'ad
 export function move(s,id,distance,mode){return commitOrder(s,id,{kind:'advance',distance,mode,angle:0});}
 export function hold(s,id){const u=getUnit(s,id);if(!canAct(s,u))throw Error('This regiment cannot take orders now.');enterRemaining(s);remember(s,u);u.moved=true;}
 export function undo(s){if(s.stage!=='movement')throw Error('Undo is available during Movement only.');const last=s.history.pop();if(!last)throw Error('No move to undo this turn.');const u=getUnit(s,last.id);Object.assign(u,{x:last.x,y:last.y,heading:last.heading,moved:last.moved,spent:last.spent,movementMode:last.movementMode,marchRequired:last.marchRequired});s.selected=u.id;}
-export function nextTurn(s){if(s.stage!=='combat')throw Error('Finish the Combat phase first.');s.stage='strategy';s.team=s.team==='ash'?'iron':'ash';if(s.team==='ash')s.round++;s.units.forEach(u=>{u.moved=false;u.shot=false;u.spent=0;u.movementMode=null;u.marchRequired=null;u.marchTest=null;u.charge=null;u.impetuousTest=null;u.combatResolved=false;u.rallyAttempted=false;});s.rocket.shot=false;s.rocket.lastShot=null;s.history=[];s.selected=s.units.find(u=>u.team===s.team).id;}
-export function nextPhase(s){if(s.stage==='strategy'&&s.units.some(u=>u.team===s.team&&u.x!==null&&u.fleeing&&!u.rallyAttempted))throw Error('Attempt to rally every fleeing regiment first.');if(s.units.some(u=>u.charge?.status==='declared'))throw Error('Resolve all declared charges first.');if(s.stage==='combat'&&(s.combatSession||s.pendingCombat||combatPairs(s).length))throw Error('Resolve every combat and its outcome first.');const i=PHASES.indexOf(s.stage);if(i<0)throw Error('Begin the battle first.');if(i===3)nextTurn(s);else{s.stage=PHASES[i+1];s.history=[];if(s.stage==='movement')s.movementStep=s.units.some(u=>u.team===s.team&&u.x!==null&&availableCharges(s,u).length)?'declare':'remaining';if(s.stage==='shooting'&&!availableShots(s).length&&!rocketTargets(s).some(t=>!t.error))s.stage='combat';if(s.stage==='combat')s.units.forEach(u=>u.combatResolved=false);}return s.stage;}
+export function nextTurn(s){if(s.stage!=='combat')throw Error('Finish the Combat phase first.');s.stage='strategy';s.team=s.team==='ash'?'iron':'ash';if(s.team==='ash')s.round++;s.units.forEach(u=>{u.moved=false;u.shot=false;u.spent=0;u.movementMode=null;u.marchRequired=null;u.marchTest=null;u.charge=null;u.impetuousTest=null;u.combatResolved=false;u.rallyAttempted=false;});s.rocket.shot=false;s.rocket.lastShot=null;s.cannons.forEach(c=>{c.shot=false;c.lastShot=null;});s.history=[];s.selected=s.units.find(u=>u.team===s.team).id;}
+export function nextPhase(s){if(s.stage==='strategy'&&s.units.some(u=>u.team===s.team&&u.x!==null&&u.fleeing&&!u.rallyAttempted))throw Error('Attempt to rally every fleeing regiment first.');if(s.units.some(u=>u.charge?.status==='declared'))throw Error('Resolve all declared charges first.');if(s.stage==='combat'&&(s.combatSession||s.pendingCombat||combatPairs(s).length))throw Error('Resolve every combat and its outcome first.');const i=PHASES.indexOf(s.stage);if(i<0)throw Error('Begin the battle first.');if(i===3)nextTurn(s);else{s.stage=PHASES[i+1];s.history=[];if(s.stage==='movement')s.movementStep=s.units.some(u=>u.team===s.team&&u.x!==null&&availableCharges(s,u).length)?'declare':'remaining';if(s.stage==='shooting'&&!availableShots(s).length&&!rocketTargets(s).some(t=>!t.error)&&!s.cannons.some(c=>canFireCannon(s,c.id)&&cannonTargets(s,c.id).some(t=>!t.error)))s.stage='combat';if(s.stage==='combat')s.units.forEach(u=>u.combatResolved=false);}return s.stage;}
 export function rally(s,id,random=Math.random){const u=getUnit(s,id);if(s.stage!=='strategy'||u?.team!==s.team||u.x===null||!u.fleeing||u.rallyAttempted)throw Error('Select a fleeing regiment in its own Strategy phase.');const dice=rollD6(2,random),success=dice[0]+dice[1]<=leadership(u,'rally');u.rallyAttempted=true;u.rallied=success;if(success)u.fleeing=false;return {id,dice,success};}
 export function rollD6(count,random=Math.random){if(!Number.isInteger(count)||count<1||count>20)throw Error('Choose 1 to 20 dice.');return Array.from({length:count},()=>1+Math.floor(random()*6));}
 
@@ -353,6 +359,48 @@ export function fireRocket(s,targetId,profileKey,dice,random=Math.random,{indire
   if(panic[0]+panic[1]>leadership(unit)){unit.fleeing=true;unit.moved=true;const away=Math.atan2(unit.x-s.rocket.x,-(unit.y-s.rocket.y))*180/Math.PI;unit.heading=normalize(away);const flee=rollD6(2,random);const end=forwardPose(unit,flee[0]+flee[1]),fledOffBoard=offBoard(end);if(fledOffBoard)destroyUnit(unit);else Object.assign(unit,{x:end.x,y:end.y});Object.assign(report.panic.at(-1),{fleeDice:flee,fledOffBoard});}
  }
  s.rocket.lastShot=report;return report;
+}
+const ARTILLERY_FACES=[2,4,6,8,10,'misfire'];
+export function rollCannonDice(random=Math.random){const face=()=>ARTILLERY_FACES[Math.floor(random()*6)];return {strike:face(),bounce:face()};}
+export function canFireCannon(s,id){const c=s.cannons.find(c=>c.id===id);return !!c&&s.stage==='shooting'&&s.team==='iron'&&c.x!==null&&c.wounds>0&&!c.shot&&s.round>c.disabledUntil;}
+export function cannonPlan(s,id,target,{mode='ball',aimShort=6}={}){
+ const c=s.cannons.find(c=>c.id===id);if(!c||c.x===null)return {error:'Deploy the Great Cannon first.'};
+ if(!target||target.x===null||target.team!=='ash'||aliveCount(target)===0||target.engaged)return {error:'Choose a surviving enemy regiment outside combat.'};
+ if(!['ball','grape'].includes(mode))return {error:'Choose cannonball or grapeshot.'};
+ const distance=polygonGap(cannonFootprint(c.x,c.y),corners(target)),dx=target.x-c.x,dy=target.y-c.y,range=mode==='ball'?60:12;
+ if(distance>range+EPS)return {error:`Target is beyond ${range}″ range.`,distance};
+ if(dy<=0||Math.abs(dx)>dy+EPS)return {error:'Target is outside the cannon’s front arc.',distance};
+ if(sightBlocked(s,c,target,{x:c.x,y:c.y},{x:target.x,y:target.y}))return {error:'Another regiment blocks line of sight.',distance};
+ if(!Number.isFinite(aimShort)||aimShort<0||aimShort>10)return {error:'Aim from 0″ to 10″ short of the target.'};
+ const length=Math.hypot(dx,dy),direction={x:dx/length,y:dy/length},aim={x:target.x-direction.x*aimShort,y:target.y-direction.y*aimShort};
+ if(mode==='ball'&&(Math.hypot(aim.x-c.x,aim.y-c.y)>60+EPS||aim.y<0||aim.y>BOARD.height||aim.x<0||aim.x>BOARD.width||Math.hypot(aim.x-c.x,aim.y-c.y)<CANNON_BASE.h/2))return {error:'Choose an aim point on the battlefield within cannon range.'};
+ return {id,target:target.id,distance,direction,aim,mode,aimShort};
+}
+export function cannonTargets(s,id,options={}){if(!canFireCannon(s,id))return [];return s.units.filter(u=>u.team==='ash'&&u.x!==null&&aliveCount(u)>0).map(unit=>({unit,...cannonPlan(s,id,unit,options)}));}
+function cannonMisfire(s,c,random){const result=rollD6(1,random)[0];if(result===1){c.wounds=0;c.crew=0;c.x=null;c.y=null;}else if(result<=4){c.wounds--;c.crew=Math.min(c.crew,c.wounds);c.disabledUntil=s.round+1;if(c.wounds<=0){c.crew=0;c.x=null;c.y=null;}}return result;}
+function cannonballCells(s,start,end,direction){const length=Math.hypot(end.x-start.x,end.y-start.y),hits=[];
+ for(const unit of s.units.filter(u=>u.x!==null&&aliveCount(u)>0))for(const model of modelSquares(s,unit).filter(m=>!m.dead)){
+  const poly=[[model.x,model.y],[model.x+model.size,model.y],[model.x+model.size,model.y+model.size],[model.x,model.y+model.size]].map(([x,y])=>localPoint(unit,x,y));
+  if(!inside(start,poly)&&!(length>EPS&&(inside(end,poly)||poly.some((p,i)=>intersects(start,end,p,poly[(i+1)%4])))))continue;
+  const centre=localPoint(unit,model.x+model.size/2,model.y+model.size/2),along=(centre.x-start.x)*direction.x+(centre.y-start.y)*direction.y;
+  const forward={x:Math.sin(rad(heading(unit))),y:-Math.cos(rad(heading(unit)))},front=Math.abs(forward.x*direction.x+forward.y*direction.y)>=.707;
+  hits.push({unit,model,along,rank:front?model.row:model.col});
+ }
+ const seen=new Set();return hits.sort((a,b)=>a.along-b.along).filter(hit=>{const key=hit.unit.id+':'+hit.rank;if(seen.has(key))return false;seen.add(key);return true;});
+}
+export function fireCannon(s,id,targetId,mode,dice,random=Math.random,{aimShort=6}={}){
+ if(!canFireCannon(s,id))throw Error('This Great Cannon cannot fire in this Shooting phase.');const c=s.cannons.find(c=>c.id===id),target=getUnit(s,targetId),plan=cannonPlan(s,id,target,{mode,aimShort});if(plan.error)throw Error(plan.error);
+ if(!ARTILLERY_FACES.includes(dice?.strike)||(mode==='ball'&&!ARTILLERY_FACES.includes(dice?.bounce)))throw Error('Roll valid Artillery dice.');
+ const report={from:id,target:targetId,mode,aim:plan.aim,strike:null,end:null,artillery:dice.strike,bounce:mode==='ball'?dice.bounce:null,misfire:null,hits:0,unsaved:0,affected:[]};c.shot=true;
+ if(dice.strike==='misfire'){report.misfire=cannonMisfire(s,c,random);c.lastShot=report;return report;}
+ let cells=[];
+ if(mode==='grape'){cells=Array.from({length:dice.strike},()=>({unit:target,model:null}));}
+ else{report.strike={x:plan.aim.x+plan.direction.x*dice.strike,y:plan.aim.y+plan.direction.y*dice.strike};const bounce=dice.bounce==='misfire'?0:dice.bounce;report.end={x:report.strike.x+plan.direction.x*bounce,y:report.strike.y+plan.direction.y*bounce};cells=cannonballCells(s,report.strike,report.end,plan.direction);}
+ for(const cell of cells){if(aliveCount(cell.unit)===0)continue;report.hits++;const strength=mode==='grape'?4:10,ap=mode==='grape'?1:3,woundRoll=rollD6(1,random)[0],toWound=Math.max(2,Math.min(6,4+profile(cell.unit).T-strength)),saveRoll=woundRoll>=toWound?rollD6(1,random)[0]:null,toSave=Math.max(2,Math.min(7,profileOfSave(cell.unit)+ap)),slain=saveRoll!==null&&saveRoll<toSave;
+  report.affected.push({unit:cell.unit.id,model:cell.model?.index??null,woundRoll,saveRoll,toWound,toSave,slain});
+  if(slain){removeCasualties(s,cell.unit,1);report.unsaved++;if(aliveCount(cell.unit)===0){if(cell.unit.engaged)getUnit(s,cell.unit.engaged).engaged=null;destroyUnit(cell.unit);}}
+ }
+ c.lastShot=report;return report;
 }
 function GprofileT(u){return profile(u).T;}
 function profileOfSave(u){return profile(u).save-(u.role!=='missile'&&FACTIONS[u.faction].shield?1:0);}

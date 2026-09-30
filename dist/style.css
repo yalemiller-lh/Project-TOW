@@ -59,3 +59,14 @@ body{padding-right:340px;background:#e8e0c8;color:#302c22}.topbar{margin:10px 18
 input[type=range]{accent-color:var(--army-primary)}.charge-step{background:var(--army-primary)}.combat-controls .primary{background:var(--army-primary);color:#fff8e7}.dice-animation.rolling{border-color:var(--army-primary)}.unit-orders .segmented button[aria-pressed=true]{background:var(--army-primary);color:#fff8e7}
 .dice-animation .animated-die{font-size:var(--dice-size,52px)}.dice-animation:not(.rolling) .animated-die{color:var(--army-primary);background:var(--army-soft);outline:2px solid var(--army-primary);border-radius:4px}.dice-animation .animated-dice{max-height:170px}.dice-animation{min-width:150px;max-width:min(380px,60%)}
 #movementInches{gap:0}.inch-cell{border:1px solid #535b3c;border-right:0;box-shadow:none}.inch-cell:last-child{border-right:1px solid #535b3c}
+/* Empire Great Cannons and their shooting orders. */
+.cannon-unit{cursor:pointer}.cannon-unit:focus-visible{outline:none;filter:drop-shadow(0 0 6px #fff1a6)}
+.cannon-unit.selected .cannon-base{stroke:#f7db8e;stroke-width:4}.cannon-unit.fired{opacity:.72}
+.cannon-base{fill:#34576d;stroke:#152d3b;stroke-width:2}.cannon-wheel{fill:#30342d;stroke:#bb9d63;stroke-width:2}
+.cannon-barrel{fill:#4a5051;stroke:#161f20;stroke-width:2}.cannon-muzzle{fill:#171e1d;stroke:#878e87;stroke-width:2}
+.cannon-crew{fill:#3e88ae;stroke:#e0ce9c;stroke-width:1.5}.cannon-label{color:#d5edff}
+.cannon-aim-line{stroke:#e3f5ff;stroke-width:2.5;stroke-dasharray:6 5;pointer-events:none}
+.cannon-impact-line{stroke:#ffe49f;stroke-width:3;stroke-dasharray:4 3;pointer-events:none}
+.cannon-aim-point{fill:#d1eafa;stroke:#23445a;stroke-width:2;pointer-events:none}.cannon-aim-point.impact{fill:#ffd579}
+.cannon-orders .rocket-profiles button[aria-pressed=true]{background:#2c5974;color:#fff;border-color:#7299ab}
+#cannonReport{margin-top:9px;font:12px/1.45 Georgia,serif;color:#264356;border-top:1px solid #92917b;padding-top:8px}
