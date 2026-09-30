@@ -1,5 +1,17 @@
 import assert from 'node:assert/strict';
 import * as G from './dist/game.mjs';
+{
+ const s=G.createGame();G.autoDeploy(s);G.begin(s);G.nextPhase(s);
+ const u=G.getUnit(s,'A1'),start={x:u.x,y:u.y,heading:u.heading};
+ const back=G.commitOrder(s,'A1',{kind:'back',mode:'advance',distance:1,angle:0});
+ assert.equal(back.cost,2);assert.equal(u.y,start.y+1);assert.equal(u.heading,start.heading);
+ assert.match(G.orderError(s,u,{kind:'side',side:-1,mode:'advance',distance:1,angle:0}),/allowance/);
+ G.undo(s);
+ const side=G.commitOrder(s,'A1',{kind:'side',side:-1,mode:'advance',distance:1,angle:0});
+ assert.equal(side.cost,2);assert.equal(u.x,start.x-1);assert.equal(u.y,start.y);assert.equal(u.heading,start.heading);
+ G.undo(s);
+ assert.equal(G.orderError(s,u,{kind:'side',side:0,mode:'advance',distance:1,angle:0}), 'Choose left or right for a sideways move.');
+}
 const near=(a,b)=>assert.ok(Math.abs(a-b)<1e-7,`${a} != ${b}`);
 let count=0;function test(name,fn){fn();count++;console.log('PASS '+name);}
 function ready(){const s=G.createGame();G.autoDeploy(s);s.rocket.wounds=0;G.begin(s);G.nextPhase(s);return s;}
