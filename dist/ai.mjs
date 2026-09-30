@@ -97,15 +97,29 @@ function moveRegiment(s,u,random){
  const target=nearest(s,u);if(!target){G.hold(s,u.id);return {message:`${u.id} holds position.`};}
  const virtual={...s,stage:'shooting',team:'iron'};
  if(u.role==='missile'&&G.canShoot(virtual,u)&&G.shootingTargets(virtual,u).some(t=>!t.plan.error)){G.hold(s,u.id);return {message:`${u.id} holds for a clear shot.`};}
- const dx=target.x-u.x,dy=target.y-u.y,desired=G.normalize(Math.atan2(dx,-dy)*180/Math.PI),turn=((desired-G.heading(u)+540)%360)-180;
  const separation=G.gap(u,target),wantMarch=u.role!=='missile'&&separation>14&&u.marchTest!==false,mode=u.movementMode??(wantMarch?'march':'advance');
  if(mode==='march'&&G.needsMarchTest(s,u)&&u.marchTest===null){const dice=roll(random),passed=G.marchTest(s,u.id,dice);return {message:`${u.id} march test ${passed?'passed':'failed'} (${dice.join('+')}).`};}
- if((u.spent??0)===0&&Math.abs(turn)>75){const order={kind:'pivot',angle:Math.round(turn),distance:0,mode:'advance'};if(!G.orderError(s,u,order)){G.commitOrder(s,u.id,order);return {message:`${u.id} reforms toward ${target.id}.`};}}
- if((u.spent??0)===0&&Math.abs(turn)>12){for(const angle of [Math.min(35,Math.abs(turn)),25,15].map(n=>Math.round(n)*Math.sign(turn))){const order={kind:'wheel',angle,distance:0,mode};if(angle&&!G.orderError(s,u,order)){G.commitOrder(s,u.id,order);return {message:`${u.id} wheels toward ${target.id}.`};}}}
- const allowance=mode==='march'?2*G.profile(u).M:G.profile(u).M,remaining=allowance-(u.spent??0),max=Math.max(0,Math.min(remaining,separation-1));
- for(let d=Math.floor(max*2)/2;d>=.5;d-=.5){const order={kind:'advance',distance:d,angle:0,mode};if(!G.orderError(s,u,order)){G.commitOrder(s,u.id,order);return {message:`${u.id} ${mode==='march'?'marches':'advances'} ${d}″ toward ${target.id}.`};}}
+ const best=bestOrder(s,u,target,mode)??(mode==='march'?bestOrder(s,u,target,'advance'):null);
+ if(best){G.commitOrder(s,u.id,best.order);return {message:`${u.id} ${describeOrder(best.order)} toward ${target.id}.`};}
  G.hold(s,u.id);return {message:`${u.id} holds position.`};
 }
+// Try a spread of legal orders (advances, wheels either way with an advance, a reform toward the
+// target, and short side steps) and take the one that ends closest to the target, facing it best.
+// A unit blocked in one direction therefore finds another way instead of holding every turn.
+function bestOrder(s,u,target,mode){
+ if(u.movementMode&&u.movementMode!==mode)return null;
+ const allowance=(mode==='march'?2:1)*G.profile(u).M,left=allowance-(u.spent??0);if(left<.25)return null;
+ const facingError=p=>{const want=G.normalize(Math.atan2(target.x-p.x,-(target.y-p.y))*180/Math.PI);return Math.abs(((want-G.heading(p)+540)%360)-180);};
+ const score=p=>-G.gap(p,target)-.03*facingError(p),steps=d=>[d,d*.75,d*.5,d*.25].filter(x=>x>=.25),orders=[];
+ for(const d of steps(left))orders.push({kind:'advance',distance:d,angle:0,mode});
+ for(let a=-40;a<=40;a+=10){if(!a)continue;const cost=G.wheelCost(a,u);if(cost>=left-.05)continue;orders.push({kind:'wheel',angle:a,distance:0,mode});for(const d of steps(left-cost))orders.push({kind:'wheel',angle:a,distance:d,mode});}
+ if((u.spent??0)===0&&mode==='advance'&&facingError(u)>60)orders.push({kind:'pivot',angle:Math.round(((G.normalize(Math.atan2(target.x-u.x,-(target.y-u.y))*180/Math.PI)-G.heading(u)+540)%360)-180),distance:0,mode:'advance'});
+ for(const side of [-1,1])for(const d of [1,2].filter(d=>2*d<=left))orders.push({kind:'side',side,distance:d,angle:0,mode});
+ const now=score(u);let best=null;
+ for(const order of orders){if(order.kind==='pivot'&&!order.angle)continue;if(G.orderError(s,u,order))continue;const val=score(G.planMove(u,order).end);if(!best||val>best.val)best={order,val};}
+ return best&&best.val>now+.05?best:null;
+}
+function describeOrder(o){return o.kind==='pivot'?'reforms':o.kind==='side'?`steps ${o.distance}″ ${o.side<0?'left':'right'}`:o.kind==='wheel'?`wheels ${Math.abs(o.angle)}° ${o.angle<0?'left':'right'}${o.distance?' and '+(o.mode==='march'?'marches':'advances')+' '+Math.round(o.distance*10)/10+'″':''}`:`${o.mode==='march'?'marches':'advances'} ${Math.round(o.distance*10)/10}″`;}
 
 function aiDispel(s,random){
  const options=G.dispelOptions(s),wizard=[...options.wizards].sort((a,b)=>b.bonus-a.bonus)[0],choice=wizard?.id??(options.fated?'fated':'none');
