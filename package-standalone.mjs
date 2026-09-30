@@ -2,7 +2,7 @@ import {readFileSync,writeFileSync} from 'node:fs';
 // Bundles dist/ into Play.html, a standalone offline game. Modules are listed in dependency
 // order; each becomes `const Alias=(()=>{...; return {exports};})();` and every module must import
 // the others as `import * as Alias from './file.mjs';` using the aliases below.
-const MODULES=[['F','formats.mjs'],['G','game.mjs'],['BM','battlemarch.mjs'],['P','presentation.mjs'],['AI','ai.mjs']];
+const MODULES=[['F','formats.mjs'],['A','armies.mjs'],['G','game.mjs'],['BM','battlemarch.mjs'],['P','presentation.mjs'],['AI','ai.mjs']];
 const read=file=>readFileSync(new URL('./dist/'+file,import.meta.url),'utf8');
 const aliasOf=Object.fromEntries(MODULES.map(([alias,file])=>[file,alias]));
 function stripImports(source,file){

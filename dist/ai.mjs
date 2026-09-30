@@ -12,7 +12,7 @@ const roll=random=>G.rollD6(2,random);
 // on the front edge of the zone. The Empire builds a gun line: the Great Cannons and crossbows
 // take the spots with the most clear shots, the State Troops face the enemy without blocking a
 // fire lane, and the Battlemage stands behind the middle of the line.
-export function readyToDeploy(s){return s.stage==='deployment'&&s.units.filter(u=>u.team==='ash').every(u=>u.x!==null)&&s.rocket.x!==null&&(s.units.some(u=>u.team==='iron'&&u.x===null)||s.cannons.some(c=>c.x===null));}
+export function readyToDeploy(s){return s.stage==='deployment'&&s.units.filter(u=>u.team==='ash').every(u=>u.x!==null)&&(s.rocket.x!==null||s.rocket.absent)&&(s.units.some(u=>u.team==='iron'&&u.x===null)||s.cannons.some(c=>c.x===null));}
 // Candidate spots come from the bot's actual deployment zone on the current battlefield.
 const candidateXs=s=>{const b=G.zoneBounds(s,'iron');return Array.from({length:Math.max(1,Math.floor(b.right-b.left)-1)},(_,i)=>b.left+1+i);};
 const frontRow=(s,u)=>G.zoneBounds(s,'iron').bottom-G.size(u).h/2-.01,backRow=(s,u)=>G.zoneBounds(s,'iron').top+G.size(u).h/2+.01;

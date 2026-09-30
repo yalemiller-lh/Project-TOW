@@ -45,6 +45,13 @@ dialog{color:#282e23;background:#f5f0d9;border:5px double #424a36;border-radius:
 /* Missile front arc: half range is green; the remainder is amber. */
 .shooting-arc{pointer-events:none;stroke-width:1.6;vector-effect:non-scaling-stroke}
 .zone-area{stroke:#e9e2bf;stroke-opacity:.8;stroke-dasharray:7 8;pointer-events:none}
+.roster-summary{display:grid;gap:8px;margin-top:6px}
+.roster-card{border:1px solid #b8ad8b;background:#fbf6e6;padding:6px 8px;font-size:12px;color:#302c22}
+.roster-card header{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px}
+.roster-card.ash header b{color:#7a2f22}.roster-card.iron header b{color:#274b66}
+.roster-card .legal{color:#3e5a2a;font-weight:bold}.roster-card .illegal{color:#9b2c1c;font-weight:bold}
+.roster-card ol{margin:4px 0;padding-left:18px}.roster-card small{color:#5a5646}
+.roster-errors{margin:4px 0;padding-left:16px;color:#9b2c1c}
 .zone-area.iron{fill:#285e7d;fill-opacity:.06}
 .zone-area.ash{fill:#9e3324;fill-opacity:.04}
 .range-ring{fill:none;pointer-events:none;stroke:#fff3c4;stroke-width:1.8;stroke-dasharray:9 5;vector-effect:non-scaling-stroke}

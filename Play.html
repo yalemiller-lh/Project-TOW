@@ -46,6 +46,13 @@ dialog{color:#282e23;background:#f5f0d9;border:5px double #424a36;border-radius:
 /* Missile front arc: half range is green; the remainder is amber. */
 .shooting-arc{pointer-events:none;stroke-width:1.6;vector-effect:non-scaling-stroke}
 .zone-area{stroke:#e9e2bf;stroke-opacity:.8;stroke-dasharray:7 8;pointer-events:none}
+.roster-summary{display:grid;gap:8px;margin-top:6px}
+.roster-card{border:1px solid #b8ad8b;background:#fbf6e6;padding:6px 8px;font-size:12px;color:#302c22}
+.roster-card header{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px}
+.roster-card.ash header b{color:#7a2f22}.roster-card.iron header b{color:#274b66}
+.roster-card .legal{color:#3e5a2a;font-weight:bold}.roster-card .illegal{color:#9b2c1c;font-weight:bold}
+.roster-card ol{margin:4px 0;padding-left:18px}.roster-card small{color:#5a5646}
+.roster-errors{margin:4px 0;padding-left:16px;color:#9b2c1c}
 .zone-area.iron{fill:#285e7d;fill-opacity:.06}
 .zone-area.ash{fill:#9e3324;fill-opacity:.04}
 .range-ring{fill:none;pointer-events:none;stroke:#fff3c4;stroke-width:1.8;stroke-dasharray:9 5;vector-effect:non-scaling-stroke}
@@ -172,6 +179,108 @@ function deploymentZones(f,board,{map=null,depth=null}={}){
 }
 
 return {MM_PER_INCH,rect,DEPLOYMENT_MAPS,FORMATS,format,boardFor,deploymentZones};})();
+const A=(()=>{// Costed army entries this engine can play, and Battle March muster validation.
+// Costs come from the newrecruit Old World data files (BattleScribe format) named in SOURCES.
+const SOURCES={
+ system:{name:'Warhammer The Old World game system (newrecruit)',revision:188},
+ chaos:{name:'Chaos Dwarfs – Renegades 2.0 (newrecruit)',revision:10,catalogue:'1681-d51d-8ccc-69cc'},
+ empire:{name:'The Empire of Man (newrecruit)',revision:136,catalogue:'7b8f-602e-29cd-5786'},
+ orc:{name:'Orc and Goblin Tribes (newrecruit)',revision:192,catalogue:'c997-9d47-72ad-c5f1'},
+};
+// Player preferences are not rules: they only filter what is offered or generated.
+const PREFERENCES={excluded:[{name:'K’daai Fireborn',faction:'chaos',reason:'Player preference: never included in selectable or generated armies (not a rules restriction).'}]};
+
+// role: the engine model (regiment 'infantry'/'missile', single 'wizard', 'warmachine').
+// restricted: counts against Battle March's single "0–X per 1,000 points" selection.
+const ENTRIES={
+ chaos:{
+  daemonsmith:{name:'Daemonsmith Sorcerer',category:'characters',role:'wizard',base:85,options:{level2:{name:'Wizard Level 2',cost:30,required:true}},general:true},
+  warriors:{name:'Chaos Dwarf Warriors',category:'core',role:'infantry',troop:'heavy',perModel:7,minModels:5,options:{shields:{name:'Shields',perModel:1,required:true}},command:{C:{name:'Veteran Warrior',cost:6},S:{name:'Standard Bearer',cost:6},M:{name:'Musician',cost:6}}},
+  decimators:{name:'Blunderbuss Decimators',category:'core',role:'missile',troop:'heavy',perModel:10,minModels:5,command:{C:{name:'Veteran Warrior',cost:6},S:{name:'Standard Bearer',cost:6},M:{name:'Musician',cost:6}}},
+  deathshrieker:{name:'Deathshrieker Rocket Launcher',category:'special',role:'warmachine',base:110,restricted:'0–2 per 1,000 points'},
+ },
+ empire:{
+  masterMage:{name:'Master Mage',category:'characters',role:'wizard',base:60,options:{level2:{name:'Wizard Level 2',cost:30,required:true}},general:true},
+  stateTroops:{name:'State Troops',category:'core',role:'infantry',troop:'regular',perModel:5,minModels:10,options:{shields:{name:'Shields',perModel:1,required:true}},command:{C:{name:'Sergeant',cost:5},S:{name:'Standard Bearer',cost:5},M:{name:'Musician',cost:5}}},
+  missileTroops:{name:'State Missile Troops (crossbows)',category:'core',role:'missile',troop:'regular',perModel:7,minModels:10,command:{C:{name:'Sergeant',cost:5},S:{name:'Standard Bearer',cost:5},M:{name:'Musician',cost:5}}},
+  greatCannon:{name:'Great Cannon',category:'special',role:'warmachine',base:125,restricted:"1 single 'per 1000 points' selection in Battle March"},
+ },
+ orc:{
+  orcMob:{name:'Orc Mob',category:'core',role:'infantry',troop:'regular',perModel:5,minModels:5,command:{C:{name:'Boss',cost:7},S:{name:'Standard Bearer',cost:5},M:{name:'Musician',cost:5}}},
+ },
+};
+// Gaps this engine cannot yet represent; shown to the player instead of guessing.
+const GAPS={
+ orc:['No Orc character (Orc Bigboss, 55 points) is modelled yet, so an Orc army cannot field the General Battle March requires.','Orc Mob warbows have no points cost in the source data (revision 192), so warbow mobs are not offered.'],
+};
+
+const US_PER_MODEL={regular:1,heavy:1};
+function entryOf(faction,key){const e=ENTRIES[faction]?.[key];if(!e)throw Error(`Unknown army entry "${key}" for ${faction}.`);return e;}
+function entryCost(faction,item){
+ const e=entryOf(faction,item.entry),models=e.perModel?item.models:1;let cost=(e.base??0)+(e.perModel??0)*models;
+ for(const [k,o]of Object.entries(e.options??{}))if(o.required||item.options?.[k])cost+=(o.cost??0)+(o.perModel??0)*models;
+ for(const [k,c]of Object.entries(e.command??{}))if(item.command?.[k])cost+=c.cost;
+ return cost;
+}
+function entryUnitStrength(faction,item){const e=entryOf(faction,item.entry);return e.role==='warmachine'?3:e.role==='wizard'?1:item.models*(US_PER_MODEL[e.troop]??1);}
+function rosterCost(roster){return roster.entries.reduce((n,item)=>n+entryCost(roster.faction,item),0);}
+
+// Battle March muster rules, as given in the Battle March brief, plus the Grand Army category
+// limits from the game-system data. Percentages are of the agreed points limit.
+const BATTLE_MARCH_LIMITS={entry:{characters:25,core:35,special:30,rare:25,mercenaries:25},category:{characters:{max:50},core:{min:25},special:{max:50},rare:{max:25},mercenaries:{max:20}},maxUnitStrength:20,minUnits:2,restrictedSelections:1};
+const CATEGORY_NAME={characters:'character',core:'Core unit',special:'Special unit',rare:'Rare unit',mercenaries:'Mercenary unit'};
+const fmt=n=>Number.isInteger(n)?String(n):n.toFixed(1);
+function validateRoster(roster,points,{format='battle-march'}={}){
+ const errors=[],faction=roster.faction,entries=roster.entries,total=rosterCost(roster),L=BATTLE_MARCH_LIMITS;
+ for(const gap of format==='battle-march'&&!Object.values(ENTRIES[faction]??{}).some(e=>e.general)?GAPS[faction]??[]:[])errors.push(gap);
+ if(total>points)errors.push(`The army costs ${total} points; the limit is ${points}.`);
+ for(const item of entries){
+  const e=entryOf(faction,item.entry),cost=entryCost(faction,item),label=item.label??e.name;
+  if(PREFERENCES.excluded.some(x=>x.name===e.name))errors.push(`${e.name} is excluded by player preference.`);
+  if(e.perModel&&(!Number.isInteger(item.models)||item.models<e.minModels))errors.push(`${label} needs at least ${e.minModels} models; it has ${item.models}.`);
+  if(e.maxModels&&item.models>e.maxModels)errors.push(`${label} may have at most ${e.maxModels} models; it has ${item.models}.`);
+  if(format!=='battle-march')continue;
+  const cap=points*L.entry[e.category]/100;
+  if(cost>cap)errors.push(`${label} costs ${cost} points; the ${CATEGORY_NAME[e.category]} ceiling is ${fmt(cap)} (${L.entry[e.category]}% of ${points}).`);
+  const us=entryUnitStrength(faction,item);if(us>L.maxUnitStrength)errors.push(`${label} has Unit Strength ${us}; no mustered unit may exceed ${L.maxUnitStrength}.`);
+ }
+ if(format==='battle-march'){
+  const generals=entries.filter(i=>i.general);
+  if(generals.length!==1)errors.push(generals.length?'Only one character may be the General.':'Choose one eligible character as the General.');
+  for(const g of generals)if(!entryOf(faction,g.entry).general)errors.push(`${entryOf(faction,g.entry).name} is not eligible to be the General.`);
+  const units=entries.filter(i=>entryOf(faction,i.entry).category!=='characters');
+  if(units.length<L.minUnits)errors.push(`The army needs at least ${L.minUnits} non-character units; it has ${units.length}.`);
+  const restricted=entries.filter(i=>entryOf(faction,i.entry).restricted);
+  if(restricted.length>L.restrictedSelections)errors.push(`${restricted.length} restricted per-1,000 selections taken (${restricted.map(i=>entryOf(faction,i.entry).name).join(', ')}); only one is permitted.`);
+  for(const [cat,rule]of Object.entries(L.category)){
+   const spent=entries.filter(i=>entryOf(faction,i.entry).category===cat).reduce((n,i)=>n+entryCost(faction,i),0),limit=points*(rule.max??rule.min)/100;
+   if(rule.max!==undefined&&spent>limit)errors.push(`${cat[0].toUpperCase()+cat.slice(1)} total ${spent} points is over the ${rule.max}% allowance (${fmt(limit)}).`);
+   if(rule.min!==undefined&&spent<limit)errors.push(`Core total ${spent} points is under the ${rule.min}% minimum (${fmt(limit)}).`);
+  }
+ }
+ return {legal:errors.length===0,errors,total,points};
+}
+
+// Ready-made 750-point Battle March armies; validated before they are ever shown as legal.
+const PRESETS={
+ chaos:{name:'Chaos Dwarf warband',faction:'chaos',entries:[
+  {entry:'daemonsmith',general:true},
+  {entry:'warriors',models:20,command:{C:true,S:true,M:true}},
+  {entry:'warriors',models:20,command:{C:true,S:true,M:true}},
+  {entry:'decimators',models:15,command:{C:true,S:true,M:true}},
+  {entry:'deathshrieker'},
+ ]},
+ empire:{name:'Empire gun line',faction:'empire',entries:[
+  {entry:'masterMage',general:true},
+  {entry:'stateTroops',models:20,command:{C:true,S:true,M:true}},
+  {entry:'stateTroops',models:20,command:{C:true,S:true,M:true}},
+  {entry:'stateTroops',models:15,command:{C:true,S:true,M:true}},
+  {entry:'missileTroops',models:20,command:{C:true,S:true,M:true}},
+  {entry:'greatCannon'},
+ ]},
+};
+
+return {SOURCES,PREFERENCES,ENTRIES,GAPS,entryOf,entryCost,entryUnitStrength,rosterCost,BATTLE_MARCH_LIMITS,validateRoster,PRESETS};})();
 const G=(()=>{const BOARD={width:72,height:48,zone:12};
 const ROCKET_PROFILES={demolition:{name:'Demolition Rockets',template:3,strength:3,centreStrength:6,ap:0,centreAp:3},incendiary:{name:'Infernal Incendiaries',template:5,strength:3,centreStrength:3,ap:0,centreAp:0}};
 const ROCKET_BASE={w:50/25.4,h:75/25.4};
@@ -183,7 +292,7 @@ function createCannons(opponent){return opponent==='empire'?[1,2].map(n=>({id:'I
 // crew profile, makes one Attack per surviving crew token and loses a token per wound.
 const WAR_MACHINE_CREW={chaos:{name:'Chaos Dwarf Crew',profile:{M:3,WS:3,BS:3,S:3,T:4,W:3,I:2,A:3,Ld:9,save:7}},empire:{name:'Empire Crew',profile:{M:4,WS:3,BS:3,S:3,T:3,W:3,I:3,A:3,Ld:7,save:7}}};
 function machineFields(team,faction){return {team,faction,role:'warmachine',engaged:null,charge:null,combatResolved:false,fleeing:false,destroyed:false,deadModels:[]};}
-function combatants(s){return [...s.units,s.rocket,...(s.cannons??[])].filter(Boolean);}
+function combatants(s){return [...s.units,s.rocket,...(s.cannons??[])].filter(m=>m&&!m.absent);}
 const PROFILE={M:3,WS:4,BS:3,S:3,T:4,W:1,I:2,A:1,Ld:9,save:4};
 const SIZE={w:125/25.4,h:100/25.4};
 const FACTIONS={chaos:{name:'Chaos Dwarf Warriors',army:'Chaos Dwarfs',color:'#b63229',bright:'#ff3f39',base:25,equipment:'Hand weapons · heavy armour · shields',profile:PROFILE,heavy:true,shield:true,shieldwall:true,resolute:true},orc:{name:'Orc Mob',army:'Orc & Goblin Tribes',color:'#418248',bright:'#54ef53',base:30,equipment:'Hand weapons · light armour',profile:{M:4,WS:3,BS:3,S:3,T:4,W:1,I:3,A:1,Ld:6,save:6},choppas:true,furious:true,warband:true,impetuous:true},empire:{name:'State Troops',army:'Empire of Man',color:'#286a9a',bright:'#32aaff',base:25,equipment:'Hand weapons · light armour · shields',profile:{M:4,WS:3,BS:3,S:3,T:3,W:1,I:3,A:1,Ld:7,save:5},shield:true}};
@@ -212,7 +321,34 @@ const PHASES=['strategy','movement','shooting','combat'];
 const armyName=(team,s)=>team==='ash'?'Chaos Dwarfs · Red':`${FACTIONS[s?.units.find(u=>u.team==='iron')?.faction??'chaos'].army} · ${s?.units.find(u=>u.team==='iron')?.faction==='orc'?'Green':'Blue'}`;
 const EPS=1e-8,rad=d=>d*Math.PI/180;
 function createWizard(team,faction){return {id:team==='ash'?'A6':'I7',team,faction,role:'wizard',name:WIZARDS[faction].name,level:2,spells:[],castThisTurn:[],wounds:2,petrified:0,engineerUsed:false,x:null,y:null,heading:team==='ash'?0:180,moved:false,shot:false,spent:0,movementMode:null,marchRequired:null,marchTest:null,engaged:null,charge:null,impetuousTest:null,combatResolved:false,fleeing:false,rallyAttempted:false,rallied:false,deadModels:[]};}
-function createGame(opponent='chaos',{format='classic',board=null,points=null,deployment=null}={}){if(!FACTIONS[opponent])throw Error('Unknown army.');const fmt=F.format(format),field=F.boardFor(fmt,{board,points}),setup=deployment??(fmt.deployment?.map?{map:fmt.deployment.map,depth:fmt.deployment.depth}:null);const units=Array.from({length:8},(_,i)=>{const faction=i<4?'chaos':opponent,role=i%4===3?'missile':'infantry';return {id:(i<4?'A':'I')+(i%4+1),team:i<4?'ash':'iron',faction,role,name:role==='missile'?MISSILE[faction].name:FACTIONS[faction].name,x:null,y:null,heading:i<4?0:180,moved:false,shot:false,spent:0,movementMode:null,marchRequired:null,marchTest:null,engaged:null,charge:null,impetuousTest:null,combatResolved:false,fleeing:false,rallyAttempted:false,rallied:false,shieldwallUsed:false,deadModels:[]};});units.push(createWizard('ash','chaos'));if(opponent==='empire')units.push(createWizard('iron','empire'));return {stage:'deployment',team:'ash',round:1,selected:'A1',rocket:{id:'A5',name:'Deathshrieker Rocket Launcher',...machineFields('ash','chaos'),x:null,y:null,heading:0,wounds:3,crew:3,shot:false,disabledUntil:0,lastShot:null},cannons:createCannons(opponent),units,history:[],vortices:[],fatedDispelUsed:false,format:{id:fmt.id,name:fmt.name,rulesVersion:fmt.rulesVersion,points:fmt.points?(points??fmt.points.default):null,rounds:fmt.rounds,deployment:setup,resultPolicy:fmt.resultPolicy??null,optional:{...(fmt.optional??{})}},board:field,zones:F.deploymentZones(fmt,field,setup??{}),firstPlayer:'ash',turnLog:[]};}
+const runtime=()=>({x:null,y:null,moved:false,shot:false,spent:0,movementMode:null,marchRequired:null,marchTest:null,engaged:null,charge:null,impetuousTest:null,combatResolved:false,fleeing:false,rallyAttempted:false,rallied:false,shieldwallUsed:false,deadModels:[]});
+const REGIMENT_IDS={ash:['A1','A2','A3','A4','A7','A8','A9','A10'],iron:['I1','I2','I3','I4','I8','I9','I10','I11']};
+// Units, the launcher and cannons for one side from its roster. The engine models one wizard,
+// one Deathshrieker (red) and Great Cannons (opponent) per side.
+function armyFromRoster(team,roster){
+ const faction=roster.faction,units=[],cannons=[];let rocket=null,regiments=0;
+ for(const item of roster.entries){
+  const e=A.entryOf(faction,item.entry),paid={cost:A.entryCost(faction,item),category:e.category,entry:item.entry,general:!!item.general};
+  if(e.role==='wizard'){if(units.some(u=>u.role==='wizard'))throw Error('This engine supports one wizard per army.');units.push({...createWizard(team,faction),name:e.name,...paid});}
+  else if(e.role==='warmachine'&&team==='ash'&&item.entry==='deathshrieker'){if(rocket)throw Error('This engine supports one Deathshrieker per army.');rocket={...paid};}
+  else if(e.role==='warmachine'&&team==='iron'&&item.entry==='greatCannon'){if(cannons.length>=2)throw Error('This engine supports at most two Great Cannons.');cannons.push({id:'I'+(5+cannons.length),name:'Great Cannon '+'AB'[cannons.length],...machineFields('iron','empire'),x:null,y:null,heading:180,wounds:3,crew:3,shot:false,disabledUntil:0,lastShot:null,...paid});}
+  else if(e.role==='infantry'||e.role==='missile'){const id=REGIMENT_IDS[team][regiments++];if(!id)throw Error('Too many regiments for this engine.');units.push({id,team,faction,role:e.role,name:e.name,models:item.models,files:item.files??5,command:{C:!!item.command?.C,S:!!item.command?.S,M:!!item.command?.M},troop:e.troop,...paid,heading:team==='ash'?0:180,...runtime()});}
+  else throw Error(`${e.name} cannot be fielded by this engine for this side.`);
+ }
+ return {units,cannons,rocket};
+}
+function createGame(opponent='chaos',{format='classic',board=null,points=null,deployment=null,rosters=null}={}){if(!FACTIONS[opponent])throw Error('Unknown army.');const fmt=F.format(format),field=F.boardFor(fmt,{board,points}),setup=deployment??(fmt.deployment?.map?{map:fmt.deployment.map,depth:fmt.deployment.depth}:null);
+ if(fmt.id==='battle-march')return createRosterGame(opponent,fmt,field,setup,points,rosters);const units=Array.from({length:8},(_,i)=>{const faction=i<4?'chaos':opponent,role=i%4===3?'missile':'infantry';return {id:(i<4?'A':'I')+(i%4+1),team:i<4?'ash':'iron',faction,role,name:role==='missile'?MISSILE[faction].name:FACTIONS[faction].name,x:null,y:null,heading:i<4?0:180,moved:false,shot:false,spent:0,movementMode:null,marchRequired:null,marchTest:null,engaged:null,charge:null,impetuousTest:null,combatResolved:false,fleeing:false,rallyAttempted:false,rallied:false,shieldwallUsed:false,deadModels:[]};});units.push(createWizard('ash','chaos'));if(opponent==='empire')units.push(createWizard('iron','empire'));return {stage:'deployment',team:'ash',round:1,selected:'A1',rocket:{id:'A5',name:'Deathshrieker Rocket Launcher',...machineFields('ash','chaos'),x:null,y:null,heading:0,wounds:3,crew:3,shot:false,disabledUntil:0,lastShot:null},cannons:createCannons(opponent),units,history:[],vortices:[],fatedDispelUsed:false,format:{id:fmt.id,name:fmt.name,rulesVersion:fmt.rulesVersion,points:fmt.points?(points??fmt.points.default):null,rounds:fmt.rounds,deployment:setup,resultPolicy:fmt.resultPolicy??null,optional:{...(fmt.optional??{})}},board:field,zones:F.deploymentZones(fmt,field,setup??{}),firstPlayer:'ash',turnLog:[]};}
+function createRosterGame(opponent,fmt,field,setup,points,rosters){
+ const limit=points??fmt.points.default,chosen={ash:rosters?.ash??A.PRESETS.chaos,iron:rosters?.iron??A.PRESETS[opponent]};
+ if(!chosen.iron)throw Error(A.GAPS[opponent]?.[0]??`No Battle March army is available for ${opponent}.`);
+ if(chosen.ash.faction!=='chaos'||chosen.iron.faction!==opponent)throw Error('Red must be Chaos Dwarfs and the opponent must match the chosen army.');
+ const red=armyFromRoster('ash',chosen.ash),blue=armyFromRoster('iron',chosen.iron);
+ const rocket={id:'A5',name:'Deathshrieker Rocket Launcher',...machineFields('ash','chaos'),x:null,y:null,heading:0,wounds:3,crew:3,shot:false,disabledUntil:0,lastShot:null,...(red.rocket??{absent:true,wounds:0,crew:0})};
+ const armies=Object.fromEntries(Object.entries(chosen).map(([team,roster])=>[team,{roster,validation:A.validateRoster(roster,limit),source:A.SOURCES[roster.faction]}]));
+ return {stage:'deployment',team:'ash',round:1,selected:red.units[0]?.id,rocket,cannons:blue.cannons,units:[...red.units,...blue.units],history:[],vortices:[],fatedDispelUsed:false,
+  format:{id:fmt.id,name:fmt.name,rulesVersion:fmt.rulesVersion,points:limit,rounds:fmt.rounds,deployment:setup,resultPolicy:fmt.resultPolicy,optional:{...fmt.optional}},board:field,zones:F.deploymentZones(fmt,field,setup??{}),firstPlayer:'ash',turnLog:[],armies,sources:{system:A.SOURCES.system,preferences:A.PREFERENCES}};
+}
 function getUnit(s,id=s.selected){return s.units.find(u=>u.id===id)??(id!==undefined&&id!==null?combatants(s).find(u=>u.id===id):undefined);}
 function heading(u){return u.heading??(u.team==='ash'?0:180);}
 function normalize(a){return ((a%360)+360)%360;}
@@ -263,7 +399,7 @@ function searchDeploy(s,team){
   });
  }
 }
-function begin(s,random=Math.random,{firstPlayer=null}={}){if(s.stage!=='deployment')throw Error('The battle already started.');if(s.units.some(u=>u.x===null)||s.rocket.x===null||s.cannons.some(c=>c.x===null))throw Error('Deploy all units, the Deathshrieker, and Empire cannons before battle.');for(const u of s.units.filter(u=>u.role==='wizard'))u.spells=generateSpells(random);s.firstPlayer=firstPlayer??s.firstPlayer??'ash';s.stage='strategy';s.team=s.firstPlayer;s.selected=s.units.find(u=>u.team===s.team)?.id;}
+function begin(s,random=Math.random,{firstPlayer=null}={}){if(s.stage!=='deployment')throw Error('The battle already started.');if(s.units.some(u=>u.x===null)||s.rocket.x===null&&!s.rocket.absent||s.cannons.some(c=>c.x===null))throw Error('Deploy all units, the Deathshrieker, and Empire cannons before battle.');for(const u of s.units.filter(u=>u.role==='wizard'))u.spells=generateSpells(random);s.firstPlayer=firstPlayer??s.firstPlayer??'ash';s.stage='strategy';s.team=s.firstPlayer;s.selected=s.units.find(u=>u.team===s.team)?.id;}
 function canAct(s,u){return s.stage==='movement'&&u?.team===s.team&&aliveCount(u)>0&&!u.moved&&!u.engaged&&!u.charge&&!u.fleeing&&u.x!==null;}
 function phaseComplete(s,u){if(s.stage==='deployment'||u.team!==s.team)return false;if(aliveCount(u)===0)return true;if(s.stage==='movement')return u.moved||!!u.engaged;if(s.stage==='shooting')return u.role!=='missile'||u.shot||!!u.engaged||u.fleeing;return true;}
 function needsMarchTest(s,u){if(u.marchRequired!==null&&u.marchRequired!==undefined)return u.marchRequired;return s.units.some(v=>v.team!==u.team&&v.x!==null&&gap(u,v)<=8+EPS);}
@@ -1040,7 +1176,7 @@ const roll=random=>G.rollD6(2,random);
 // on the front edge of the zone. The Empire builds a gun line: the Great Cannons and crossbows
 // take the spots with the most clear shots, the State Troops face the enemy without blocking a
 // fire lane, and the Battlemage stands behind the middle of the line.
-function readyToDeploy(s){return s.stage==='deployment'&&s.units.filter(u=>u.team==='ash').every(u=>u.x!==null)&&s.rocket.x!==null&&(s.units.some(u=>u.team==='iron'&&u.x===null)||s.cannons.some(c=>c.x===null));}
+function readyToDeploy(s){return s.stage==='deployment'&&s.units.filter(u=>u.team==='ash').every(u=>u.x!==null)&&(s.rocket.x!==null||s.rocket.absent)&&(s.units.some(u=>u.team==='iron'&&u.x===null)||s.cannons.some(c=>c.x===null));}
 // Candidate spots come from the bot's actual deployment zone on the current battlefield.
 const candidateXs=s=>{const b=G.zoneBounds(s,'iron');return Array.from({length:Math.max(1,Math.floor(b.right-b.left)-1)},(_,i)=>b.left+1+i);};
 const frontRow=(s,u)=>G.zoneBounds(s,'iron').bottom-G.size(u).h/2-.01,backRow=(s,u)=>G.zoneBounds(s,'iron').top+G.size(u).h/2+.01;
@@ -1214,7 +1350,7 @@ command.insertAdjacentHTML('afterbegin','<div class="command-heading"><span clas
 $('sidePhase').insertAdjacentHTML('afterend','<small id="aiStatus" class="ai-status"></small>');
 const sideStack=$('sideStack'),sideActions=document.querySelector('.side-actions');
 sideStack.insertAdjacentHTML('beforeend','<section id="idleOrders" class="panel idle-orders"><h2>Select a regiment</h2><p>Choose a unit on the battlefield for its orders.</p></section>');
-$('opponentPicker').insertAdjacentHTML('beforebegin','<div id="formatSetup" class="format-setup"><label class="opponent-picker">FORMAT <select id="formatSelect" aria-label="Game format"><option value="classic">Classic battle</option><option value="battle-march">Battle March</option></select></label><label class="opponent-picker" id="pointsPicker">POINTS <select id="pointsSelect" aria-label="Points limit"></select></label><label class="opponent-picker" id="boardPicker">BATTLEFIELD <select id="boardSelect" aria-label="Battlefield size"></select></label><label class="opponent-picker" id="mapPicker">DEPLOYMENT <select id="mapSelect" aria-label="Deployment map"></select></label><label class="opponent-picker" id="depthPicker">ZONE DEPTH <input id="depthInput" type="number" min="6" max="14" step="1" value="12" aria-label="Deployment zone depth in inches">″</label><p id="formatNote" class="control-help"></p></div>');
+$('opponentPicker').insertAdjacentHTML('beforebegin','<div id="formatSetup" class="format-setup"><label class="opponent-picker">FORMAT <select id="formatSelect" aria-label="Game format"><option value="classic">Classic battle</option><option value="battle-march">Battle March</option></select></label><label class="opponent-picker" id="pointsPicker">POINTS <select id="pointsSelect" aria-label="Points limit"></select></label><label class="opponent-picker" id="boardPicker">BATTLEFIELD <select id="boardSelect" aria-label="Battlefield size"></select></label><label class="opponent-picker" id="mapPicker">DEPLOYMENT <select id="mapSelect" aria-label="Deployment map"></select></label><label class="opponent-picker" id="depthPicker">ZONE DEPTH <input id="depthInput" type="number" min="6" max="14" step="1" value="12" aria-label="Deployment zone depth in inches">″</label><p id="formatNote" class="control-help"></p><div id="rosterSummary" class="roster-summary"></div></div>');
 {const bmf=F.FORMATS['battle-march'];for(let p=bmf.points.min;p<=bmf.points.max;p+=bmf.points.step)$('pointsSelect').add(new Option(p+' points',p));for(const b of bmf.boards)$('boardSelect').add(new Option(`${b.width}″ × ${b.height}″${b.maxPoints?' (up to '+b.maxPoints+' points)':''}`,b.id));for(const m of F.DEPLOYMENT_MAPS){const o=new Option(m.available?m.name:m.name+' — diagram not supplied',m.id);o.disabled=!m.available;$('mapSelect').add(o);}$('pointsSelect').value=String(bmf.points.default);$('boardSelect').value=bmf.defaultBoard;$('mapSelect').value=bmf.deployment.map;$('depthInput').min=bmf.deployment.minDepth;$('depthInput').max=bmf.deployment.maxDepth;}
 $('idleOrders').append($('formatSetup'),$('opponentPicker'),$('boardAutoDeploy'));
 sideStack.append($('unitOrders'),$('rocketOrders'),$('cannonOrders'));
@@ -1339,14 +1475,14 @@ const botOwns=id=>aiMode==='ai'&&G.getUnit(state,id)?.team==='iron';
 function botDeploy(){if(aiMode!=='ai'||!AI.readyToDeploy(state))return;try{AI.deployOpponent(state);notify(`The bot has deployed ${armyName('iron')} against your line. Review the field, then begin the battle.`);}catch(e){notify('The bot could not deploy: '+e.message,true);}}
 function render(){
   layoutBoard();botDeploy();const skipped=G.skipEmptySteps(state);if(skipped.length){ordersOpen=false;rocketSelected=false;cannonSelected=null;declinedCharges.clear();}
-  const u=G.getUnit(state),deploy=state.stage==='deployment',placed=state.units.filter(u=>u.x!==null).length+(state.rocket.x!==null?1:0)+state.cannons.filter(c=>c.x!==null).length,required=state.units.length+1+state.cannons.length;
+  const u=G.getUnit(state),deploy=state.stage==='deployment',placed=state.units.filter(u=>u.x!==null).length+(state.rocket.x!==null?1:0)+state.cannons.filter(c=>c.x!==null).length,required=state.units.length+(state.rocket.absent?0:1)+state.cannons.length;
   chargeEligibleIds=new Set(state.stage==='movement'&&state.movementStep==='declare'?state.units.filter(v=>v.team===state.team&&G.canAct(state,v)&&G.availableCharges(state,v).length&&!declinedCharges.has(v.id)).map(v=>v.id):[]);
   $('stageLabel').textContent=deploy?'DEPLOYMENT':`ROUND ${state.round} / ${armyName(state.team).toUpperCase()}`;
   $('round').textContent=deploy?`${placed} / ${required} PLACED`:`ROUND ${state.round}${state.format.rounds?' OF '+state.format.rounds:''}`;$('turnTitle').textContent=deploy?'Deployment':armyName(state.team);
   const current=G.PHASES.indexOf(state.stage),sub=P.substepIndex(state);$('phaseTrack').innerHTML=G.PHASES.map((p,i)=>`<li class="phase-step ${i===current?'active':i<current?'complete':''}" ${i===current?'aria-current="step"':''}><span>${title(p)}</span><small>${P.PHASE_SUBSTEPS[p].map((step,j)=>`<em class="${i===current&&j===sub?'current':''}">${step}</em>`).join('')}</small></li>`).join('');
   $('phaseTurnLabel').textContent=deploy?'Deployment':state.stage==='finished'?`Battle over after round ${state.round}`:`Round ${state.round}${state.format.rounds?' of '+state.format.rounds:''} · ${armyName(state.team)}${state.stage==='movement'?' · '+movementStepName():''}`;
   $('opponentPicker').hidden=!deploy;renderSetup(deploy);$('opponentSelect').value=state.units.find(v=>v.team==='iron').faction;
-  $('opponentZone').textContent=armyName('iron').toUpperCase()+(zoneDepth('iron')?` / ${zoneDepth('iron')}″ DEPLOYMENT`:' / DEPLOYMENT ZONE');$('ashZone').textContent=armyName('ash').toUpperCase()+(zoneDepth('ash')?` / ${zoneDepth('ash')}″ DEPLOYMENT`:' / DEPLOYMENT ZONE');$('opponentZone').setAttribute('class','zone-label '+(state.units[4].faction==='orc'?'orc-text':'iron-text'));$('board').setAttribute('aria-label',`Battlefield, ${state.board.width} by ${state.board.height} inches. Red deploys at the bottom, `+(state.units[4].faction==='orc'?'green Orcs':'blue Empire State Troops')+' at the top.');$('opponentRosterTitle').textContent=armyName('iron').toUpperCase();for(const team of ['ash','iron'])$(team+'ModelCount').textContent=state.units.filter(u=>u.team===team).reduce((n,u)=>n+(u.role==='wizard'?1:G.startingModels(u)),0)+' models';$('opponentLegend').textContent=armyName('iron');$('opponentDot').className='dot '+state.units[4].faction;$('opponentRosterDot').className='dot '+state.units[4].faction;
+  $('opponentZone').textContent=armyName('iron').toUpperCase()+(zoneDepth('iron')?` / ${zoneDepth('iron')}″ DEPLOYMENT`:' / DEPLOYMENT ZONE');$('ashZone').textContent=armyName('ash').toUpperCase()+(zoneDepth('ash')?` / ${zoneDepth('ash')}″ DEPLOYMENT`:' / DEPLOYMENT ZONE');$('opponentZone').setAttribute('class','zone-label '+(state.units.find(v=>v.team==='iron').faction==='orc'?'orc-text':'iron-text'));$('board').setAttribute('aria-label',`Battlefield, ${state.board.width} by ${state.board.height} inches. Red deploys at the bottom, `+(state.units.find(v=>v.team==='iron').faction==='orc'?'green Orcs':'blue Empire State Troops')+' at the top.');$('opponentRosterTitle').textContent=armyName('iron').toUpperCase();for(const team of ['ash','iron'])$(team+'ModelCount').textContent=state.units.filter(u=>u.team===team).reduce((n,u)=>n+(u.role==='wizard'?1:G.startingModels(u)),0)+' models';$('opponentLegend').textContent=armyName('iron');$('opponentDot').className='dot '+state.units.find(v=>v.team==='iron').faction;$('opponentRosterDot').className='dot '+state.units.find(v=>v.team==='iron').faction;
   const moved=state.units.filter(u=>u.team===state.team&&u.moved).length;
   const declared=state.units.filter(v=>v.team===state.team&&v.charge?.status==='declared').length,pending=state.units.filter(v=>v.charge?.reaction==='pending').length;
   $('turnHint').textContent=deploy?(aiMode==='ai'?'Deploy your regiments, the Daemonsmith and the Deathshrieker. The bot deploys its army once yours is placed. Red takes the first turn.':`Deploy both armies, their wizards, the Deathshrieker${state.cannons.length?', and two Great Cannons':''}. Red takes the first turn.`):state.stage==='movement'&&state.movementStep==='declare'?`${chargeEligibleIds.size} can charge · ${declared} declared · ${pending} reaction${pending===1?'':'s'} needed. Click each marked defender to choose.`:state.stage==='movement'&&state.movementStep==='charges'?`${declared} declared charge${declared===1?'':'s'} to roll. Follow the gold lines.`:state.stage==='movement'?`${moved} units finished. Click a unit for orders.`:state.stage==='shooting'?'Click a missile unit, wizard, or war machine to choose a target.':state.stage==='combat'?(state.pendingCombat?'Choose the combat aftermath.':G.combatPairs(state).length?'Click engaged units to resolve combat.':'All combats resolved. Advance when ready.'):`${title(state.stage)}: cast spells or advance when ready.`;
@@ -1486,13 +1622,19 @@ function setupOptions(){const format=$('formatSelect').value;if(format==='classi
 function newGame(message='Choose an opponent, then deploy all regiments and war machines or use Quick deploy.'){$('diceAnimation').hidden=true;chargeTarget=null;shootTarget=null;rocketTarget=null;rocketSelected=false;cannonSelected=null;cannonTarget=null;cannonMode='ball';cannonAimShort=6;rocketProfile='demolition';rocketIndirect=false;manualOrders=null;state=G.createGame($('opponentSelect').value,setupOptions());rolls=[];ordersOpen=false;resetOrder();$('diceResults').innerHTML='<span class="empty-die">?</span><span class="empty-die">?</span>';$('diceSummary').textContent='';$('boardRoll').textContent='';$('rollHistory').innerHTML='<li>No rolls yet.</li>';render();notify(message);}
 $('confirmReset').onclick=()=>{$('resetDialog').close();newGame();};
 // Changing the setup starts a fresh deployment with the chosen format, points and battlefield.
-function changeSetup(){try{newGame(state.format.id==='battle-march'?`Battle March · ${state.format.points} points on a ${state.board.width}″ × ${state.board.height}″ battlefield. Deploy your army.`:'Classic battle on a 72″ × 48″ battlefield. Deploy your army.');}catch(e){notify(e.message,true);}}
+function changeSetup(){if($('formatSelect').value==='battle-march'&&$('opponentSelect').value==='orc'){$('opponentSelect').value='empire';notify('Orcs cannot field a Battle March General in this game yet, so the Empire army is used.');}try{newGame(state.format.id==='battle-march'?`Battle March · ${state.format.points} points on a ${state.board.width}″ × ${state.board.height}″ battlefield. Deploy your army.`:'Classic battle on a 72″ × 48″ battlefield. Deploy your army.');}catch(e){notify(e.message,true);}}
 $('formatSelect').onchange=changeSetup;$('boardSelect').onchange=changeSetup;$('mapSelect').onchange=changeSetup;$('depthInput').onchange=changeSetup;
 $('pointsSelect').onchange=()=>{$('boardSelect').value=F.boardFor('battle-march',{points:Number($('pointsSelect').value)}).id;changeSetup();};
 function renderSetup(deploy){
  $('formatSetup').hidden=!deploy;if(!deploy)return;const bm=state.format.id==='battle-march';$('formatSelect').value=state.format.id;
  for(const id of ['pointsPicker','boardPicker','mapPicker','depthPicker'])$(id).hidden=!bm;
  if(bm){$('pointsSelect').value=String(state.format.points);$('boardSelect').value=state.board.id;$('mapSelect').value=state.format.deployment.map;$('depthInput').value=String(state.format.deployment.depth);}
+ $('opponentSelect').querySelector('[value="orc"]').disabled=bm;$('opponentSelect').querySelector('[value="orc"]').textContent=bm?'Orc Mob · green (no Battle March General yet)':'Orc Mob · green';
+ const summary=$('rosterSummary');summary.replaceChildren();if(bm)for(const team of ['ash','iron']){const army=state.armies[team],v=army.validation,box=document.createElement('section');box.className='roster-card '+team;
+  box.innerHTML=`<header><b>${armyName(team)}</b><span class="${v.legal?'legal':'illegal'}">${v.total} / ${v.points} pts · ${v.legal?'legal Battle March army':'not legal'}</span></header><ol></ol>`;
+  const list=box.querySelector('ol');for(const item of army.roster.entries){const e=A.entryOf(army.roster.faction,item.entry),li=document.createElement('li'),cmd=Object.keys(item.command??{}).filter(k=>item.command[k]).map(k=>e.command[k].name).join(', ');li.textContent=`${item.general?'General · ':''}${item.models?item.models+' ':''}${e.name}${cmd?' · '+cmd:''} — ${A.entryCost(army.roster.faction,item)}`;list.append(li);}
+  if(!v.legal){const ul=document.createElement('ul');ul.className='roster-errors';for(const err of v.errors){const li=document.createElement('li');li.textContent=err;ul.append(li);}box.append(ul);}
+  const src=document.createElement('small');src.textContent=`Costs: ${army.source.name}, revision ${army.source.revision}.`;box.append(src);summary.append(box);}
  $('formatNote').textContent=bm?`Five rounds. Deployment uses a custom long-edge preset: the six official Battle March maps need their diagrams before they can be used. Result rule: ${state.format.resultPolicy.confirmed?'confirmed':'core rulebook 100 VP margin, not yet confirmed for Battle March'}.`:'Open-ended classic battle on the full-size table.';
 }
 $('aiMode').onchange=e=>{aiMode=e.target.value;render();notify(aiMode==='ai'?'The bot commands the opposing army. Deploy your Chaos Dwarfs; the bot deploys in response.':'Two-player mode selected.');};
