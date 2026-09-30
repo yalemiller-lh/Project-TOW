@@ -2,6 +2,8 @@
 
 Double-click **Play.html** to play offline. Two players share one screen. Red has three Chaos Dwarf Warrior regiments and one Blunderbuss Decimator regiment, each of 20 models, plus a Deathshrieker Rocket Launcher and three crew. Before deployment, choose green Orc Mobs (including one with warbows) or blue Empire State Troops (including one State Missile Troop regiment with crossbows and two Great Cannons) for the opposing army. Every infantry regiment includes a musician (M), standard bearer (S), and champion (C) in the centre of its front rank; they replace three of the 20 ordinary models. Quick deploy, or place each regiment and war machine in its 12-inch deployment zone. The top marker follows Strategy → Movement → Shooting → Combat.
 
+Choose **Play against AI** in the top bar for a solo game as the Chaos Dwarfs. The computer deploys and controls the opposing Orc or Empire army, tests Impetuous and Rally, charges, moves, shoots, fires cannons, and resolves combat. It automatically chooses reactions when you charge it. When it charges or a combat result calls for your decision, the game pauses for your charge reaction, Shieldwall choice, or pursuit choice. The AI uses simple distance and legal-action priorities; you can switch back to **Two players** at any time. Quick deploy remains available, or you can deploy the Chaos Dwarfs yourself after the AI has placed its army.
+
 Click a regiment on the flock table to open orders beside it. Drag the popup by its **↔ DRAG UNIT ORDERS** heading, or focus that heading and use the arrow keys. During Movement, declare charges, roll them, then move remaining units. If no legal charge is available, the charge steps are skipped. Regiments that can declare a charge remain bright; those that cannot are gray. A declared charger gains a gold outline and a gold line to its target. A charge may use one measured approach wheel and then a free wheel to align after contact. Front, flank and rear facing is fixed when the charge is declared. Chaos Dwarfs move 3 inches or march 6; Orcs and State Troops move 4 or march 8. Marching near an enemy may need a Leadership test. Advance, wheel, or reform using the segmented inch bar. After a unit finishes its action, orders advance to the next eligible regiment on the right; a partial move keeps the current popup open. The dice pit is on the battlefield. Gray units have finished their phase actions.
 
 During charge declarations, every defender chooses Hold or Flee, and an eligible missile regiment may instead Stand & Shoot. The chosen defender is marked on the table and its reaction popup opens automatically; charges cannot be rolled until all reactions are chosen. Flee pivots away from the charger and moves the sum of 2D6 inches immediately. A charger that reaches the fleeing target runs it down; otherwise it pursues for its full charge range. A missile defender must face the charger and start at least the charger's Movement value away to Stand & Shoot. The reaction fires before the charge roll, with its own −1 to hit, no long-range penalty, and the charger treated as entering weapon range. Blunderbusses ignore the Stand & Shoot penalty.
@@ -37,8 +39,9 @@ The post-combat choice order follows this prototype's requested play flow: the l
 
 - `Play.html`: bundled, standalone game.
 - `dist/`: editable HTML, CSS and JavaScript source for a local server.
+- `dist/ai.mjs`: optional opponent decisions and turn sequencing.
 - `package-standalone.mjs`: rebuilds `Play.html` from `dist/`.
-- `test-*.mjs`: movement, charges, model eligibility, movement budget, combat, cannon, and presentation checks. Run each with Node.js.
+- `test-*.mjs`: movement, charges, model eligibility, movement budget, combat, cannon, AI, and presentation checks. Run each with Node.js.
 
 ## References checked 29 September 2026
 

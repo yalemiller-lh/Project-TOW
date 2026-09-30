@@ -1,0 +1,98 @@
+import * as G from './game.mjs';
+
+const alive=u=>u.x!==null&&G.aliveCount(u)>0;
+const enemies=s=>s.units.filter(u=>u.team==='ash'&&alive(u));
+const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+const nearest=(s,u)=>enemies(s).sort((a,b)=>G.gap(u,a)-G.gap(u,b))[0];
+const roll=random=>G.rollD6(2,random);
+
+export function deployOpponent(s){
+ if(s.stage!=='deployment')throw Error('The AI can deploy only before the battle.');
+ const place=(id,preferred,cannon=false)=>{
+  const unit=cannon?s.cannons.find(c=>c.id===id):G.getUnit(s,id);if(!unit||unit.x!==null)return;
+  const candidates=[preferred,...Array.from({length:65},(_,i)=>i+4)].map(x=>[x,6]);
+  for(const [x,y]of candidates){try{if(cannon)G.placeCannon(s,id,x,y);else G.place(s,id,x,y);return;}catch{}}
+  throw Error(`No legal deployment space for ${id}.`);
+ };
+ for(const [id,x]of [['I1',18],['I2',36],['I3',54],['I4',64]])place(id,x);
+ for(const [id,x]of [['I5',8],['I6',45]])if(s.cannons.some(c=>c.id===id))place(id,x,true);
+}
+
+export function humanDecision(s){
+ const charge=s.units.find(u=>u.team==='iron'&&u.charge?.status==='declared'&&u.charge.reaction==='pending');
+ if(charge)return {id:charge.charge.target,kind:'reaction',message:`Choose a reaction for ${charge.charge.target} against ${charge.id}.`};
+ const p=s.pendingCombat;
+ if(p?.stage==='loser-choice'&&G.getUnit(s,p.loser).team==='ash')return {id:p.loser,kind:'shieldwall',message:`Choose ${p.loser}'s Shieldwall or Fall Back.`};
+ if(p?.stage==='winner-choice'&&G.getUnit(s,p.winner).team==='ash')return {id:p.winner,kind:'aftermath',message:`Choose ${p.winner}'s pursuit or restraint.`};
+ return null;
+}
+
+export function shouldAct(s){
+ if(s.stage==='deployment')return false;
+ if(s.team==='iron')return !humanDecision(s);
+ return s.stage==='movement'&&s.movementStep==='declare'&&s.units.some(u=>u.team==='ash'&&u.charge?.status==='declared'&&u.charge.reaction==='pending'&&G.getUnit(s,u.charge.target)?.team==='iron');
+}
+
+function moveRegiment(s,u,random){
+ s.selected=u.id;
+ const target=nearest(s,u);if(!target){G.hold(s,u.id);return {message:`${u.id} holds position.`};}
+ const virtual={...s,stage:'shooting',team:'iron'};
+ if(u.role==='missile'&&G.canShoot(virtual,u)&&G.shootingTargets(virtual,u).some(t=>!t.plan.error)){G.hold(s,u.id);return {message:`${u.id} holds for a clear shot.`};}
+ const dx=target.x-u.x,dy=target.y-u.y,desired=G.normalize(Math.atan2(dx,-dy)*180/Math.PI),turn=((desired-G.heading(u)+540)%360)-180;
+ const separation=G.gap(u,target),wantMarch=u.role!=='missile'&&separation>14&&u.marchTest!==false,mode=u.movementMode??(wantMarch?'march':'advance');
+ if(mode==='march'&&G.needsMarchTest(s,u)&&u.marchTest===null){const dice=roll(random),passed=G.marchTest(s,u.id,dice);return {message:`${u.id} march test ${passed?'passed':'failed'} (${dice.join('+')}).`};}
+ if((u.spent??0)===0&&Math.abs(turn)>75){const order={kind:'pivot',angle:Math.round(turn),distance:0,mode:'advance'};if(!G.orderError(s,u,order)){G.commitOrder(s,u.id,order);return {message:`${u.id} reforms toward ${target.id}.`};}}
+ if((u.spent??0)===0&&Math.abs(turn)>12){for(const angle of [Math.min(35,Math.abs(turn)),25,15].map(n=>Math.round(n)*Math.sign(turn))){const order={kind:'wheel',angle,distance:0,mode};if(angle&&!G.orderError(s,u,order)){G.commitOrder(s,u.id,order);return {message:`${u.id} wheels toward ${target.id}.`};}}}
+ const allowance=mode==='march'?2*G.profile(u).M:G.profile(u).M,remaining=allowance-(u.spent??0),max=Math.max(0,Math.min(remaining,separation-1));
+ for(let d=Math.floor(max*2)/2;d>=.5;d-=.5){const order={kind:'advance',distance:d,angle:0,mode};if(!G.orderError(s,u,order)){G.commitOrder(s,u.id,order);return {message:`${u.id} ${mode==='march'?'marches':'advances'} ${d}″ toward ${target.id}.`};}}
+ G.hold(s,u.id);return {message:`${u.id} holds position.`};
+}
+
+export function takeStep(s,random=Math.random){
+ if(!shouldAct(s))return {message:'Waiting for the player.',wait:true};
+ if(s.team==='ash'){
+  const charger=s.units.find(u=>u.team==='ash'&&u.charge?.status==='declared'&&u.charge.reaction==='pending'&&G.getUnit(s,u.charge.target)?.team==='iron');
+  const defender=G.getUnit(s,charger.charge.target),choice=defender.fleeing?'flee':G.canStandShoot(s,defender,charger)?'stand-shoot':'hold',point={x:charger.x,y:charger.y},out=G.chargeReaction(s,charger.id,choice,random);
+  return {message:`${defender.id} chooses ${choice==='stand-shoot'?'Stand & Shoot':choice}.`,report:out.report,point};
+ }
+ const decision=humanDecision(s);if(decision)return {...decision,wait:true};
+ if(s.stage==='strategy'){
+  const u=s.units.find(u=>u.team==='iron'&&u.x!==null&&u.fleeing&&!u.rallyAttempted);
+  if(u){s.selected=u.id;const out=G.rally(s,u.id,random);return {message:`${u.id} ${out.success?'rallies':'fails to rally'} (${out.dice.join('+')}).`};}
+  G.nextPhase(s);return {message:'AI begins Movement.'};
+ }
+ if(s.stage==='movement'&&s.movementStep==='declare'){
+  const pending=s.units.find(u=>u.team==='iron'&&u.charge?.status==='declared'&&u.charge.reaction==='pending');if(pending)return {...humanDecision(s),wait:true};
+  for(const u of s.units.filter(u=>u.team==='iron'&&G.canAct(s,u)&&u.faction==='orc'&&u.impetuousTest===null&&G.availableCharges(s,u).length)){const dice=roll(random),passed=G.impetuousTest(s,u.id,dice);s.selected=u.id;return {message:`${u.id} Impetuous test ${passed?'passed':'failed'} (${dice.join('+')}).`};}
+  const options=s.units.filter(u=>u.team==='iron'&&G.canAct(s,u)).flatMap(u=>G.availableCharges(s,u).map(t=>({u,t,plan:G.chargePlan(s,u,t)}))).sort((a,b)=>a.plan.cost-b.plan.cost);
+  if(options.length){const {u,t}=options[0];s.selected=u.id;G.declareCharge(s,u.id,t.id);return {message:`${u.id} charges ${t.id}. Choose a reaction.`};}
+  G.finishDeclarations(s);return {message:'AI finishes charge declarations.'};
+ }
+ if(s.stage==='movement'&&s.movementStep==='charges'){
+  const u=s.units.find(u=>u.team==='iron'&&u.charge?.status==='declared');if(u){s.selected=u.id;const dice=roll(random),out=G.resolveCharge(s,u.id,dice);return {message:`${u.id} charge ${out.success?'succeeds':'fails'} (${dice.join(', ')}).`};}
+  G.enterRemaining(s);return {message:'AI begins remaining moves.'};
+ }
+ if(s.stage==='movement'){
+  const u=s.units.find(u=>u.team==='iron'&&G.canAct(s,u));if(u)return moveRegiment(s,u,random);
+  G.nextPhase(s);return {message:`AI begins ${s.stage}.`};
+ }
+ if(s.stage==='shooting'){
+  const choices=s.units.filter(u=>u.team==='iron'&&G.canShoot(s,u)).flatMap(u=>G.shootingTargets(s,u).filter(t=>!t.plan.error).map(t=>({u,t}))).sort((a,b)=>a.t.plan.distance-b.t.plan.distance);
+  if(choices.length){const {u,t}=choices[0],point={x:t.unit.x,y:t.unit.y};s.selected=u.id;const report=G.shoot(s,u.id,t.unit.id,random);return {message:`${u.id} fires at ${t.unit.id}: ${report.unsaved} slain.`,report,point};}
+  for(const c of s.cannons){if(!G.canFireCannon(s,c.id))continue;const grape=G.cannonTargets(s,c.id,{mode:'grape'}).filter(t=>!t.error),ball=G.cannonTargets(s,c.id,{mode:'ball',aimShort:6}).filter(t=>!t.error),targets=grape.length?grape:ball;
+   if(!targets.length)continue;const target=targets.sort((a,b)=>a.distance-b.distance)[0],mode=grape.length?'grape':'ball',positions=new Map(s.units.filter(alive).map(u=>[u.id,{x:u.x,y:u.y}]));const report=G.fireCannon(s,c.id,target.unit.id,mode,G.rollCannonDice(random),random,{aimShort:6});return {message:`${c.name} fires ${mode==='grape'?'grapeshot':'a cannonball'}: ${report.unsaved} slain.`,report,positions,artillery:true};}
+  G.nextPhase(s);return {message:'AI begins Combat.'};
+ }
+ if(s.stage==='combat'){
+  const p=s.pendingCombat;
+  if(p?.stage==='break'){const out=G.rollCombatBreak(s,random);return {message:`${p.loser} ${out.outcome.replace('-',' ')} (${out.dice.join('+')}).`};}
+  if(p?.stage==='loser-choice'){G.chooseLoserAction(s,p.shieldwallAvailable?'shieldwall':'fall-back');return {message:`${p.loser} chooses ${p.loserChoice}.`};}
+  if(p?.stage==='retreat'){const out=G.moveCombatLoser(s,random);return {message:`${out.loser} retreats ${out.distance.toFixed(1)}″.`};}
+  if(p?.stage==='winner-choice'){const out=G.winnerCombat(s,'follow',random);return {message:`${out.winner} follows up.`};}
+  if(s.combatSession?.phase==='attacks'){const out=G.fightCombatStep(s,random);return {message:`Initiative ${out.initiative}: ${out.stages.reduce((n,x)=>n+x.unsaved,0)} slain.`};}
+  if(s.combatSession?.phase==='compare'){const out=G.compareCombat(s);return {message:out.winner?`${out.winner} wins combat.`:'Combat is a draw.'};}
+  const pair=G.combatPairs(s)[0];if(pair){const id=pair.find(id=>G.getUnit(s,id).team==='iron')??pair[0];s.selected=id;G.beginCombat(s,id);return {message:`${pair.join(' fights ')}: initiative order shown.`};}
+  G.nextPhase(s);return {message:'AI turn complete.'};
+ }
+ return {message:'Waiting for the player.',wait:true};
+}
