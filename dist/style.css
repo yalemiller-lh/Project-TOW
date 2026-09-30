@@ -70,3 +70,17 @@ input[type=range]{accent-color:var(--army-primary)}.charge-step{background:var(-
 .cannon-aim-point{fill:#d1eafa;stroke:#23445a;stroke-width:2;pointer-events:none}.cannon-aim-point.impact{fill:#ffd579}
 .cannon-orders .rocket-profiles button[aria-pressed=true]{background:#2c5974;color:#fff;border-color:#7299ab}
 #cannonReport{margin-top:9px;font:12px/1.45 Georgia,serif;color:#264356;border-top:1px solid #92917b;padding-top:8px}
+/* Short hit feedback over the tabletop. */
+.shot-impact{position:absolute;width:0;height:0;z-index:8;pointer-events:none;--hit:#f6cf78}
+.shot-impact.volley{--hit:#eaf4dc}.shot-impact.artillery{--hit:#ffbd6a}
+.shot-impact .impact-flash{position:absolute;left:-7px;top:-7px;width:14px;height:14px;border-radius:50%;background:#fff9d8;box-shadow:0 0 12px 7px var(--hit);animation:impact-flash .36s ease-out both}
+.shot-impact .impact-ring{position:absolute;left:-15px;top:-15px;width:30px;height:30px;border:3px solid var(--hit);border-radius:50%;box-shadow:0 0 9px var(--hit);animation:impact-ring .72s ease-out both}
+.shot-impact.artillery .impact-ring{left:-22px;top:-22px;width:44px;height:44px;border-width:4px}
+.shot-impact .impact-spark{position:absolute;left:-2px;top:-2px;width:4px;height:13px;background:var(--hit);border-radius:2px;transform-origin:50% 24px;animation:impact-spark .65s ease-out both}
+.shot-impact .spark-one{--angle:0deg}.shot-impact .spark-two{--angle:120deg}.shot-impact .spark-three{--angle:240deg}
+.shot-impact b{position:absolute;left:15px;top:-31px;color:#fff7da;text-shadow:0 2px 3px #222,0 0 7px #222;font:bold 18px Georgia,serif;animation:impact-count .85s ease-out both}
+@keyframes impact-flash{0%{opacity:1;transform:scale(.4)}45%{opacity:1;transform:scale(1.7)}100%{opacity:0;transform:scale(2.4)}}
+@keyframes impact-ring{0%{opacity:1;transform:scale(.25)}100%{opacity:0;transform:scale(2.8)}}
+@keyframes impact-spark{0%{opacity:1;transform:rotate(var(--angle)) translateY(0)}100%{opacity:0;transform:rotate(var(--angle)) translateY(-25px)}}
+@keyframes impact-count{0%{opacity:0;transform:translateY(5px)}20%{opacity:1}100%{opacity:0;transform:translateY(-19px)}}
+@media(prefers-reduced-motion:reduce){.shot-impact .impact-flash,.shot-impact .impact-ring,.shot-impact .impact-spark,.shot-impact b{animation:none;opacity:.8}.shot-impact .impact-spark{display:none}}

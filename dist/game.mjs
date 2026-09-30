@@ -119,7 +119,7 @@ function modelCanSee(s,u,t,m,range){const origin=shotPoint(u,m),a=rad(-heading(u
 export function canShoot(s,u){return s.stage==='shooting'&&u?.team===s.team&&u.role==='missile'&&u.x!==null&&aliveCount(u)>0&&!u.shot&&!u.engaged&&!u.fleeing&&!u.charge&&u.movementMode!=='march';}
 export function shootingPlan(s,u,t,{reaction=false}={}){
  if(!u||!t||u.team===t.team||u.x===null||t.x===null||u.role!=='missile'||aliveCount(u)===0||aliveCount(t)===0)return {error:'Choose an enemy target for a missile regiment.'};
- if(reaction){if(u.engaged||u.fleeing)return {error:'Engaged or fleeing regiments cannot Stand & Shoot.'};if(gap(u,t)+EPS<profile(t).M)return {error:`Charger is too close for Stand & Shoot (less than M${profile(t).M}″).`};}
+ if(reaction){if(u.engaged||u.fleeing||u.movementMode==='march')return {error:'Engaged, fleeing, or marched regiments cannot Stand & Shoot.'};if(gap(u,t)+EPS<profile(t).M)return {error:`Charger is too close for Stand & Shoot (less than M${profile(t).M}″).`};}
  else if(!canShoot(s,u))return {error:'This regiment cannot shoot in this phase.'};
  const weapon=missileWeapon(u),range=weapon.range,half=range/2,clear=shootingModels(s,u).filter(m=>modelCanSee(s,u,t,m,reaction?Math.max(range,gap(u,t)+size(t).w):range));
  if(!clear.length)return {error:'Target is outside the front arc, range, or clear line of sight.',range,half};
@@ -219,7 +219,7 @@ export function declareCharge(s,id,target){
  const p=chargePlan(s,u,t);if(p.error)throw Error(p.error);
  u.charge={target,status:'declared',reaction:'pending',initialPlan:p};s.history=[];return {...p,reaction:'pending'};
 }
-export function canStandShoot(s,defender,charger){return !!defender&&!!charger&&defender.role==='missile'&&!defender.engaged&&!defender.fleeing&&aliveCount(defender)>0&&gap(defender,charger)+EPS>=profile(charger).M&&!shootingPlan(s,defender,charger,{reaction:true}).error;}
+export function canStandShoot(s,defender,charger){return !!defender&&!!charger&&defender.role==='missile'&&!defender.engaged&&!defender.fleeing&&defender.movementMode!=='march'&&aliveCount(defender)>0&&gap(defender,charger)+EPS>=profile(charger).M&&!shootingPlan(s,defender,charger,{reaction:true}).error;}
 export function chargeReaction(s,chargerId,choice,random=Math.random){
  const charger=getUnit(s,chargerId),defender=getUnit(s,charger?.charge?.target);
  if(s.stage!=='movement'||s.movementStep!=='declare'||charger?.charge?.status!=='declared'||charger.charge.reaction!=='pending')throw Error('No charge reaction is pending.');

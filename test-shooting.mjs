@@ -22,12 +22,21 @@ for(const [faction,name,range] of [['empire','State Missile Troops',30],['orc','
 }
 {
  const s=duel('empire');G.nextPhase(s);s.team='iron';const u=G.getUnit(s,'I4'),t=G.getUnit(s,'A4');let p=G.shootingPlan(s,u,t);assert.equal(p.half,15);assert.equal(p.toHit,4);u.spent=2;p=G.shootingPlan(s,u,t);assert.equal(p.toHit,5);assert.ok(p.modifiers.some(m=>m.label==='Moved'&&m.value===-1));u.movementMode='march';assert.match(G.shootingPlan(s,u,t).error,/cannot shoot/);
+ assert.equal(G.canShoot(s,u),false);assert.throws(()=>G.shoot(s,u.id,t.id),/cannot shoot/);
+ u.movementMode='advance';u.fleeing=true;assert.equal(G.canShoot(s,u),false);assert.throws(()=>G.shoot(s,u.id,t.id),/cannot shoot/);
 }
 {
  const s=duel('empire');s.movementStep='declare';const c=G.getUnit(s,'A4'),d=G.getUnit(s,'I4');c.y=22;const plan=G.chargePlan(s,c,d);assert.equal(plan.error,undefined);assert.equal(G.canStandShoot(s,d,c),true);const declared=G.declareCharge(s,'A4','I4');assert.equal(declared.reaction,'pending');assert.throws(()=>G.finishDeclarations(s),/reaction/);const r=G.chargeReaction(s,'A4','stand-shoot',()=>0);assert.equal(r.report.toHit,5);assert.equal(r.report.band,'Stand & Shoot');assert.equal(c.charge.reaction,'stand-shoot');G.finishDeclarations(s);assert.equal(s.movementStep,'charges');
 }
 {
  const s=duel();const c=G.getUnit(s,'A4'),d=G.getUnit(s,'I4');c.y=22;d.heading=0;assert.equal(G.canStandShoot(s,d,c),false);c.y=18;d.heading=180;assert.equal(G.canStandShoot(s,d,c),false);
+}
+{
+ const s=duel();s.movementStep='declare';const charger=G.getUnit(s,'A4'),defender=G.getUnit(s,'I4');charger.y=22;
+ defender.movementMode='march';assert.equal(G.canStandShoot(s,defender,charger),false);assert.match(G.shootingPlan(s,defender,charger,{reaction:true}).error,/marched/);
+ G.declareCharge(s,charger.id,defender.id);assert.throws(()=>G.chargeReaction(s,charger.id,'stand-shoot'),/cannot Stand & Shoot/);
+ defender.movementMode='advance';defender.fleeing=true;assert.equal(G.canStandShoot(s,defender,charger),false);assert.match(G.shootingPlan(s,defender,charger,{reaction:true}).error,/fleeing/);
+ assert.throws(()=>G.chargeReaction(s,charger.id,'stand-shoot'),/cannot Stand & Shoot/);
 }
 {
  const s=duel('chaos');s.movementStep='declare';G.getUnit(s,'A4').y=22;G.declareCharge(s,'A4','I4');let i=0;const r=G.chargeReaction(s,'A4','stand-shoot',()=>i++<98?.99:0);assert.equal(r.report.toHit,4);assert.equal(r.report.shots,42);assert.equal(r.stopped,true);assert.equal(G.getUnit(s,'A4').charge.status,'stopped');G.finishDeclarations(s);assert.equal(s.movementStep,'remaining');
