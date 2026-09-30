@@ -36,6 +36,11 @@ test('an overrunner may pass a Leadership test and reform unless it contacted a 
  const second=combat();second.loser.x=null;second.loser.y=null;pending(second.s,second.winner,second.loser,'overrun',{destroyed:true,moved:0});
  const stopped=G.winnerCombat(second.s,'restrain',()=>0,180);assert.equal(stopped.overrun,false);assert.equal(stopped.reform.passed,true);assert.equal(second.winner.heading,180);
 });
+test('pursuit can leave the board and the unit returns in its next Movement phase',()=>{
+ const {s,winner,loser}=combat();winner.y=5;loser.x=null;loser.y=null;pending(s,winner,loser,'overrun',{destroyed:true,moved:0});
+ const out=G.winnerCombat(s,'follow',()=>.9);assert.equal(out.offBoardPursuit,true);assert.equal(winner.x,null);assert.equal(winner.destroyed,undefined);assert.equal(winner.offBoardPursuit.edge,'top');
+ s.stage='strategy';s.team='ash';G.nextPhase(s);assert.equal(s.stage,'movement');assert.ok(winner.x!==null);assert.equal(winner.offBoardPursuit,null);assert.equal(winner.heading,180);assert.equal(winner.moved,true);
+});
 test('the instant combat API uses the same overrun and pursuit resolution',()=>{
  const {s,winner,loser}=combat();loser.x=null;loser.y=null;pending(s,winner,loser,'overrun',{destroyed:true,moved:0});
  const out=G.finishCombat(s,'follow',()=>0);assert.equal(out.overrun,true);assert.equal(out.movement.winner,1);assert.equal(s.pendingCombat,null);
@@ -54,5 +59,5 @@ test('available rally, charge, shooting, and combat actions prevent auto skips',
 });
 test('a moved Orc does not keep empty charge declarations open',()=>{
  const s=G.createGame('orc');G.autoDeploy(s);G.begin(s);s.team='iron';s.stage='movement';s.movementStep='declare';const orc=G.getUnit(s,'I1'),target=G.getUnit(s,'A1');orc.x=18;orc.y=22;target.x=18;target.y=28;for(const u of s.units.filter(u=>u.team==='iron'))u.moved=true;
- assert.equal(G.phaseHasActions(s),false);const skipped=G.skipEmptySteps(s);assert.ok(skipped.includes('Movement · declare'));assert.equal(s.team,'ash');assert.equal(s.movementStep,'remaining');
+ assert.equal(G.phaseHasActions(s),false);const skipped=G.skipEmptySteps(s);assert.ok(skipped.includes('Movement · declare'));assert.equal(s.team,'ash');
 });

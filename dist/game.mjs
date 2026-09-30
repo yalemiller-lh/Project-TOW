@@ -110,7 +110,7 @@ export function move(s,id,distance,mode){return commitOrder(s,id,{kind:'advance'
 export function hold(s,id){const u=getUnit(s,id);if(!canAct(s,u))throw Error('This regiment cannot take orders now.');enterRemaining(s);remember(s,u);u.moved=true;}
 export function undo(s){if(s.stage!=='movement')throw Error('Undo is available during Movement only.');const last=s.history.pop();if(!last)throw Error('No move to undo this turn.');const u=getUnit(s,last.id);Object.assign(u,{x:last.x,y:last.y,heading:last.heading,moved:last.moved,spent:last.spent,movementMode:last.movementMode,marchRequired:last.marchRequired});s.selected=u.id;}
 export function nextTurn(s,random=Math.random){if(s.stage!=='combat')throw Error('Finish the Combat phase first.');s.stage='strategy';s.team=s.team==='ash'?'iron':'ash';if(s.team==='ash')s.round++;s.units.forEach(u=>{u.moved=false;u.shot=false;u.spent=0;u.movementMode=null;u.marchRequired=null;u.marchTest=null;if(u.pursuitPending&&u.engaged)u.pursuitPending=false;else u.charge=null;u.impetuousTest=null;u.combatResolved=false;u.rallyAttempted=false;u.arcaneUrgency=false;if(u.role==='wizard'){u.castThisTurn=[];u.magicExhausted=false;u.engineerUsed=false;if(u.team===s.team){u.oakenShield=false;u.ashStorm=false;}}if(u.arrowCurseCaster===s.team){u.arrowCurse=false;u.arrowCurseCaster=null;}});s.fatedDispelUsed=false;s.vortexReports=driftVortices(s,random);s.rocket.shot=false;s.rocket.lastShot=null;s.cannons.forEach(c=>{c.shot=false;c.lastShot=null;});s.history=[];s.selected=s.units.find(u=>u.team===s.team).id;}
-export function nextPhase(s){if(s.stage==='strategy'&&s.units.some(u=>u.team===s.team&&u.x!==null&&u.fleeing&&!u.rallyAttempted))throw Error('Attempt to rally every fleeing regiment first.');if(s.units.some(u=>u.charge?.status==='declared'))throw Error('Resolve all declared charges first.');if(s.stage==='combat'&&(s.combatSession||s.pendingCombat||combatPairs(s).length))throw Error('Resolve every combat and its outcome first.');const i=PHASES.indexOf(s.stage);if(i<0)throw Error('Begin the battle first.');if(i===3)nextTurn(s);else{s.stage=PHASES[i+1];s.history=[];if(s.stage==='movement')s.movementStep=s.units.some(u=>u.team===s.team&&canAct(s,u)&&availableCharges(s,u).length)?'declare':'remaining';if(s.stage==='shooting'&&!phaseHasActions(s))s.stage='combat';if(s.stage==='combat')s.units.forEach(u=>u.combatResolved=false);}return s.stage;}
+export function nextPhase(s){if(s.stage==='strategy'&&s.units.some(u=>u.team===s.team&&u.x!==null&&u.fleeing&&!u.rallyAttempted))throw Error('Attempt to rally every fleeing regiment first.');if(s.units.some(u=>u.charge?.status==='declared'))throw Error('Resolve all declared charges first.');if(s.stage==='combat'&&(s.combatSession||s.pendingCombat||combatPairs(s).length))throw Error('Resolve every combat and its outcome first.');const i=PHASES.indexOf(s.stage);if(i<0)throw Error('Begin the battle first.');if(i===3)nextTurn(s);else{s.stage=PHASES[i+1];s.history=[];if(s.stage==='movement'){returnPursuers(s);s.movementStep=s.units.some(u=>u.team===s.team&&canAct(s,u)&&availableCharges(s,u).length)?'declare':'remaining';}if(s.stage==='shooting'&&!phaseHasActions(s))s.stage='combat';if(s.stage==='combat')s.units.forEach(u=>u.combatResolved=false);}return s.stage;}
 export function phaseHasActions(s){
  if(s.stage==='deployment')return true;
  const active=s.units.filter(u=>u.team===s.team&&u.x!==null&&aliveCount(u)>0);
@@ -547,11 +547,28 @@ function retreatPose(s,u,enemy,distance,stopNear=true){
  }
  return {moved,offBoard:false,dir};
 }
+function returnPursuers(s){
+ for(const u of s.units.filter(u=>u.team===s.team&&u.offBoardPursuit)){
+  const {edge,x,y}=u.offBoardPursuit,angle={top:180,bottom:0,left:90,right:270}[edge],depth=size(u).h/2;
+  for(let offset=0;offset<=BOARD.width+BOARD.height;offset+=.5){
+   let found=false;
+   for(const sign of offset===0?[1]:[1,-1]){
+    const along=(edge==='top'||edge==='bottom'?x:y)+offset*sign,pose={...u,heading:angle,x:edge==='left'?depth:edge==='right'?BOARD.width-depth:along,y:edge==='top'?depth:edge==='bottom'?BOARD.height-depth:along};
+    if(checkPosition(s,pose,pose.x,pose.y))continue;
+    Object.assign(u,{x:pose.x,y:pose.y,heading:angle,moved:true,offBoardPursuit:null});found=true;break;
+   }
+   if(found)break;
+  }
+ }
+}
 function pursuitAdvance(s,winner,distance,dir,ignoredId,originalId){
- const start={x:winner.x,y:winner.y};let moved=0,contact=null,blocked=false;
+ const start={x:winner.x,y:winner.y};let moved=0,contact=null,blocked=false,offBoardPursuit=false;
  for(let i=1;i<=Math.ceil(distance*20);i++){
   const d=Math.min(distance,i/20),pose={...winner,x:start.x+dir.x*d,y:start.y+dir.y*d};
-  if(offBoard(pose)){blocked=true;break;}
+  if(offBoard(pose)){
+   const r=rectangle(pose),edge=r.left<0?'left':r.right>BOARD.width?'right':r.top<0?'top':'bottom';
+   winner.offBoardPursuit={edge,x:winner.x,y:winner.y};winner.x=null;winner.y=null;offBoardPursuit=true;break;
+  }
   const obstacle=s.units.find(v=>v.id!==winner.id&&v.id!==ignoredId&&v.x!==null&&aliveCount(v)>0&&(v.team===winner.team||v.engaged&&v.engaged!==winner.id?gap(pose,v)<1-EPS:gap(pose,v)<EPS));
   if(obstacle){
    if(obstacle.team!==winner.team&&!obstacle.engaged){
@@ -563,7 +580,7 @@ function pursuitAdvance(s,winner,distance,dir,ignoredId,originalId){
   }
   Object.assign(winner,{x:pose.x,y:pose.y});moved=d;
  }
- return {distance:moved,contact,blocked};
+ return {distance:moved,contact,blocked,offBoardPursuit};
 }
 export function moveCombatLoser(s,random=Math.random){
  const p=s.pendingCombat;if(s.stage!=='combat'||p?.stage!=='retreat')throw Error('Resolve the Break test and any Shieldwall choice first.');
@@ -595,12 +612,12 @@ export function winnerCombat(s,choice='follow',random=Math.random,reformHeading=
   if(advance>0){
    const dir=p.outcome==='overrun'?{x:Math.sin(rad(heading(winner))),y:-Math.cos(rad(heading(winner)))}:p.retreat.dir;
    const moved=pursuitAdvance(s,winner,advance,dir,out.loserDestroyed?loser.id:null,loser.id);
-   out.movement.winner=moved.distance;out.contact=moved.contact;out.blocked=moved.blocked;
+   out.movement.winner=moved.distance;out.contact=moved.contact;out.blocked=moved.blocked;out.offBoardPursuit=moved.offBoardPursuit;
    if(out.caughtInGoodOrder&&moved.distance+EPS<advance)out.caughtInGoodOrder=false;
    if((p.outcome==='give-ground'||out.caughtInGoodOrder)&&loser.x!==null&&gap(winner,loser)<EPS){winner.engaged=loser.id;loser.engaged=winner.id;}
   }
  }
- if(choice==='follow-reform'&&out.loserDestroyed&&!out.contact){const dice=combatDice(2,random);out.rolls.reform=dice;if(dice[0]+dice[1]<=leadership(winner,'restraint'))reform();else out.reform={passed:false,heading:heading(winner),error:'Leadership test failed.'};}
+ if(choice==='follow-reform'&&out.loserDestroyed&&!out.contact&&winner.x!==null){const dice=combatDice(2,random);out.rolls.reform=dice;if(dice[0]+dice[1]<=leadership(winner,'restraint'))reform();else out.reform={passed:false,heading:heading(winner),error:'Leadership test failed.'};}
  if(p.outcome==='overrun')out.overrun=follow;
  s.pendingCombat=null;s.lastCombat={...s.lastCombat,aftermath:out};s.combatHistory[s.combatHistory.length-1]=s.lastCombat;return out;
 }
