@@ -392,6 +392,13 @@ function inside(p,poly){if(poly.length<3)return false;let sign=0;for(let i=0;i<p
 function polygonGap(a,b){if(inside(a[0],b)||inside(b[0],a))return 0;let best=Infinity;for(let i=0;i<a.length;i++)for(let j=0;j<b.length;j++){const p=a[i],q=a[(i+1)%a.length],r=b[j],s=b[(j+1)%b.length];if(intersects(p,q,r,s))return 0;best=Math.min(best,pointSegment(p,r,s),pointSegment(q,r,s),pointSegment(r,p,q),pointSegment(s,p,q));}return best;}
 function hull(points){const p=[...points].sort((a,b)=>a.x-b.x||a.y-b.y);const half=items=>{const out=[];for(const v of items){while(out.length>1&&cross(out.at(-2),out.at(-1),v)<=EPS)out.pop();out.push(v);}return out;};return [...half(p).slice(0,-1),...half([...p].reverse()).slice(0,-1)];}
 function gap(a,b){return polygonGap(corners(a),corners(b));}
+// Distance from a footprint to a circle (0 when they touch or overlap).
+function circleGap(poly,c){if(inside({x:c.x,y:c.y},poly))return 0;let best=Infinity;for(let i=0;i<poly.length;i++)best=Math.min(best,pointSegment({x:c.x,y:c.y},poly[i],poly[(i+1)%poly.length]));return Math.max(0,best-c.r);}
+function terrainBlocks(s,poly){return (s?.terrain??[]).some(t=>t.impassable&&circleGap(poly,t)<EPS);}
+function terrainBlocksSight(s,a,b){return (s?.terrain??[]).some(t=>t.blocksSight&&pointSegment({x:t.x,y:t.y},a,b)<t.r-EPS);}
+// ---- Temporary effects (such as a landmark's property) sit beside a unit's permanent rules. ----
+function hasRule(u,rule){return !!u?.effects?.some(e=>e.rule===rule);}
+function magicResistance(u){return Math.max(hasRule(u,'magicResistance')?2:0,u?.role==='wizard'&&u?.faction==='empire'?1:0);}
 const boardOf=s=>s?.board??BOARD;
 function offBoard(u,s){const r=rectangle(u),b=boardOf(s);return r.left< -EPS||r.right>b.width+EPS||r.top< -EPS||r.bottom>b.height+EPS;}
 function withinPolygon(p,poly){let inside=false;for(let i=0,j=poly.length-1;i<poly.length;j=i++){const a=poly[i],b=poly[j];if(pointSegment(p,a,b)<1e-6)return true;if((a.y>p.y)!==(b.y>p.y)&&p.x<(b.x-a.x)*(p.y-a.y)/(b.y-a.y)+a.x)inside=!inside;}return inside;}
@@ -400,11 +407,13 @@ function zoneOf(s,team){return (s?.zones??F.deploymentZones('classic',BOARD))[te
 // zone corner pokes into the footprint.
 function inZone(s,team,footprint){const zone=zoneOf(s,team);return footprint.every(p=>withinPolygon(p,zone))&&!zone.some(z=>inside(z,footprint)&&!footprint.some((p,i)=>pointSegment(z,p,footprint[(i+1)%footprint.length])<1e-6));}
 function zoneBounds(s,team){const z=zoneOf(s,team);return {left:Math.min(...z.map(p=>p.x)),right:Math.max(...z.map(p=>p.x)),top:Math.min(...z.map(p=>p.y)),bottom:Math.max(...z.map(p=>p.y))};}
+function claimStandard(s,u,by){if(u&&!u.standardClaimed&&commandAlive(u,'S')){u.standardClaimed=by;(s.trophies??=[]).push({unit:u.id,team:by,round:s.round});}}
 function destroyUnit(u){Object.assign(u,{x:null,y:null,destroyed:true,fleeing:false,engaged:null});}
 function checkPosition(state,unit,x,y,deployment=false){
   if(!Number.isFinite(x)||!Number.isFinite(y))return 'Enter valid coordinates.';
   const candidate={...unit,x,y},r=rectangle(candidate);
   if(offBoard(candidate,state))return 'The whole regiment must stay on the battlefield.';
+  if(terrainBlocks(state,corners(candidate)))return 'Units cannot enter impassable terrain.';
   if(deployment&&!inZone(state,unit.team,corners(candidate)))return 'Keep the entire block inside its own deployment zone.';
   if(state.units.some(u=>u.id!==unit.id&&u.x!==null&&gap(candidate,u)<1-EPS))return 'Keep at least 1″ between regiments.';
   if(state.rocket?.x!==null&&polygonGap(corners(candidate),rocketFootprint(state.rocket.x,state.rocket.y))<1-EPS)return 'Keep at least 1″ between regiments and the Deathshrieker.';
@@ -485,7 +494,7 @@ function planMove(u,order){const kind=order.kind??'advance',mode=order.mode??'ad
   return {start:{...u},afterWheel:after,end,cost:cost+(kind==='pivot'?0:['back','side'].includes(kind)?2*distance:distance),wheelCost:kind==='wheel'?cost:0,allowance:mode==='march'?2*profile(u).M:profile(u).M,pivot,kind,mode,angle,distance,side};
 }
 function crossedVortices(s,u,start,end){return (s.vortices??[]).filter(v=>getUnit(s,v.caster)?.team!==u.team&&pointSegment({x:v.x,y:v.y},{x:start.x,y:start.y},{x:end.x,y:end.y})<=1.5+Math.max(size(u).w,size(u).h)/2+EPS);}
-function forwardError(s,u,start,end){const swept=hull([...corners(start),...corners(end)]);for(const v of s.units){if(v.id===u.id||v.x===null)continue;if(polygonGap(swept,corners(v))<1-EPS)return 'Another regiment blocks this path. Shorten the move.';}if(s.rocket?.x!==null&&polygonGap(swept,rocketFootprint(s.rocket.x,s.rocket.y))<1-EPS)return 'The Deathshrieker blocks this path. Shorten the move.';if(s.cannons.some(c=>c.x!==null&&polygonGap(swept,cannonFootprint(c.x,c.y))<1-EPS))return 'A cannon blocks this path. Shorten the move.';return null;}
+function forwardError(s,u,start,end){const swept=hull([...corners(start),...corners(end)]);if(terrainBlocks(s,swept))return 'Impassable terrain blocks this path. Shorten the move or go around it.';for(const v of s.units){if(v.id===u.id||v.x===null)continue;if(polygonGap(swept,corners(v))<1-EPS)return 'Another regiment blocks this path. Shorten the move.';}if(s.rocket?.x!==null&&polygonGap(swept,rocketFootprint(s.rocket.x,s.rocket.y))<1-EPS)return 'The Deathshrieker blocks this path. Shorten the move.';if(s.cannons.some(c=>c.x!==null&&polygonGap(swept,cannonFootprint(c.x,c.y))<1-EPS))return 'A cannon blocks this path. Shorten the move.';return null;}
 function orderError(s,u,order){
   if(!canAct(s,u))return 'Select an unmoved regiment from the active army.';
   const {kind='advance',mode='advance',angle=0,distance=0}=order;
@@ -513,6 +522,7 @@ function orderError(s,u,order){
       const front=corners(pose).slice(0,2),sweep=hull([...previous,...front]);
       for(const v of s.units){if(v.id===u.id||v.x===null)continue;if(polygonGap(sweep,corners(v))<1.0001-EPS)return 'Another regiment blocks the leading edge of this wheel.';}
       if(combatants(s).some(m=>m.role==='warmachine'&&m.x!==null&&polygonGap(sweep,corners(m))<1.0001-EPS))return 'A war machine blocks the leading edge of this wheel.';
+      if(terrainBlocks(s,sweep))return 'Impassable terrain blocks this wheel.';
       previous=front;
     }
   }
@@ -608,7 +618,7 @@ function castSpell(s,id,key,targetId,random=Math.random,{dispel='none',dispeller
  const report=attemptSpell(s,id,key,targetId,random,{point});if(!report.pending)return report;
  return resolveDispel(s,dispel==='wizard'?dispeller??dispelOptions(s).wizards[0].id:dispel,random);
 }
-function attemptSpell(s,id,key,targetId,random=Math.random,{point=null}={}){if(!canCast(s,id,key,targetId))throw Error('This spell cannot be cast on that target now.');const u=getUnit(s,id),t=getUnit(s,targetId),spell=BATTLE_MAGIC[key];if(key==='pillar'&&point&&(!Number.isFinite(point.x)||!Number.isFinite(point.y)||Math.hypot(point.x-u.x,point.y-u.y)>12+EPS||point.x<1.5||point.x>boardOf(s).width-1.5||point.y<1.5||point.y>boardOf(s).height-1.5))throw Error('Place the 3″ Pillar within 12″ of the caster and on the battlefield.');const dice=rollD6(2,random),casting=dice[0]+dice[1]+Math.ceil(u.level/2)-(t.role==='wizard'&&t.faction==='empire'&&t.id!==id?1:0),report={caster:id,spell:key,target:targetId,dice,casting,cast:false,dispel:null,effect:null};u.castThisTurn.push(key);if(key==='pillar')s.vortices=s.vortices.filter(v=>v.caster!==id);if(dice[0]===1&&dice[1]===1){report.miscast=miscast(s,u,random);if(!report.miscast.cast)return report;report.casting=spell.cast;}else if(casting<spell.cast&&!(dice[0]===6&&dice[1]===6))return report;report.cast=true;
+function attemptSpell(s,id,key,targetId,random=Math.random,{point=null}={}){if(!canCast(s,id,key,targetId))throw Error('This spell cannot be cast on that target now.');const u=getUnit(s,id),t=getUnit(s,targetId),spell=BATTLE_MAGIC[key];if(key==='pillar'&&point&&(!Number.isFinite(point.x)||!Number.isFinite(point.y)||Math.hypot(point.x-u.x,point.y-u.y)>12+EPS||point.x<1.5||point.x>boardOf(s).width-1.5||point.y<1.5||point.y>boardOf(s).height-1.5))throw Error('Place the 3″ Pillar within 12″ of the caster and on the battlefield.');const dice=rollD6(2,random),casting=dice[0]+dice[1]+Math.ceil(u.level/2)-(t.id!==id?magicResistance(t):0),report={caster:id,spell:key,target:targetId,dice,casting,cast:false,dispel:null,effect:null};u.castThisTurn.push(key);if(key==='pillar')s.vortices=s.vortices.filter(v=>v.caster!==id);if(dice[0]===1&&dice[1]===1){report.miscast=miscast(s,u,random);if(!report.miscast.cast)return report;report.casting=spell.cast;}else if(casting<spell.cast&&!(dice[0]===6&&dice[1]===6))return report;report.cast=true;
  report.perfect=dice[0]===6&&dice[1]===6||!!report.miscast?.undispellable;
  s.pendingSpell={caster:id,key,target:targetId,point,report};const options=dispelOptions(s);
  if(!report.perfect&&(options.wizards.length||options.fated)){report.pending=true;return report;}
@@ -654,7 +664,7 @@ function engineerReroll(s,dice,which,random=Math.random){if(!canEngineerReroll(s
 // arc extends from each front base corner; other regiments block a clear shot.
 function shootingModels(s,u){const cells=modelSquares(s,u).filter(m=>!m.dead);return cells.filter(m=>m.row===0||(missileWeapon(u)?.volley&&cells.filter(v=>v.row===m.row).indexOf(m)<Math.ceil(cells.filter(v=>v.row===m.row).length/2)));}
 function shotPoint(u,m){return localPoint(u,m.x+m.size/2,m.y+m.size/2);}
-function sightBlocked(s,u,t,a,b){return s.units.some(v=>v.x!==null&&v.id!==u.id&&v.id!==t.id&&aliveCount(v)>0&&(()=>{const poly=corners(v);return poly.some((p,i)=>intersects(a,b,p,poly[(i+1)%4]))||inside(a,poly)||inside(b,poly);})());}
+function sightBlocked(s,u,t,a,b){return terrainBlocksSight(s,a,b)||s.units.some(v=>v.x!==null&&v.id!==u.id&&v.id!==t.id&&aliveCount(v)>0&&(()=>{const poly=corners(v);return poly.some((p,i)=>intersects(a,b,p,poly[(i+1)%4]))||inside(a,poly)||inside(b,poly);})());}
 function modelCanSee(s,u,t,m,range){const origin=shotPoint(u,m),a=rad(-heading(u)),targets=[{x:t.x,y:t.y},...corners(t)];return targets.some(point=>{const dx=point.x-origin.x,dy=point.y-origin.y,lx=dx*Math.cos(a)-dy*Math.sin(a),ly=dx*Math.sin(a)+dy*Math.cos(a);return ly<0&&Math.abs(lx)<=-ly+m.size/2+EPS&&Math.hypot(dx,dy)<=range+EPS&&!sightBlocked(s,u,t,origin,point);});}
 function canShoot(s,u){return s.stage==='shooting'&&u?.team===s.team&&u.role==='missile'&&u.x!==null&&aliveCount(u)>0&&!u.shot&&!u.engaged&&!u.fleeing&&!u.charge&&u.movementMode!=='march';}
 function shootingPlan(s,u,t,{reaction=false}={}){
@@ -717,13 +727,15 @@ function directChargePlan(s,u,t){
  if(offBoard(end,s))return {...plan,error:'Charge ends off the battlefield.'};
  const others=combatants(s).filter(v=>v.x!==null&&v.id!==u.id&&v.id!==t.id);
  if(others.some(v=>gap(end,v)<1-EPS))return {...plan,error:'Another regiment blocks the contact position.'};
+ if(terrainBlocks(s,corners(end)))return {...plan,error:'Impassable terrain blocks the contact position.'};
  const steps=Math.max(1,Math.ceil(Math.abs(angle)/.25));let prev=corners(u).slice(0,2);
  for(let i=1;i<=steps;i++){
   const pose=wheelPose(u,angle*i/steps),front=corners(pose).slice(0,2),sweep=hull([...prev,...front]);
-  if(offBoard(pose,s)||polygonGap(sweep,corners(t))<EPS||others.some(v=>polygonGap(sweep,corners(v))<1-EPS))return {...plan,error:'The charge wheel is obstructed.'};prev=front;
+  if(offBoard(pose,s)||polygonGap(sweep,corners(t))<EPS||others.some(v=>polygonGap(sweep,corners(v))<1-EPS)||terrainBlocks(s,sweep))return {...plan,error:'The charge wheel is obstructed.'};prev=front;
  }
  const swept=hull([...corners(after),...corners(end)]);
  if(others.some(v=>polygonGap(swept,corners(v))<1-EPS))return {...plan,error:'Another regiment blocks the charge path.'};
+ if(terrainBlocks(s,swept))return {...plan,error:'Impassable terrain blocks the charge path.'};
  return plan;
 }
 // The aligned pose after contact: flush against the face u meets, turned square to it and
@@ -742,17 +754,17 @@ function chargePlan(s,u,t){
  for(let angle=-90;angle<=90;angle+=5){
   const after=Math.abs(angle)>EPS?wheelPose(u,angle):{...u},wheel=wheelCost(angle,u);if(wheel>=limit||offBoard(after,s))continue;
   let blocked=false,previous=corners(u).slice(0,2);
-  for(let i=1,n=Math.ceil(Math.abs(angle)/2);i<=n;i++){const pose=wheelPose(u,angle*i/n),front=corners(pose).slice(0,2),sweep=hull([...previous,...front]);if(offBoard(pose,s)||polygonGap(sweep,corners(t))<EPS||others.some(v=>polygonGap(sweep,corners(v))<1-EPS)){blocked=true;break;}previous=front;}
+  for(let i=1,n=Math.ceil(Math.abs(angle)/2);i<=n;i++){const pose=wheelPose(u,angle*i/n),front=corners(pose).slice(0,2),sweep=hull([...previous,...front]);if(offBoard(pose,s)||polygonGap(sweep,corners(t))<EPS||others.some(v=>polygonGap(sweep,corners(v))<1-EPS)||terrainBlocks(s,sweep)){blocked=true;break;}previous=front;}
   if(blocked)continue;
   const remaining=limit-wheel;
   for(let d=.1;d<=remaining+.1;d+=.1){
-   const contact=forwardPose(after,Math.min(d,remaining));if(offBoard(contact,s)||others.some(v=>gap(contact,v)<1-EPS)){blocked=true;break;}
+   const contact=forwardPose(after,Math.min(d,remaining));if(offBoard(contact,s)||others.some(v=>gap(contact,v)<1-EPS)||terrainBlocks(s,corners(contact))){blocked=true;break;}
    if(gap(contact,t)>.12)continue;
    if(chargeFace(contact,t)!==face)break;
    const end=alignedContact(contact,t,face);
    const alignAngle=((desired-heading(contact)+540)%360)-180;
-   if(Math.abs(alignAngle)>90+EPS||Math.hypot(end.x-contact.x,end.y-contact.y)>.2+2*own.w*Math.sin(rad(Math.abs(alignAngle))/2)||offBoard(end,s)||gap(end,t)>.02||others.some(v=>gap(end,v)<1-EPS))break;
-   const swept=hull([...corners(after),...corners(contact)]);if(others.some(v=>polygonGap(swept,corners(v))<1-EPS))break;
+   if(Math.abs(alignAngle)>90+EPS||Math.hypot(end.x-contact.x,end.y-contact.y)>.2+2*own.w*Math.sin(rad(Math.abs(alignAngle))/2)||offBoard(end,s)||gap(end,t)>.02||others.some(v=>gap(end,v)<1-EPS)||terrainBlocks(s,corners(end)))break;
+   const swept=hull([...corners(after),...corners(contact)]);if(others.some(v=>polygonGap(swept,corners(v))<1-EPS)||terrainBlocks(s,swept))break;
    const plan={start:{...u},afterWheel:after,contact,end,angle,distance:Math.min(d,remaining),wheelCost:wheel,alignAngle,cost:wheel+Math.min(d,remaining),face,target:t.id};
    if(!best||plan.cost<best.cost)best=plan;break;
   }
@@ -776,6 +788,7 @@ function chargeReaction(s,chargerId,choice,random=Math.random){
  if(choice==='hold'&&defender.fleeing)throw Error('A fleeing regiment must Flee.');
  if(choice==='stand-shoot'&&!canStandShoot(s,defender,charger))throw Error('This regiment cannot Stand & Shoot against this charge.');
  if(choice==='flee'&&defender.engaged)throw Error('An engaged regiment must Hold.');
+ if(choice==='flee'&&hasRule(defender,'frenzy')&&!defender.fleeing)throw Error('A Frenzied unit cannot Flee as a charge reaction.');
  if(defender.role==='warmachine'&&choice!=='hold')throw Error('A war machine can only Hold.');
  let report=null,fleeDice=null,fleeDistance=0,flee=null;
  if(choice==='stand-shoot'){const plan=shootingPlan(s,defender,charger,{reaction:true});report=fireMissiles(s,defender,charger,plan,random);defender.reacted=true;}
@@ -793,7 +806,7 @@ function chargeReaction(s,chargerId,choice,random=Math.random){
 function cancelCharge(s,id){if(s.movementStep!=='declare')throw Error('Declarations are locked after rolling begins.');const u=getUnit(s,id);if(u?.charge?.status==='declared'&&u.charge.reaction!=='pending')throw Error('A charge cannot be cancelled after its defender reacts.');if(u?.charge?.status==='declared')u.charge=null;}
 function availableCharges(s,u){return combatants(s).filter(v=>v.team!==u.team&&v.x!==null&&aliveCount(v)>0&&!s.units.some(other=>other.id!==u.id&&other.charge?.status==='declared'&&other.charge.target===v.id)&&!chargePlan(s,u,v).error);}
 function impetuousTest(s,id,dice){const u=getUnit(s,id);if(s.stage!=='movement'||s.movementStep!=='declare'||u?.team!==s.team||u.faction!=='orc'||u.impetuousTest!==null||!availableCharges(s,u).length)throw Error('Select an Orc Mob with an available charge.');if(!Array.isArray(dice)||dice.length!==2||dice.some(d=>!Number.isInteger(d)||d<1||d>6))throw Error('An Impetuous test requires two D6.');u.impetuousTest=dice[0]+dice[1]<=profile(u).Ld;return u.impetuousTest;}
-function finishDeclarations(s){if(s.stage!=='movement'||s.movementStep!=='declare')throw Error('Not declaring charges.');if(s.units.some(u=>u.charge?.reaction==='pending'))throw Error('Choose every defender’s charge reaction first.');for(const u of s.units.filter(u=>u.team===s.team&&u.faction==='orc'&&!u.charge&&canAct(s,u)&&availableCharges(s,u).length)){if(u.impetuousTest===null)throw Error('Roll Impetuous for each Orc Mob able to charge.');if(u.impetuousTest===false)throw Error('An Impetuous Orc Mob must declare a charge.');}if(s.units.some(u=>u.charge?.status==='declared'))s.movementStep='charges';else beginRemaining(s);s.history=[];}
+function finishDeclarations(s){if(s.stage!=='movement'||s.movementStep!=='declare')throw Error('Not declaring charges.');if(s.units.some(u=>u.charge?.reaction==='pending'))throw Error('Choose every defender’s charge reaction first.');for(const u of s.units.filter(u=>u.team===s.team&&hasRule(u,'frenzy')&&!u.charge&&canAct(s,u)&&availableCharges(s,u).length))throw Error(`${u.name} is Frenzied and must declare a charge.`);for(const u of s.units.filter(u=>u.team===s.team&&u.faction==='orc'&&!u.charge&&canAct(s,u)&&availableCharges(s,u).length)){if(u.impetuousTest===null)throw Error('Roll Impetuous for each Orc Mob able to charge.');if(u.impetuousTest===false)throw Error('An Impetuous Orc Mob must declare a charge.');}if(s.units.some(u=>u.charge?.status==='declared'))s.movementStep='charges';else beginRemaining(s);s.history=[];}
 function enterRemaining(s){
  if(s.units.some(u=>u.charge?.status==='declared'))throw Error('Resolve all declared charges before Remaining Moves.');
  beginRemaining(s);
@@ -821,7 +834,7 @@ function resolveCharge(s,id,dice){
  if(u.charge.reaction==='pending')throw Error('Choose the defender’s reaction first.');
  const t=getUnit(s,u.charge.target),fled=u.charge.reaction==='flee',p=t?.x!==null?chargePlan(s,u,t):{error:'Target fled off the table.'},route=p.error?u.charge.initialPlan:p,roll=Math.max(...dice),range=profile(u).M+roll,success=!p.error&&range+EPS>=p.cost;
  let end={...u},travel=0;
- if(success){end=p.end;travel=p.cost;if(fled)destroyUnit(t);else{u.engaged=t.id;t.engaged=u.id;}}
+ if(success){end=p.end;travel=p.cost;if(fled){claimStandard(s,t,u.team);destroyUnit(t);}else{u.engaged=t.id;t.engaged=u.id;}}
  else if(route?.start){
   const budget=fled?range:roll;
   const wheelAngle=route.wheelCost<=budget?route.angle:Math.sign(route.angle)*2*Math.asin(Math.min(1,budget/(2*size(u).w)))*180/Math.PI;
@@ -868,7 +881,7 @@ function leadership(u,kind='normal'){const base=commandAlive(u,'C')?Math.max(pro
 function stepForward(models,lost){let drop=lost;return [...models].sort((a,b)=>(a.rank??0)-(b.rank??0)).filter(m=>{if(drop>0&&m.command!=='C'){drop--;return false;}return true;});}
 function attackStage(s,attacker,defender,random,lost=0){
  const fighting=stepForward(modelSquares(s,attacker).filter(m=>m.fighting),isCharacter(attacker)||attacker.role==='warmachine'?0:lost),faction=FACTIONS[attacker.faction??'chaos'],chopping=faction.choppas&&attacker.charge?.status==='success',dice={hit:[],wound:[],reroll:[],save:[]};
- const furious=faction.furious&&attacker.charge?.status==='success'&&attacker.charge.distance>=3?1:0;
+ const furious=(faction.furious&&attacker.charge?.status==='success'&&attacker.charge.distance>=3?1:0)+(hasRule(attacker,'frenzy')&&attacker.charge?.status==='success'?1:0);
  const attacks=fighting.reduce((total,model)=>total+(model.command==='C'?championProfile(attacker).A:profile(attacker).A)+furious,0);dice.hit=combatDice(attacks,random);
  const toHit=Math.min(6,hitTarget(attacker,defender)+stormPenalty(s,attacker)),toWound=woundTarget(attacker,defender),toSave=saveTarget(defender,attacker),hits=dice.hit.filter(n=>n>=toHit).length;dice.wound=combatDice(hits,random);
  if(chopping){dice.reroll=combatDice(dice.wound.filter(n=>n===1).length,random);}
@@ -937,6 +950,7 @@ function fireRocket(s,targetId,profileKey,dice,random=Math.random,{indirect=fals
  if(profileKey==='incendiary')for(const unit of s.units.filter(u=>report.affected.some(a=>a.unit===u.id&&a.slain)&&u.x!==null)){
   const panic=rollD6(2,random);report.panic??=[];report.panic.push({unit:unit.id,dice:panic,passed:panic[0]+panic[1]<=leadership(unit)});
   if(panic[0]+panic[1]>leadership(unit)){unit.fleeing=true;unit.moved=true;const away=Math.atan2(unit.x-s.rocket.x,-(unit.y-s.rocket.y))*180/Math.PI;unit.heading=normalize(away);const flee=rollD6(2,random),move=fleeMove(s,unit,flee[0]+flee[1],random);Object.assign(report.panic.at(-1),{fleeDice:flee,fledOffBoard:move.fledOffBoard,move});}
+  if(hasRule(unit,'frenzy'))Object.assign(report.panic.at(-1),{passed:true,frenzy:true});
  }
  s.rocket.lastShot=report;return report;
 }
@@ -995,7 +1009,7 @@ function resolveCombat(s,id,random=Math.random){
  if(s.stage!=='combat'||s.pendingCombat)throw Error('Finish the current combat outcome first.');
  const a=getUnit(s,id),b=getUnit(s,a?.engaged);
  if(!a||!b||!a.engaged||a.combatResolved||b.combatResolved)throw Error('Select an unresolved engaged regiment.');
- const groups=[...new Set([combatInitiative(a,b),combatInitiative(b,a)])].sort((x,y)=>y-x),stages=[],damage={[a.id]:0,[b.id]:0};
+ const groups=[...new Set([combatInitiative(a,b),combatInitiative(b,a)])].sort((x,y)=>y-x),stages=[],damage={[a.id]:0,[b.id]:0},standards={[a.id]:commandAlive(a,'S'),[b.id]:commandAlive(b,'S')};
  for(const init of groups){
   const simultaneous=[];
   if(combatInitiative(a,b)===init&&aliveCount(a)>0)simultaneous.push(attackStage(s,a,b,random,damage[a.id]));
@@ -1012,15 +1026,16 @@ function resolveCombat(s,id,random=Math.random){
  a.combatResolved=b.combatResolved=true;
  const result={a:a.id,b:b.id,stages,damage,score:{[a.id]:scoreA,[b.id]:scoreB},winner,loser,outcome,breakDice,margin,round:s.round};
  s.lastCombat=result;(s.combatHistory??=[]).push(result);
- if(outcome==='destroyed'){for(const dead of [a,b].filter(u=>aliveCount(u)===0))destroyUnit(dead);if(winner){getUnit(s,winner).engaged=null;if(getUnit(s,winner).role!=='warmachine')s.pendingCombat={winner,loser,outcome:'overrun',stage:'winner-choice',loserDestroyed:true,retreat:{moved:0,dir:null}};}}
+ if(outcome==='destroyed'){for(const dead of [a,b].filter(u=>aliveCount(u)===0)){if(standards[dead.id]&&winner&&!dead.standardClaimed){dead.standardClaimed=getUnit(s,winner).team;(s.trophies??=[]).push({unit:dead.id,team:dead.standardClaimed,round:s.round});}destroyUnit(dead);}if(winner){getUnit(s,winner).engaged=null;if(getUnit(s,winner).role!=='warmachine')s.pendingCombat={winner,loser,outcome:'overrun',stage:'winner-choice',loserDestroyed:true,retreat:{moved:0,dir:null}};}}
  else if(outcome!=='draw')s.pendingCombat={winner,loser,outcome,margin};
+ if(loser){const l=getUnit(s,loser);if(l?.effects)l.effects=l.effects.filter(e=>e.rule!=='frenzy');}
  return result;
 }
 function beginCombat(s,id){
  if(s.stage!=='combat'||s.combatSession||s.pendingCombat)throw Error('Finish the current combat first.');
  const a=getUnit(s,id),b=getUnit(s,a?.engaged);if(!a||!b||a.combatResolved||b.combatResolved)throw Error('Select an unresolved engaged regiment.');
  const groups=[...new Set([combatInitiative(a,b),combatInitiative(b,a)])].sort((x,y)=>y-x);
- return s.combatSession={a:a.id,b:b.id,initiative:{[a.id]:combatInitiative(a,b),[b.id]:combatInitiative(b,a)},groups,step:0,phase:'attacks',stages:[],damage:{[a.id]:0,[b.id]:0}};
+ return s.combatSession={standards:{[a.id]:commandAlive(a,'S'),[b.id]:commandAlive(b,'S')},a:a.id,b:b.id,initiative:{[a.id]:combatInitiative(a,b),[b.id]:combatInitiative(b,a)},groups,step:0,phase:'attacks',stages:[],damage:{[a.id]:0,[b.id]:0}};
 }
 function fightCombatStep(s,random=Math.random){
  const c=s.combatSession;if(s.stage!=='combat'||c?.phase!=='attacks')throw Error('Show Initiative before rolling attacks.');
@@ -1039,14 +1054,15 @@ function compareCombat(s){
  const loser=winner===a.id?b.id:winner===b.id?a.id:null,margin=Math.abs(scoreA.total-scoreB.total),outcome=aliveCount(a)===0||aliveCount(b)===0?'destroyed':winner?'await-break':'draw';
  const result={a:a.id,b:b.id,initiative:c.initiative,stages:c.stages,damage:c.damage,score:{[a.id]:scoreA,[b.id]:scoreB},winner,loser,outcome,breakDice:null,margin,round:s.round};
  a.combatResolved=b.combatResolved=true;s.lastCombat=result;(s.combatHistory??=[]).push(result);s.combatSession=null;
- if(outcome==='destroyed'){for(const dead of [a,b].filter(u=>aliveCount(u)===0))destroyUnit(dead);if(winner){getUnit(s,winner).engaged=null;if(getUnit(s,winner).role!=='warmachine')s.pendingCombat={winner,loser,outcome:'overrun',stage:'winner-choice',loserDestroyed:true,retreat:{moved:0,dir:null}};}}
+ if(outcome==='destroyed'){for(const dead of [a,b].filter(u=>aliveCount(u)===0)){if(c.standards?.[dead.id]&&winner&&!dead.standardClaimed){dead.standardClaimed=getUnit(s,winner).team;(s.trophies??=[]).push({unit:dead.id,team:dead.standardClaimed,round:s.round});}destroyUnit(dead);}if(winner){getUnit(s,winner).engaged=null;if(getUnit(s,winner).role!=='warmachine')s.pendingCombat={winner,loser,outcome:'overrun',stage:'winner-choice',loserDestroyed:true,retreat:{moved:0,dir:null}};}}
  else if(winner)s.pendingCombat={winner,loser,margin,stage:'break'};
+ if(loser){const l=getUnit(s,loser);if(l?.effects)l.effects=l.effects.filter(e=>e.rule!=='frenzy');}
  return result;
 }
 function rollCombatBreak(s,random=Math.random){
  const p=s.pendingCombat;if(s.stage!=='combat'||p?.stage!=='break')throw Error('Compare combat results before the Break test.');
  const loser=getUnit(s,p.loser),winner=getUnit(s,p.winner),dice=combatDice(2,random),natural=dice[0]+dice[1],ld=leadership(loser);
- p.outcome=dice[0]===1&&dice[1]===1||natural+p.margin<=ld?'give-ground':natural>ld?'break':'fall-back';if(loser.role==='wizard'&&loser.faction==='chaos'&&!loser.stubbornUsed){loser.stubbornUsed=true;p.outcome='fall-back';}p.breakDice=dice;
+ p.outcome=dice[0]===1&&dice[1]===1||natural+p.margin<=ld?'give-ground':natural>ld?'break':'fall-back';if(loser.role==='wizard'&&loser.faction==='chaos'&&!loser.stubbornUsed){loser.stubbornUsed=true;p.outcome='fall-back';}const stubborn=loser.effects?.find(e=>e.rule==='stubborn'&&!e.used);if(stubborn&&p.outcome!=='give-ground'){stubborn.used=true;p.outcome='fall-back';p.stubborn=true;}p.breakDice=dice;
  p.shieldwallAvailable=p.outcome==='fall-back'&&loser.role!=='warmachine'&&FACTIONS[loser.faction??'chaos'].shieldwall&&!loser.shieldwallUsed&&loser.charge?.status!=='success'&&winner.charge?.status==='success';
  p.stage=p.shieldwallAvailable?'loser-choice':'retreat';s.lastCombat={...s.lastCombat,outcome:p.outcome,breakDice:dice};s.combatHistory[s.combatHistory.length-1]=s.lastCombat;
  return {dice,outcome:p.outcome,loser:p.loser,leadership:ld,shieldwallAvailable:p.shieldwallAvailable};
@@ -1063,8 +1079,11 @@ function chooseLoserAction(s,choice){
 // 1" beyond enemies and, because this prototype keeps 1" between all units, 1" from friends.
 function fleeMove(s,u,distance,random=Math.random,depth=0){
  const start={...u},others=combatants(s).filter(v=>v.id!==u.id&&v.x!==null&&aliveCount(v)>0);
+ const clearOf=pose=>!terrainBlocks(s,hull([...corners(pose),...corners(forwardPose(pose,distance))]));
+ if(!clearOf(start))for(let turn=5;turn<=90;turn+=5){const l={...start,heading:normalize(heading(start)-turn)},r={...start,heading:normalize(heading(start)+turn)};if(clearOf(l)){start.heading=l.heading;break;}if(clearOf(r)){start.heading=r.heading;break;}}
+ u.heading=start.heading;
  let travel=distance,end=forwardPose(start,travel);
- while(!offBoard(end,s)&&others.some(v=>gap(end,v)<1-EPS)){travel+=.05;end=forwardPose(start,travel);}
+ while(!offBoard(end,s)&&(others.some(v=>gap(end,v)<1-EPS)||terrainBlocks(s,corners(end)))){travel+=.05;end=forwardPose(start,travel);}
  const leave=forwardPose(start,Math.min(.02,travel)),path=hull([...corners(leave),...corners(end)]),crossed=others.filter(v=>polygonGap(path,corners(v))<EPS);
  const report={unit:u.id,distance:travel,passedThrough:crossed.map(v=>v.id),peril:[],panic:[],fledOffBoard:offBoard(end,s)};
  if(report.fledOffBoard)destroyUnit(u);
@@ -1082,7 +1101,7 @@ function fleeMove(s,u,distance,random=Math.random,depth=0){
  report.casualties=report.peril.filter(p=>p.lost).length;report.destroyed=!!u.destroyed;
  const from=u.x!==null?u:end;
  for(const friend of crossed.filter(v=>v.team===u.team&&v.role!=='warmachine'&&!v.fleeing&&!v.engaged&&v.x!==null&&aliveCount(v)>0)){
-  const dice=rollD6(2,random),passed=dice[0]+dice[1]<=leadership(friend),entry={unit:friend.id,dice,passed};report.panic.push(entry);
+  const dice=rollD6(2,random),passed=hasRule(friend,'frenzy')||dice[0]+dice[1]<=leadership(friend),entry={unit:friend.id,dice,passed};report.panic.push(entry);
   if(passed||depth>=6)continue;
   Object.assign(friend,{fleeing:true,moved:true,heading:normalize(Math.atan2(friend.x-from.x,-(friend.y-from.y))*180/Math.PI)});
   entry.fleeDice=rollD6(2,random);entry.flee=fleeMove(s,friend,entry.fleeDice[0]+entry.fleeDice[1],random,depth+1);
@@ -1100,7 +1119,7 @@ function retreatPose(s,u,enemy,distance,stopNear=true){
  for(let i=1;i<=Math.ceil(distance*20);i++){
   const d=Math.min(distance,i/20),pose={...u,x:start.x+dir.x*d,y:start.y+dir.y*d};
   if(offBoard(pose,s))return {moved,offBoard:true,dir};
-  const obstructed=combatants(s).some(v=>v.x!==null&&v.id!==u.id&&v.id!==enemy.id&&gap(pose,v)<1-EPS);
+  const obstructed=combatants(s).some(v=>v.x!==null&&v.id!==u.id&&v.id!==enemy.id&&gap(pose,v)<1-EPS)||terrainBlocks(s,corners(pose));
   if(obstructed)break;
   Object.assign(u,{x:pose.x,y:pose.y});moved=d;
  }
@@ -1114,6 +1133,7 @@ function pursuitAdvance(s,winner,distance,dir,ignoredId,originalId){
    const r=rectangle(pose),edge=r.left<0?'left':r.right>boardOf(s).width?'right':r.top<0?'top':'bottom';
    winner.offBoardPursuit={edge,x:winner.x,y:winner.y};winner.x=null;winner.y=null;offBoardPursuit=true;break;
   }
+  if(terrainBlocks(s,corners(pose))){blocked=true;break;}
   const obstacle=combatants(s).find(v=>v.id!==winner.id&&v.id!==ignoredId&&v.x!==null&&aliveCount(v)>0&&(v.team===winner.team||v.engaged&&v.engaged!==winner.id?gap(pose,v)<1-EPS:gap(pose,v)<EPS));
   if(obstacle){
    if(obstacle.team!==winner.team&&!obstacle.engaged){
@@ -1121,7 +1141,7 @@ function pursuitAdvance(s,winner,distance,dir,ignoredId,originalId){
     let lo=moved,hi=d;for(let k=0;k<24;k++){const mid=(lo+hi)/2;if(gap({...winner,x:start.x+dir.x*mid,y:start.y+dir.y*mid},obstacle)<EPS)hi=mid;else lo=mid;}
     Object.assign(winner,{x:start.x+dir.x*hi,y:start.y+dir.y*hi});moved=hi;contact=obstacle.id;
     if(!obstacle.fleeing){const aligned=alignedContact(winner,obstacle);if(!offBoard(aligned,s)&&!s.units.some(v=>v.id!==winner.id&&v.id!==obstacle.id&&v.x!==null&&gap(aligned,v)<1-EPS))Object.assign(winner,{x:aligned.x,y:aligned.y,heading:aligned.heading});}
-    if(obstacle.fleeing)destroyUnit(obstacle);
+    if(obstacle.fleeing){claimStandard(s,obstacle,winner.team);destroyUnit(obstacle);}
     else{winner.engaged=obstacle.id;obstacle.engaged=winner.id;if(obstacle.id!==originalId){winner.charge={target:obstacle.id,status:'success',distance:moved,face:chargeFace(winner,obstacle),pursuit:true};winner.pursuitPending=true;winner.combatResolved=obstacle.combatResolved=true;}}
    }else blocked=true;
    break;
@@ -1155,6 +1175,7 @@ function winnerCombat(s,choice='follow',random=Math.random,reformHeading=null){
  const winner=getUnit(s,p.winner),loser=getUnit(s,p.loser),out={winner:p.winner,loser:p.loser,outcome:p.outcome,choice,rolls:{},movement:{loser:p.retreat.moved},loserDestroyed:p.loserDestroyed};
  if(reformHeading!==null&&(!Number.isFinite(reformHeading)||reformHeading<0||reformHeading>=360))throw Error('Choose a facing from 0° to 359°.');
  const reform=()=>{const target={...winner,heading:normalize(reformHeading??heading(winner))},error=checkPosition(s,target,target.x,target.y);out.reform={passed:!error,heading:heading(winner),error};if(!error){winner.heading=target.heading;out.reform.heading=winner.heading;}};
+ if(hasRule(winner,'frenzy')&&choice==='restrain')choice='follow';out.choice=choice;
  let follow=choice!=='restrain';if(choice==='restrain'){const dice=combatDice(2,random);out.rolls.restraint=dice;follow=dice[0]+dice[1]>leadership(winner,'restraint');out.restraintFailed=follow;if(!follow&&p.outcome==='overrun')reform();}
  if(follow){
   let advance=p.retreat.moved;
@@ -1162,7 +1183,7 @@ function winnerCombat(s,choice='follow',random=Math.random,reformHeading=null){
    const dice=combatDice(2,random);out.rolls.pursuit=dice;
    const chase=Math.max(1,dice[0]+dice[1]-(FACTIONS[winner.faction??'chaos'].resolute?1:0));out.pursuitDistance=chase;
    if(p.outcome==='overrun')advance=chase;
-   else if(p.outcome==='break'&&(p.loserDestroyed||chase>=p.fleeDistance)){if(loser.x!==null)destroyUnit(loser);out.loserDestroyed=true;advance=chase;}
+   else if(p.outcome==='break'&&(p.loserDestroyed||chase>=p.fleeDistance)){if(loser.x!==null){claimStandard(s,loser,winner.team);destroyUnit(loser);}out.loserDestroyed=true;advance=chase;}
    else if(p.outcome==='fall-back'&&loser.x!==null&&chase>=p.fleeDistance){out.caughtInGoodOrder=true;advance=p.retreat.moved;}
    else advance=Math.min(chase,Math.max(0,p.retreat.moved-1));
   }
@@ -1186,7 +1207,7 @@ function finishCombat(s,choice='follow',random=Math.random,reformHeading=null){
  return winnerCombat(s,choice,random,reformHeading);
 }
 
-return {BATTLE_MAGIC,BOARD,CANNON_BASE,CHARACTERS,COMMAND_SLOTS,FACTIONS,MISSILE,PHASES,PROFILE,ROCKET_BASE,ROCKET_PROFILES,SIZE,SPELL_ROLL,SPELL_TEXT,TROOP_TYPES,WAR_MACHINE_CREW,WIZARDS,aliveCount,armyName,attemptSpell,autoDeploy,availableCharges,availableShots,baseSize,begin,beginCombat,boardOf,canAct,canCast,canDispelVortex,canEngineerReroll,canFireCannon,canFireRocket,canReturnToMovement,canShoot,canStandShoot,cancelCharge,cannonFootprint,cannonPlan,cannonTargets,castSpell,championProfile,chargeFace,chargePlan,chargeReaction,checkPosition,chooseLoserAction,combatPairs,combatants,commandAlive,commandSlots,commitOrder,compareCombat,corners,createCannons,createGame,createWizard,declareCharge,dispelOptions,dispelVortex,driftVortices,endOfPlayerTurn,engineerReroll,enterRemaining,equipment,exchangeSignature,fightCombatStep,filesOf,finishCombat,finishDeclarations,finishGame,finishShooting,fireCannon,fireRocket,forwardPose,gap,generateSpells,getUnit,hasShield,heading,hitTarget,hold,impetuousTest,inZone,inactionReason,isCharacter,leadership,localPoint,marchTest,maxWheel,missileWeapon,modelSquares,move,moveCombatLoser,movementError,movementRemaining,needsMarchTest,nextPhase,nextTurn,normalize,orderError,phaseComplete,phaseHasActions,place,placeCannon,placeRocket,planMove,polygonGap,profile,rally,ranksOf,rectangle,registerFormatRules,remainingWounds,removeCasualties,resolveCharge,resolveCombat,resolveDispel,returnToMovement,rocketFootprint,rocketPlan,rocketTargets,rollCannonDice,rollCombatBreak,rollD6,rollRocketDice,saveTarget,setOpponent,shoot,shootingPlan,shootingTargets,size,skipEmptySteps,spellTargets,startingModels,startingUnitStrength,startingWounds,troopType,undo,unitStrength,vortexDispellers,wheelCost,wheelPose,winnerCombat,woundTarget,zoneBounds,zoneOf};})();
+return {BATTLE_MAGIC,BOARD,CANNON_BASE,CHARACTERS,COMMAND_SLOTS,FACTIONS,MISSILE,PHASES,PROFILE,ROCKET_BASE,ROCKET_PROFILES,SIZE,SPELL_ROLL,SPELL_TEXT,TROOP_TYPES,WAR_MACHINE_CREW,WIZARDS,aliveCount,armyName,attemptSpell,autoDeploy,availableCharges,availableShots,baseSize,begin,beginCombat,boardOf,canAct,canCast,canDispelVortex,canEngineerReroll,canFireCannon,canFireRocket,canReturnToMovement,canShoot,canStandShoot,cancelCharge,cannonFootprint,cannonPlan,cannonTargets,castSpell,championProfile,chargeFace,chargePlan,chargeReaction,checkPosition,chooseLoserAction,circleGap,combatPairs,combatants,commandAlive,commandSlots,commitOrder,compareCombat,corners,createCannons,createGame,createWizard,declareCharge,dispelOptions,dispelVortex,driftVortices,endOfPlayerTurn,engineerReroll,enterRemaining,equipment,exchangeSignature,fightCombatStep,filesOf,finishCombat,finishDeclarations,finishGame,finishShooting,fireCannon,fireRocket,forwardPose,gap,generateSpells,getUnit,hasRule,hasShield,heading,hitTarget,hold,impetuousTest,inZone,inactionReason,isCharacter,leadership,localPoint,magicResistance,marchTest,maxWheel,missileWeapon,modelSquares,move,moveCombatLoser,movementError,movementRemaining,needsMarchTest,nextPhase,nextTurn,normalize,orderError,phaseComplete,phaseHasActions,place,placeCannon,placeRocket,planMove,polygonGap,profile,rally,ranksOf,rectangle,registerFormatRules,remainingWounds,removeCasualties,resolveCharge,resolveCombat,resolveDispel,returnToMovement,rocketFootprint,rocketPlan,rocketTargets,rollCannonDice,rollCombatBreak,rollD6,rollRocketDice,saveTarget,setOpponent,shoot,shootingPlan,shootingTargets,size,skipEmptySteps,spellTargets,startingModels,startingUnitStrength,startingWounds,terrainBlocks,troopType,undo,unitStrength,vortexDispellers,wheelCost,wheelPose,winnerCombat,woundTarget,zoneBounds,zoneOf};})();
 const BM=(()=>{// Battle March rules layered on the core engine: objectives, objective control, scoring and the
 // end of the game. The engine calls these hooks through registerFormatRules.
 function endOfTurn(s,team){s.scoring??={ledger:[]};}
