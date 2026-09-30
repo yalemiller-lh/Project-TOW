@@ -124,3 +124,59 @@ input[type=range]{accent-color:var(--army-primary)}.charge-step{background:var(-
 
 .combat-reform{margin-top:8px;padding:10px;border:1px solid var(--line)}.combat-reform label{display:flex;align-items:center;gap:8px;font-size:12px}.combat-reform input{max-width:70px}.combat-reform button{margin-top:8px}
 
+/* Battle March: setup steps, objectives, temporary effects, VP panel and result */
+.bm-steps{margin-bottom:10px;padding:12px;background:#f9f4e2;border:2px solid #4a4935;border-radius:0}
+.bm-steps .panel-kicker{margin:-12px -12px 8px;padding:6px 10px;background:var(--army-primary);color:#fff8e7;font-weight:bold}
+.bm-steps .panel-kicker span,.bm-steps .panel-kicker span:last-child{color:#fff8e7}
+.bm-step{border-top:1px solid #cfc5a4;padding:8px 0}
+.bm-step h3{display:flex;align-items:center;gap:7px;font-size:14px;letter-spacing:.5px;margin:0 0 4px;color:#302c22}
+.bm-step h3 span{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;background:#cfc5a4;color:#302c22;font:bold 11px 'DM Sans',sans-serif}
+.bm-step.current h3 span{background:var(--army-primary);color:#fff8e7}
+.bm-step.done h3 span{background:#5f7a3e;color:#fff8e7}
+.bm-step.later{opacity:.6}
+.bm-step p{font-size:12px;line-height:1.45;color:#3b392e;margin:3px 0}
+.bm-step button{margin-top:6px;padding:7px 9px;font-size:12px}
+.optional-rules{border:1px solid #b8ad8b;margin:8px 0;padding:6px 8px;font-size:12px}
+.optional-rules legend{font-size:10px;font-weight:bold;letter-spacing:1px;color:var(--army-ink);padding:0 4px}
+.optional-rule{display:flex;align-items:center;gap:6px;margin:2px 0;cursor:pointer}
+.optional-rule input{width:auto}
+.optional-rule.unavailable{color:#7d7762;cursor:not-allowed}
+.optional-rule small{font-size:10px;color:#857d66}
+.objective .objective-range{fill:#fff6d10f;stroke:#f3e9c3;stroke-width:1.5;stroke-dasharray:6 5;pointer-events:none}
+.objective.held .objective-range{stroke-width:2.5;stroke-dasharray:none;fill:#ffffff14}
+.objective.contested .objective-range{stroke:#ffd166;stroke-width:2.5}
+.objective .objective-body{fill:#d9a93d;stroke:#3b2c10;stroke-width:2}
+.objective.landmark .objective-body{fill:#7c7766;stroke:#2b2a22;stroke-width:3}
+.objective.burned .objective-body{fill:#3a3530;stroke:#1b1916}
+.objective-glyph{font-size:13px;fill:#3b2c10;pointer-events:none}
+.objective.landmark .objective-glyph{font-size:22px;fill:#e9e4d2}
+.objective-label{font:bold 11px Georgia,serif;fill:#fff7e1;paint-order:stroke;stroke:#172314;stroke-width:3px;letter-spacing:.5px;pointer-events:none}
+.objective.movable{cursor:move}
+.objective.movable .objective-body{stroke:#fff3c4;stroke-width:3}
+.objective-ghost{fill:#f3d27a88;stroke:#fff3c4;stroke-width:2;stroke-dasharray:4 3}
+.objective-ghost.invalid{fill:#ff66665c;stroke:#f69086}
+.objective-ghost-range{fill:none;stroke:#fff3c4;stroke-dasharray:6 5}
+.effect-badge{font-style:normal;font-size:9px;background:#5a3d8a;color:#fff;padding:1px 4px;margin-top:1px}
+.tooltip-effect{font-size:11px;background:#efe6ff;border-left:3px solid #5a3d8a;padding:4px 6px;margin-bottom:5px;color:#2b2140}
+.objective-status{list-style:none;margin:6px 0 2px;padding:0;font-size:11px}
+.objective-status li{padding:3px 0 3px 6px;border-left:3px solid #b8ad8b;margin:2px 0}
+.objective-status li.held-ash{border-color:var(--ash)}.objective-status li.held-iron{border-color:var(--iron)}.objective-status li.contested{border-color:#c79a24}
+.objective-status small{display:block;color:#625c49;font-size:10px}
+.landmark-property{font-size:11px;margin:4px 0;color:#3b392e}
+.vp-ledger{font-size:11px;margin-top:6px}
+.vp-ledger summary{cursor:pointer;font-weight:bold;color:var(--army-ink)}
+.vp-ledger h4{margin:6px 0 2px;font-size:11px}
+.vp-ledger ol,.result-lines{margin:0;padding-left:16px}
+.vp-ledger li,.result-lines li{display:flex;justify-content:space-between;gap:8px;padding:1px 0}
+.vp-ledger li.provisional{color:#7a735d;font-style:italic}
+.vp-ledger li.empty{color:#857d66}
+#showResult{margin-top:8px}
+.result-dialog{max-width:620px}
+.result-totals{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0}
+.result-totals>div{border:2px solid #4a4935;padding:10px;text-align:center;display:flex;flex-direction:column}
+.result-totals>div.winner{background:var(--army-soft)}
+.result-totals strong{font-size:30px}
+.result-totals .ash b{color:#7a2f22}.result-totals .iron b{color:#274b66}
+.end-dialog{max-width:440px}
+.end-choices{display:grid;gap:8px;margin-top:16px}
+.raid-controls{margin-top:10px;border-top:1px dashed var(--army-line);padding-top:8px}

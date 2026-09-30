@@ -1,4 +1,5 @@
 import * as G from './game.mjs';
+import * as BM from './battlemarch.mjs';
 
 const alive=u=>u.x!==null&&G.aliveCount(u)>0;
 const enemies=s=>s.units.filter(u=>u.team==='ash'&&alive(u));
@@ -12,7 +13,7 @@ const roll=random=>G.rollD6(2,random);
 // on the front edge of the zone. The Empire builds a gun line: the Great Cannons and crossbows
 // take the spots with the most clear shots, the State Troops face the enemy without blocking a
 // fire lane, and the Battlemage stands behind the middle of the line.
-export function readyToDeploy(s){return s.stage==='deployment'&&s.units.filter(u=>u.team==='ash').every(u=>u.x!==null)&&(s.rocket.x!==null||s.rocket.absent)&&(s.units.some(u=>u.team==='iron'&&u.x===null)||s.cannons.some(c=>c.x===null));}
+export function readyToDeploy(s){if(s.deployOrder?.alternate)return !!deploymentChoice(s);return s.stage==='deployment'&&s.units.filter(u=>u.team==='ash').every(u=>u.x!==null)&&(s.rocket.x!==null||s.rocket.absent)&&(s.units.some(u=>u.team==='iron'&&u.x===null)||s.cannons.some(c=>c.x===null));}
 // Candidate spots come from the bot's actual deployment zone on the current battlefield.
 const candidateXs=s=>{const b=G.zoneBounds(s,'iron');return Array.from({length:Math.max(1,Math.floor(b.right-b.left)-1)},(_,i)=>b.left+1+i);};
 const frontRow=(s,u)=>G.zoneBounds(s,'iron').bottom-G.size(u).h/2-.01,backRow=(s,u)=>G.zoneBounds(s,'iron').top+G.size(u).h/2+.01;
@@ -59,6 +60,40 @@ export function deployOpponent(s){
  if(wizard){const line=s.units.filter(u=>u.team==='iron'&&u.x!==null&&!G.isCharacter(u)),mid=line.reduce((n,u)=>n+u.x,0)/Math.max(1,line.length);placeBest(s,wizard,backRow(s,wizard),p=>-Math.abs(p.x-mid)-5*lanesCut(s,p)+(line.some(u=>Math.abs(u.x-p.x)<G.size(u).w/2)?2:0));}
 }
 
+// ---- Battle March setup: roll-off choices and one unit at a time ----------------------------
+// The bot lets the player deploy first (so each of its placements answers one of theirs) and
+// takes the first turn when it wins that roll-off.
+export function deploymentChoice(s){
+ const d=s.deployOrder;if(s.stage!=='deployment'||!d?.alternate)return null;
+ if(d.rollOff&&!d.first&&d.rollOff.winner==='iron')return 'deploy-order';
+ if(s.firstTurn&&!s.firstTurn.chosen&&s.firstTurn.winner==='iron')return 'first-turn';
+ if(G.deploymentTurn(s)==='iron')return 'deploy';
+ return null;
+}
+export function takeDeploymentStep(s){
+ const choice=deploymentChoice(s);
+ if(choice==='deploy-order'){G.chooseDeploymentOrder(s,'iron','ash');return {message:'The bot won the deployment roll-off and has you deploy first.'};}
+ if(choice==='first-turn'){G.chooseFirstTurn(s,'iron','iron');return {message:'The bot won the roll-off and takes the first turn.'};}
+ if(choice==='deploy'){const out=deployNext(s),p=G.getUnit(s,out.id);return {message:`The bot deploys ${p.name}.`,id:out.id,...out};}
+ return null;
+}
+// The bot plans its whole remaining deployment against what is on the table now, then places
+// the first unit of that plan: war machines and shooters first for a gun line, blocks first
+// otherwise, characters and wizards last.
+const PLAN_ORDER={empire:['warmachine','missile','infantry','character','wizard'],other:['infantry','missile','warmachine','character','wizard']};
+export function deployNext(s){
+ if(G.deploymentTurn(s)!=='iron')throw Error('It is not the bot’s turn to deploy.');
+ const trial=structuredClone(s);trial.deployOrder.auto=true;
+ for(const p of G.deploymentPieces(trial,'iron'))if(!p.deployed){p.x=null;p.y=null;}
+ try{deployOpponent(trial);}catch{}
+ const order=PLAN_ORDER[s.units.find(u=>u.team==='iron')?.faction==='empire'?'empire':'other'];
+ for(const p of G.deploymentPieces(s,'iron').filter(p=>!p.deployed).sort((a,b)=>order.indexOf(a.role)-order.indexOf(b.role))){
+  const planned=G.getUnit(trial,p.id);if(planned?.x==null)continue;
+  try{if(p.role==='warmachine')G.placeCannon(s,p.id,planned.x,planned.y);else G.place(s,p.id,planned.x,planned.y);return G.confirmDeployment(s);}catch{}
+ }
+ return G.autoDeploy(s,{team:'iron'});
+}
+
 export function humanDecision(s){
  if(s.pendingSpell&&G.getUnit(s,s.pendingSpell.caster)?.team==='iron')return {id:s.pendingSpell.caster,kind:'dispel',message:`Choose how to dispel ${G.BATTLE_MAGIC[s.pendingSpell.key].name}.`};
  const charge=s.units.find(u=>u.team==='iron'&&u.charge?.status==='declared'&&u.charge.reaction==='pending');
@@ -94,27 +129,65 @@ export function shouldAct(s){
 
 function moveRegiment(s,u,random){
  s.selected=u.id;
- const target=nearest(s,u);if(!target){G.hold(s,u.id);return {message:`${u.id} holds position.`};}
- const virtual={...s,stage:'shooting',team:'iron'};
- if(u.role==='missile'&&G.canShoot(virtual,u)&&G.shootingTargets(virtual,u).some(t=>!t.plan.error)){G.hold(s,u.id);return {message:`${u.id} holds for a clear shot.`};}
- const separation=G.gap(u,target),wantMarch=u.role!=='missile'&&separation>14&&u.marchTest!==false,mode=u.movementMode??(wantMarch?'march':'advance');
+ const foe=nearest(s,u);if(!foe)return endMove(s,u,`${u.id} holds position.`);
+ const goal=chooseGoal(s,u,foe),virtual={...s,stage:'shooting',team:'iron'};
+ if(u.role==='missile'&&(goal.kind!=='objective'||goal.dist(u)<=BM.CONTROL_RANGE)&&G.canShoot(virtual,u)&&G.shootingTargets(virtual,u).some(t=>!t.plan.error))return endMove(s,u,`${u.id} holds for a clear shot.`);
+ if(goal.kind==='objective'&&goal.dist(u)<=.05)return endMove(s,u,`${u.id} holds ${goal.name}.`);
+ if(goal.kind==='support'&&goal.dist(u)<=1)return endMove(s,u,`${u.id} stays behind the line.`);
+ const separation=goal.dist(u),wantMarch=(goal.kind==='enemy'?u.role!=='missile'&&separation>14:separation>G.profile(u).M+.5)&&u.marchTest!==false,mode=u.movementMode??(wantMarch?'march':'advance');
  if(mode==='march'&&G.needsMarchTest(s,u)&&u.marchTest===null){const dice=roll(random),passed=G.marchTest(s,u.id,dice);return {message:`${u.id} march test ${passed?'passed':'failed'} (${dice.join('+')}).`};}
- const best=bestOrder(s,u,target,mode)??(mode==='march'?bestOrder(s,u,target,'advance'):null);
- if(best){G.commitOrder(s,u.id,best.order);return {message:`${u.id} ${describeOrder(best.order)} toward ${target.id}.`};}
- G.hold(s,u.id);return {message:`${u.id} holds position.`};
+ const best=bestOrder(s,u,goal,mode)??(mode==='march'?bestOrder(s,u,goal,'advance'):null);
+ if(best){G.commitOrder(s,u.id,best.order);return {message:`${u.id} ${describeOrder(best.order)} toward ${goal.name}.`};}
+ return endMove(s,u,`${u.id} holds position.`);
+}
+// A unit that ends its move on a treasure trove may start burning it (Raid & Burn, when on):
+// worth it once holding the trove for the rest of the battle would score less than 30 VP.
+function endMove(s,u,message){
+ const trove=BM.raidOptions(s,u)[0];
+ if(trove&&raidWorthIt(s)){BM.startRaid(s,u.id,trove.id);return {message:`${u.id} starts to burn ${trove.name} (Raid & Burn).`};}
+ G.hold(s,u.id);return {message};
+}
+function raidWorthIt(s){const rounds=s.format?.rounds;if(!rounds||s.round>=rounds)return false;const turnEnds=2*(rounds-s.round)+(s.firstPlayer===s.team?2:1);return BM.RAID_VP>BM.OBJECTIVE_VP.trove*(turnEnds-2);}
+const enemyGoal=t=>({kind:'enemy',name:t.id,x:t.x,y:t.y,face:t,dist:p=>G.gap(p,t)});
+function chooseGoal(s,u,foe){
+ if(!s.objectives)return enemyGoal(foe);
+ if(G.isCharacter(u))return supportGoal(s,u,foe)??enemyGoal(foe);
+ const obj=objectivePlan(s).get(u.id);
+ return obj?{kind:'objective',name:obj.name,x:obj.x,y:obj.y,face:foe,dist:p=>BM.objectiveDistance(p,obj)}:enemyGoal(foe);
+}
+// Battle March: objectives, the landmark first, go to the nearest bot units that can control them
+// and still reach them before the battle ends; the rest of the army fights.
+function objectivePlan(s){
+ const plan=new Map(),turns=Math.max(1,(s.format?.rounds??5)-s.round+1),free=s.units.filter(u=>u.team==='iron'&&!G.isCharacter(u)&&BM.canControl(u)&&!u.engaged),pairs=[];
+ for(const o of s.objectives.items.filter(o=>!o.removed))for(const u of free){const d=BM.objectiveDistance(u,o);if(d<=turns*2*G.profile(u).M+BM.CONTROL_RANGE)pairs.push({u,o,score:d-(o.kind==='landmark'?4:0)});}
+ const units=new Set(),objectives=new Set();
+ for(const p of pairs.sort((a,b)=>a.score-b.score)){if(units.has(p.u.id)||objectives.has(p.o.id))continue;plan.set(p.u.id,p.o);units.add(p.u.id);objectives.add(p.o.id);}
+ return plan;
+}
+function holdsObjective(s,u){return !!s.objectives?.items.some(o=>!o.removed&&BM.controlOf(s,o).unit===u.id);}
+// Characters (the General is worth 50 VP to the enemy) keep a few inches behind the friendly
+// block nearest the enemy, where they stay in spell range but out of the way of charges.
+function supportGoal(s,u,foe){
+ const line=s.units.filter(v=>v.team===u.team&&v.id!==u.id&&!G.isCharacter(v)&&alive(v)&&!v.fleeing&&!v.engaged);if(!line.length)return null;
+ const anchor=line.sort((a,b)=>G.gap(a,foe)-G.gap(b,foe))[0],dx=anchor.x-foe.x,dy=anchor.y-foe.y,len=Math.hypot(dx,dy)||1,back=G.size(anchor).h/2+G.size(u).h/2+2.5;
+ const x=Math.max(1,Math.min(s.board.width-1,anchor.x+dx/len*back)),y=Math.max(1,Math.min(s.board.height-1,anchor.y+dy/len*back));
+ return {kind:'support',name:'a place behind '+anchor.id,x,y,face:foe,dist:p=>Math.hypot(p.x-x,p.y-y)};
 }
 // Try a spread of legal orders (advances, wheels either way with an advance, a reform toward the
-// target, and short side steps) and take the one that ends closest to the target, facing it best.
-// A unit blocked in one direction therefore finds another way instead of holding every turn.
-function bestOrder(s,u,target,mode){
+// goal, and short side steps) and take the one that ends closest to the goal, facing the enemy
+// best. A unit blocked in one direction therefore finds another way instead of holding.
+function bestOrder(s,u,goal,mode){
  if(u.movementMode&&u.movementMode!==mode)return null;
  const allowance=(mode==='march'?2:1)*G.profile(u).M,left=allowance-(u.spent??0);if(left<.25)return null;
- const facingError=p=>{const want=G.normalize(Math.atan2(target.x-p.x,-(target.y-p.y))*180/Math.PI);return Math.abs(((want-G.heading(p)+540)%360)-180);};
- const score=p=>-G.gap(p,target)-.03*facingError(p),steps=d=>[d,d*.75,d*.5,d*.25].filter(x=>x>=.25),orders=[];
+ const target=goal.face??goal,facingError=p=>{const want=G.normalize(Math.atan2(target.x-p.x,-(target.y-p.y))*180/Math.PI);return Math.abs(((want-G.heading(p)+540)%360)-180);};
+ const score=p=>-goal.dist(p)-(goal.kind==='enemy'?.03:.01)*facingError(p),steps=d=>[d,d*.75,d*.5,d*.25].filter(x=>x>=.25),orders=[];
  for(const d of steps(left))orders.push({kind:'advance',distance:d,angle:0,mode});
  for(let a=-40;a<=40;a+=10){if(!a)continue;const cost=G.wheelCost(a,u);if(cost>=left-.05)continue;orders.push({kind:'wheel',angle:a,distance:0,mode});for(const d of steps(left-cost))orders.push({kind:'wheel',angle:a,distance:d,mode});}
  if((u.spent??0)===0&&mode==='advance'&&facingError(u)>60)orders.push({kind:'pivot',angle:Math.round(((G.normalize(Math.atan2(target.x-u.x,-(target.y-u.y))*180/Math.PI)-G.heading(u)+540)%360)-180),distance:0,mode:'advance'});
  for(const side of [-1,1])for(const d of [1,2].filter(d=>2*d<=left))orders.push({kind:'side',side,distance:d,angle:0,mode});
+ // Toward a goal behind or beside the unit (an objective, a place behind the line): reform to
+ // face it, or step back.
+ if(goal.kind!=='enemy'){if((u.spent??0)===0&&mode==='advance'){const toward=Math.round(((G.normalize(Math.atan2(goal.x-u.x,-(goal.y-u.y))*180/Math.PI)-G.heading(u)+540)%360)-180);if(Math.abs(toward)>60)orders.push({kind:'pivot',angle:toward,distance:0,mode:'advance'});}for(const d of [1,2,3].filter(d=>2*d<=left))orders.push({kind:'back',distance:d,angle:0,mode});}
  const now=score(u);let best=null;
  for(const order of orders){if(order.kind==='pivot'&&!order.angle)continue;if(G.orderError(s,u,order))continue;const val=score(G.planMove(u,order).end);if(!best||val>best.val)best={order,val};}
  return best&&best.val>now+.05?best:null;
@@ -146,7 +219,7 @@ export function takeStep(s,random=Math.random){
  if(s.stage==='movement'&&s.movementStep==='declare'){
   const pending=s.units.find(u=>u.team==='iron'&&u.charge?.status==='declared'&&u.charge.reaction==='pending');if(pending)return {...humanDecision(s),wait:true};
   for(const u of s.units.filter(u=>u.team==='iron'&&G.canAct(s,u)&&u.faction==='orc'&&u.impetuousTest===null&&G.availableCharges(s,u).length)){const dice=roll(random),passed=G.impetuousTest(s,u.id,dice);s.selected=u.id;return {message:`${u.id} Impetuous test ${passed?'passed':'failed'} (${dice.join('+')}).`};}
-  const options=s.units.filter(u=>u.team==='iron'&&G.canAct(s,u)).flatMap(u=>G.availableCharges(s,u).map(t=>({u,t,plan:G.chargePlan(s,u,t)}))).sort((a,b)=>a.plan.cost-b.plan.cost);
+  const options=s.units.filter(u=>u.team==='iron'&&G.canAct(s,u)).flatMap(u=>G.availableCharges(s,u).map(t=>({u,t,plan:G.chargePlan(s,u,t)}))).filter(o=>G.hasRule(o.u,'frenzy')||!s.objectives||!(G.isCharacter(o.u)&&G.unitStrength(o.t)>=BM.MIN_CONTROL_US)&&!(s.round>=(s.format.rounds??Infinity)&&holdsObjective(s,o.u))).sort((a,b)=>a.plan.cost-b.plan.cost);
   if(options.length){const {u,t}=options[0];s.selected=u.id;G.declareCharge(s,u.id,t.id);return {message:`${u.id} charges ${t.id}. Choose a reaction.`};}
   G.finishDeclarations(s);return {message:'The bot finishes charge declarations.'};
  }

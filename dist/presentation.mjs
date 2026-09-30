@@ -25,7 +25,7 @@ export function shortName(unit){
  if(!unit)return '';
  if(unit.role==='character')return unit.kind==='empireCaptain'?'Captain':unit.name;
  if(unit.role==='warmachine')return unit.faction==='chaos'?'Deathshrieker':unit.name;
- if(unit.role==='wizard')return unit.faction==='chaos'?'Daemonsmith':'Battlemage';
+ if(unit.role==='wizard')return unit.faction==='chaos'?'Daemonsmith':unit.name==='Master Mage'?'Master Mage':'Battlemage';
  if(unit.role==='missile')return unit.faction==='chaos'?'Decimators':unit.faction==='empire'?'Missile Troops':'Warbows';
  return `${unit.faction==='chaos'?'Warriors':unit.faction==='empire'?'State Troops':'Orc Mob'} ${'ABC'[Number(unit.id.slice(1))-1]??''}`;
 }

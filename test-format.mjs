@@ -38,5 +38,5 @@ for(const first of ['ash','iron'])test(`with ${first} first, the game ends after
  assert.throws(()=>G.nextPhase(s),/over/);assert.deepEqual(G.skipEmptySteps(s),[]);
 });
 test('each player turn is processed once, however often it is asked for',()=>{
- const s=bm();G.autoDeploy(s);G.begin(s,()=>0);assert.equal(G.endOfPlayerTurn(s,'ash'),true);assert.equal(G.endOfPlayerTurn(s,'ash'),false);assert.deepEqual(s.turnLog,['1:ash']);
+ const s=bm();G.autoDeploy(s);G.begin(s,()=>0,{firstPlayer:'ash'});assert.equal(G.endOfPlayerTurn(s,'ash'),true);assert.equal(G.endOfPlayerTurn(s,'ash'),false);assert.deepEqual(s.turnLog,['1:ash']);
 });

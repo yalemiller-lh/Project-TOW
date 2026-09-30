@@ -24,7 +24,9 @@ export const FORMATS={
   points:{min:400,max:750,step:50,default:750},
   // Displayed width x depth. The smaller board suits 400-600 points, the larger bigger games.
   boards:[{id:'44x30',width:44,height:30,maxPoints:600},{id:'48x36',width:48,height:36}],defaultBoard:'48x36',
-  deployment:{map:'custom-long-edges',depth:12,minDepth:6,maxDepth:14},
+  // Players deploy one unit at a time; the deployment roll-off winner chooses who starts.
+  deployment:{map:'custom-long-edges',depth:12,minDepth:6,maxDepth:14,order:'alternate'},
+  objectives:'roll',
   rounds:5,scoring:'battle-march',terrainMaxWidth:12,eventTerrainMaxWidth:8,
   // Result classification for Battle March is not confirmed by the brief; the default reuses the
   // core rulebook's Victory Points rule and is shown as unconfirmed.
@@ -33,6 +35,17 @@ export const FORMATS={
  },
 };
 
+// Optional Battle March rules. All start switched off; only those with complete rules can be
+// switched on, and the rest say which source material is still needed.
+export const OPTIONAL_RULES={
+ raidAndBurn:{name:'Raid & Burn',available:true,summary:'A unit of Unit Strength 5+ that moves into base contact with a treasure trove in Remaining Moves may start destroying it. It cannot shoot and may cast only Combat or Self spells. At its next Start of Turn it burns the trove for 30 VP if still in contact, Unit Strength 5+, not engaged and not fleeing.'},
+ baggageCarts:{name:'Baggage Carts',available:false,reason:'the cart profile, movement and scoring rules have not been supplied'},
+ randomHappenings:{name:'Random Happenings',available:false,reason:'the Disruptive Weather, Wilderness Terrain and Chaos of War tables have not been supplied'},
+ magicItems:{name:'Battle March magic items',available:false,reason:'the item costs, restrictions and effects have not been supplied'},
+ secretObjectives:{name:'Secret objectives',available:false,reason:'the secret objective cards and reveal procedure have not been supplied'},
+ narrative:{name:'Narrative scenarios',available:false,reason:'the scenario rules have not been supplied'},
+ event:{name:'Event / tournament rules',available:false,reason:'the event pack has not been supplied'},
+};
 export function format(id='classic'){const f=FORMATS[id];if(!f)throw Error(`Unknown game format "${id}".`);return f;}
 export function boardFor(f,{board=null,points=null}={}){
  const fmt=typeof f==='string'?format(f):f;

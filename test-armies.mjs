@@ -48,5 +48,5 @@ test('Battle March games are built from the rosters, with costs and real sizes',
  const s=G.createGame('empire',{format:'battle-march'});
  assert.deepEqual(s.units.filter(u=>u.team==='ash').map(u=>[u.id,u.name,u.models??1,u.cost]),[['A6','Daemonsmith Sorcerer',1,115],['A1','Chaos Dwarf Warriors',20,178],['A2','Chaos Dwarf Warriors',20,178],['A3','Blunderbuss Decimators',15,168]]);
  assert.equal(s.rocket.cost,110);assert.equal(s.cannons.length,1);assert.equal(s.cannons[0].cost,125);assert.equal(G.getUnit(s,'A6').general,true);assert.equal(s.armies.ash.validation.legal,true);assert.equal(s.armies.ash.source.revision,10);
- const noRocket=G.createGame('empire',{format:'battle-march',rosters:{ash:chaos(warriors(20),warriors(20))}});assert.equal(noRocket.rocket.absent,true);G.autoDeploy(noRocket);G.begin(noRocket,()=>0);assert.equal(noRocket.stage,'strategy');
+ const noRocket=G.createGame('empire',{format:'battle-march',rosters:{ash:chaos(warriors(20),warriors(20))}});assert.equal(noRocket.rocket.absent,true);G.autoDeploy(noRocket);G.begin(noRocket,()=>0,{firstPlayer:'ash'});assert.equal(noRocket.stage,'strategy');
 });
