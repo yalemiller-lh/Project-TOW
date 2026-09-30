@@ -32,6 +32,9 @@ export function scoreRows(state,game){
   return {team,name:team==='ash'?'Chaos Dwarfs':opponent==='orc'?'Orc & Goblin Tribes':'Empire of Man',faction:team==='ash'?'chaos':opponent,units:mine.filter(u=>!u.destroyed&&game.aliveCount(u)>0).length+(rocket&&state.rocket.wounds>0?1:0)+cannons.filter(c=>c.wounds>0).length,models:mine.reduce((n,u)=>n+game.aliveCount(u),0)+(rocket&&state.rocket.wounds>0?state.rocket.crew:0)+cannons.reduce((n,c)=>n+(c.wounds>0?c.crew:0),0),engaged:mine.filter(u=>u.engaged&&u.x!==null).length,vp:(enemy.filter(u=>u.destroyed||u.fleeing).length+enemyCannons.filter(c=>c.wounds<=0).length)*100};
  });
 }
+// Signed rotation in degrees (−180 to 180) that animations take between two headings,
+// so a left wheel from 0° to 330° turns 30° left instead of spinning 330° right.
+export function shortestTurn(from,to){return ((((to-from)%360)+540)%360)-180;}
 export function substepIndex(state,uiSub=0){
  if(state.stage==='movement')return {declare:0,charges:1,remaining:2}[state.movementStep]??2;
  if(state.stage==='combat'){
