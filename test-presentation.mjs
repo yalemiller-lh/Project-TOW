@@ -1,0 +1,21 @@
+import assert from 'node:assert/strict';
+import * as G from './dist/game.mjs';
+import * as P from './dist/presentation.mjs';
+
+const state=G.createGame('empire');
+assert.equal(P.unitName(state.units[0]),'Chaos Dwarf Warriors A');
+assert.equal(P.shortName(state.units[0]),'Warriors A');
+assert.equal(P.themeFor(state).primary,'#7a2f22');
+let [ash,iron]=P.scoreRows(state,G);
+assert.equal(ash.units,5);
+assert.equal(iron.units,4);
+assert.equal(ash.models,83);
+state.units.find(u=>u.team==='iron').fleeing=true;
+state.units.find(u=>u.team==='ash').destroyed=true;
+[ash,iron]=P.scoreRows(state,G);
+assert.equal(ash.vp,100);
+assert.equal(iron.vp,100);
+assert.equal(ash.units,4);
+state.stage='movement';state.movementStep='charges';
+assert.equal(P.substepIndex(state),1);
+console.log('Presentation checks passed.');

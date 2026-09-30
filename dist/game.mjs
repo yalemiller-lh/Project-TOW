@@ -55,19 +55,21 @@ export function wheelCost(angle,u){return 2*size(u).w*Math.sin(rad(Math.abs(angl
 export function maxWheel(mode='advance',u){return 2*Math.asin((mode==='march'?2*profile(u).M:profile(u).M)/(2*size(u).w))*180/Math.PI;}
 export function wheelPose(u,angle){const {w,h}=size(u),pivot=localPoint(u,(angle<0?-1:1)*w/2,-h/2),a=rad(angle),x=u.x-pivot.x,y=u.y-pivot.y;return {...u,x:pivot.x+x*Math.cos(a)-y*Math.sin(a),y:pivot.y+x*Math.sin(a)+y*Math.cos(a),heading:normalize(heading(u)+angle)};}
 export function forwardPose(u,distance){const a=rad(heading(u));return {...u,x:u.x+Math.sin(a)*distance,y:u.y-Math.cos(a)*distance};}
-export function planMove(u,order){const kind=order.kind??'advance',mode=order.mode??'advance',angle=Number(order.angle??0),distance=Number(order.distance??0);let after=u,cost=0,pivot=null;
+export function planMove(u,order){const kind=order.kind??'advance',mode=order.mode??'advance',angle=Number(order.angle??0),distance=Number(order.distance??0),side=order.side??1;let after=u,cost=0,pivot=null;
   if(kind==='wheel'){after=wheelPose(u,angle);cost=wheelCost(angle,u);pivot=localPoint(u,(angle<0?-1:1)*size(u).w/2,-size(u).h/2);}
   if(kind==='pivot'){after={...u,heading:normalize(heading(u)+angle)};cost=profile(u).M;pivot={x:u.x,y:u.y};}
-  const end=kind==='pivot'?after:forwardPose(after,distance);
-  return {start:{...u},afterWheel:after,end,cost:cost+(kind==='pivot'?0:distance),wheelCost:kind==='wheel'?cost:0,allowance:mode==='march'?2*profile(u).M:profile(u).M,pivot,kind,mode,angle,distance};
+  const end=kind==='pivot'?after:kind==='back'?forwardPose(after,-distance):kind==='side'?{...after,...localPoint(after,side*distance,0)}:forwardPose(after,distance);
+  return {start:{...u},afterWheel:after,end,cost:cost+(kind==='pivot'?0:['back','side'].includes(kind)?2*distance:distance),wheelCost:kind==='wheel'?cost:0,allowance:mode==='march'?2*profile(u).M:profile(u).M,pivot,kind,mode,angle,distance,side};
 }
 function forwardError(s,u,start,end){const swept=hull([...corners(start),...corners(end)]);for(const v of s.units){if(v.id===u.id||v.x===null)continue;if(polygonGap(swept,corners(v))<1-EPS)return 'Another regiment blocks this path. Shorten the move.';}if(s.rocket?.x!==null&&polygonGap(swept,rocketFootprint(s.rocket.x,s.rocket.y))<1-EPS)return 'The Deathshrieker blocks this path. Shorten the move.';return null;}
 export function orderError(s,u,order){
   if(!canAct(s,u))return 'Select an unmoved regiment from the active army.';
   const {kind='advance',mode='advance',angle=0,distance=0}=order;
-  if(!['advance','wheel','pivot'].includes(kind)||!['advance','march'].includes(mode))return 'Choose a valid movement order.';
+  if(!['advance','back','side','wheel','pivot'].includes(kind)||!['advance','march'].includes(mode))return 'Choose a valid movement order.';
   if(!Number.isFinite(angle)||!Number.isFinite(distance)||distance<0)return 'Enter a valid angle and distance.';
   if(kind==='advance'&&(distance<=0||angle!==0))return 'Choose a forward distance.';
+  if((kind==='back'||kind==='side')&&(distance<=0||angle!==0))return 'Choose a sideways or backward distance.';
+  if(kind==='side'&&![-1,1].includes(order.side))return 'Choose left or right for a sideways move.';
   if(kind==='wheel'&&(angle===0||Math.abs(angle)>90))return 'Choose a wheel angle between −90° and 90°.';
   if(kind==='pivot'&&(angle===0||Math.abs(angle)>180||distance!==0||mode==='march'))return 'A reform pivots up to 180°, uses the whole move, and cannot march.';
   const plan=planMove(u,order);
@@ -487,4 +489,3 @@ export function finishCombat(s,choice='follow',random=Math.random){
  }
  s.pendingCombat=null;s.lastCombat={...s.lastCombat,aftermath:out};s.combatHistory[s.combatHistory.length-1]=s.lastCombat;return out;
 }
-
