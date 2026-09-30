@@ -33,6 +33,28 @@ function battle(opponent='empire'){const s=G.createGame(opponent);G.autoDeploy(s
  assert.ok(result.unsaved>0);assert.ok(result.panic?.length>0);assert.equal(result.panic[0].unit,'I1');assert.equal(result.panic[0].passed,false);
 }
 {
+ const s=battle(),target=G.getUnit(s,'I1');target.x=8;target.y=20;
+ let rolls=0;const result=G.fireRocket(s,'I1','incendiary',{artillery:2,scatter:'hit'},()=>++rolls===3?.2:.6);
+ const panic=result.panic.find(p=>p.unit==='I1');
+ assert.equal(panic.passed,false);assert.deepEqual(panic.fleeDice,[4,4]);
+ assert.equal(panic.fledOffBoard,false);assert.equal(target.fleeing,true);
+ assert.equal(target.destroyed,undefined);assert.ok(target.x!==null&&target.y>0);
+ assert.ok(G.aliveCount(target)>0);
+ G.nextPhase(s);G.nextPhase(s);assert.equal(s.team,'iron');
+ assert.equal(G.rally(s,'I1',()=>0).success,true);
+}
+{
+ const s=battle(),target=G.getUnit(s,'I1');target.x=8;target.y=6;
+ let rolls=0;const result=G.fireRocket(s,'I1','incendiary',{artillery:2,scatter:'hit'},()=>++rolls===3?.2:.6);
+ const panic=result.panic.find(p=>p.unit==='I1');
+ assert.equal(panic.passed,false);assert.equal(panic.fledOffBoard,true);
+ assert.equal(target.destroyed,true);assert.equal(target.x,null);
+ assert.equal(target.fleeing,false);assert.equal(G.aliveCount(target),0);
+ G.nextPhase(s);G.nextPhase(s);assert.equal(s.stage,'strategy');assert.equal(s.team,'iron');
+ assert.throws(()=>G.rally(s,'I1'),/fleeing regiment/);
+ assert.doesNotThrow(()=>G.nextPhase(s));
+}
+{
  const s=battle();const result=G.fireRocket(s,'I1','demolition',{artillery:'misfire',scatter:'hit'},()=>0);
  assert.equal(result.misfire,1);assert.equal(s.rocket.wounds,0);assert.equal(s.rocket.x,null);
 }
