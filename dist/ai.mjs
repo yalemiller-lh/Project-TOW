@@ -83,6 +83,8 @@ export function takeDeploymentStep(s){
 const PLAN_ORDER={empire:['warmachine','missile','infantry','character','wizard'],other:['infantry','missile','warmachine','character','wizard']};
 export function deployNext(s){
  if(G.deploymentTurn(s)!=='iron')throw Error('It is not the bot’s turn to deploy.');
+ // The gun-line planner works across the table; on a map deployed along it, spread out instead.
+ if(G.deploymentFacing(s,'iron')!==180)return G.autoDeploy(s,{team:'iron'});
  const trial=structuredClone(s);trial.deployOrder.auto=true;
  for(const p of G.deploymentPieces(trial,'iron'))if(!p.deployed){p.x=null;p.y=null;}
  try{deployOpponent(trial);}catch{}
@@ -209,7 +211,7 @@ export function takeStep(s,random=Math.random){
   // One reaction answers every charge on a unit: Stand & Shoot at the strongest charger it can
   // shoot when none of them is too close, otherwise Hold (a fleeing unit must Flee).
   const charger=s.units.find(u=>u.team==='ash'&&u.charge?.status==='declared'&&u.charge.reaction==='pending'&&G.getUnit(s,u.charge.target)?.team==='iron');
-  const defender=G.getUnit(s,charger.charge.target),chargers=s.units.filter(u=>u.charge?.status==='declared'&&u.charge.target===defender.id),tooClose=chargers.some(v=>G.gap(defender,v)+1e-9<G.profile(v).M);
+  const defender=G.getUnit(s,charger.charge.target),chargers=s.units.filter(u=>u.charge?.status==='declared'&&u.charge.target===defender.id),tooClose=!!G.standShootTooClose(s,defender,chargers);
   const shooter=defender.fleeing||tooClose?null:chargers.filter(v=>v.charge.reaction==='pending'&&G.canStandShoot(s,defender,v)).sort((a,b)=>G.unitStrength(b)-G.unitStrength(a))[0];
   const choice=defender.fleeing?'flee':shooter?'stand-shoot':'hold',at=shooter??charger,point={x:at.x,y:at.y},out=G.chargeReaction(s,at.id,choice,random);
   return {message:`${defender.id} chooses ${choice==='stand-shoot'?'Stand & Shoot':choice}${choice==='stand-shoot'&&chargers.length>1?' at '+at.id:''}.`,report:out.report,point};

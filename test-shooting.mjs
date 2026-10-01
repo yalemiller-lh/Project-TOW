@@ -33,10 +33,20 @@ for(const [faction,name,range] of [['empire','State Missile Troops',30],['orc','
 }
 {
  const s=duel();s.movementStep='declare';const charger=G.getUnit(s,'A4'),defender=G.getUnit(s,'I4');charger.y=22;
- defender.movementMode='march';assert.equal(G.canStandShoot(s,defender,charger),false);assert.match(G.shootingPlan(s,defender,charger,{reaction:true}).error,/marched/);
- G.declareCharge(s,charger.id,defender.id);assert.throws(()=>G.chargeReaction(s,charger.id,'stand-shoot'),/cannot Stand & Shoot/);
- defender.movementMode='advance';defender.fleeing=true;assert.equal(G.canStandShoot(s,defender,charger),false);assert.match(G.shootingPlan(s,defender,charger,{reaction:true}).error,/fleeing/);
+ // Having marched in its own turn does not stop a unit Standing & Shooting; fleeing does.
+ defender.movementMode='march';assert.equal(G.canStandShoot(s,defender,charger),true);
+ G.declareCharge(s,charger.id,defender.id);
+ defender.fleeing=true;assert.equal(G.canStandShoot(s,defender,charger),false);assert.match(G.shootingPlan(s,defender,charger,{reaction:true}).error,/fleeing/);
  assert.throws(()=>G.chargeReaction(s,charger.id,'stand-shoot'),/cannot Stand & Shoot/);
+}
+{
+ // Quick Shot: Stand & Shoot however close the charger is, still at −1 To Hit (crossbow BS3: 5+).
+ // Cumbersome: never. Neither is a rule of the weapons here, so both are switched on for the test.
+ const s=duel('empire');s.movementStep='declare';const c=G.getUnit(s,'A4'),d=G.getUnit(s,'I4'),w=G.missileWeapon(d);c.y=20.5;
+ assert.match(G.shootingPlan(s,d,c,{reaction:true}).error,/too close/);assert.ok(G.standShootTooClose(s,d,[c]));
+ w.quickShot=true;try{assert.equal(G.canStandShoot(s,d,c),true);assert.equal(G.standShootTooClose(s,d,[c]),null);assert.equal(G.shootingPlan(s,d,c,{reaction:true}).toHit,5);}finally{delete w.quickShot;}
+ c.y=22;w.cumbersome=true;try{assert.equal(G.canStandShoot(s,d,c),false);assert.match(G.shootingPlan(s,d,c,{reaction:true}).error,/Cumbersome/);}finally{delete w.cumbersome;}
+ assert.equal(G.canStandShoot(s,d,c),true);
 }
 {
  const s=duel('chaos');s.movementStep='declare';G.getUnit(s,'A4').y=22;G.declareCharge(s,'A4','I4');let i=0;const r=G.chargeReaction(s,'A4','stand-shoot',()=>i++<98?.99:0);assert.equal(r.report.toHit,4);assert.equal(r.report.shots,42);assert.equal(r.stopped,true);assert.equal(G.getUnit(s,'A4').charge.status,'stopped');G.finishDeclarations(s);assert.equal(s.movementStep,'remaining');

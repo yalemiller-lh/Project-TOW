@@ -76,8 +76,10 @@ function createRosterGame(opponent,fmt,field,setup,points,rosters,{objectives=nu
  const rocket={id:'A5',name:'Deathshrieker Rocket Launcher',...machineFields('ash','chaos'),x:null,y:null,heading:0,wounds:3,crew:3,shot:false,disabledUntil:0,lastShot:null,...(red.rocket??{absent:true,wounds:0,crew:0})};
  const armies=Object.fromEntries(Object.entries(chosen).map(([team,roster])=>[team,{roster,validation:A.validateRoster(roster,limit),source:A.SOURCES[roster.faction]}]));
  const s={stage:'deployment',team:'ash',round:1,selected:red.units[0]?.id,rocket,cannons:blue.cannons,units:[...red.units,...blue.units],history:[],vortices:[],fatedDispelUsed:false,
-  format:{id:fmt.id,name:fmt.name,rulesVersion:fmt.rulesVersion,points:limit,rounds:fmt.rounds,deployment:setup,resultPolicy:fmt.resultPolicy,optional:optionalRules(fmt,optional),objectives:objectives??fmt.objectives??'roll'},board:field,zones:F.deploymentZones(fmt,field,setup??{}),firstPlayer:'ash',turnLog:[],armies,sources:{system:A.SOURCES.system,preferences:A.PREFERENCES},
+  format:{id:fmt.id,name:fmt.name,rulesVersion:fmt.rulesVersion,points:limit,rounds:fmt.rounds,deployment:setup,resultPolicy:fmt.resultPolicy,optional:optionalRules(fmt,optional),objectives:objectives??fmt.objectives??'roll'},board:field,zones:F.deploymentZones(fmt,field,setup??{}),facing:F.deploymentFacing(fmt,setup??{}),firstPlayer:'ash',turnLog:[],armies,sources:{system:A.SOURCES.system,preferences:A.PREFERENCES},
   deployOrder:fmt.deployment?.order==='alternate'?{alternate:true,rollOff:null,first:null,chosenBy:null,next:null,pending:null,log:[],complete:false}:null,firstTurn:null};
+ // Each army deploys facing the way its map sets (across the table, or along it in Mountain Pass).
+ for(const p of combatants(s))p.heading=deploymentFacing(s,p.team);
  // The format's own rules (objectives for Battle March) set up the battlefield before deployment.
  FORMAT_RULES[fmt.id]?.setup?.(s,{choice:s.format.objectives,random});
  return s;
@@ -94,7 +96,10 @@ export function combatGroup(s,u){const seen=new Map(),stack=[u];while(stack.leng
 // Every combat that still has to be fought this phase, as the sorted ids of its units.
 export function combats(s){const done=new Set(),out=[];for(const u of combatants(s).filter(u=>u.engaged&&u.x!==null&&aliveCount(u)>0)){if(done.has(u.id))continue;const group=combatGroup(s,u);for(const v of group)done.add(v.id);if(group.length>1&&group.some(v=>!v.combatResolved)&&new Set(group.map(v=>v.team)).size>1)out.push(group.map(v=>v.id).sort());}return out;}
 // A real overlap, not just touching: the footprint shrunk by a few hundredths still meets the other.
-export function overlaps(a,b){const pa=corners(a),c={x:pa.reduce((n,p)=>n+p.x,0)/4,y:pa.reduce((n,p)=>n+p.y,0)/4},inner=pa.map(p=>{const d=Math.hypot(p.x-c.x,p.y-c.y)||1;return {x:p.x+(c.x-p.x)*.03/d,y:p.y+(c.y-p.y)*.03/d};});return polygonGap(inner,corners(b))<EPS;}
+// Two footprints overlap when either, shrunk by 0.03″, still meets the other: touching is not
+// overlapping, and the answer does not depend on which unit is named first.
+function shrunkMeets(a,b){const pa=corners(a),c={x:pa.reduce((n,p)=>n+p.x,0)/4,y:pa.reduce((n,p)=>n+p.y,0)/4},inner=pa.map(p=>{const d=Math.hypot(p.x-c.x,p.y-c.y)||1;return {x:p.x+(c.x-p.x)*.03/d,y:p.y+(c.y-p.y)*.03/d};});return polygonGap(inner,corners(b))<EPS;}
+export function overlaps(a,b){return shrunkMeets(a,b)||shrunkMeets(b,a);}
 export function heading(u){return u.heading??(u.team==='ash'?0:180);}
 export function normalize(a){return ((a%360)+360)%360;}
 export function localPoint(u,x,y){const a=rad(heading(u)),c=Math.cos(a),s=Math.sin(a);return {x:u.x+x*c-y*s,y:u.y+x*s+y*c};}
@@ -121,6 +126,8 @@ export function zoneOf(s,team){return (s?.zones??F.deploymentZones('classic',BOA
 // A footprint is inside a zone (which may be concave) when every corner is inside it and no
 // zone corner pokes into the footprint.
 export function inZone(s,team,footprint){const zone=zoneOf(s,team);return footprint.every(p=>withinPolygon(p,zone))&&!zone.some(z=>inside(z,footprint)&&!footprint.some((p,i)=>pointSegment(z,p,footprint[(i+1)%footprint.length])<1e-6));}
+export const deploymentFacing=(s,team)=>s?.facing?.[team]??(team==='ash'?0:180);
+export function insideZone(s,team,p){return withinPolygon(p,zoneOf(s,team));}
 export function zoneBounds(s,team){const z=zoneOf(s,team);return {left:Math.min(...z.map(p=>p.x)),right:Math.max(...z.map(p=>p.x)),top:Math.min(...z.map(p=>p.y)),bottom:Math.max(...z.map(p=>p.y))};}
 function claimStandard(s,u,by){if(u&&!u.standardClaimed&&commandAlive(u,'S')){u.standardClaimed=by;(s.trophies??=[]).push({unit:u.id,team:by,round:s.round});}}
 function destroyUnit(u,reason=null){Object.assign(u,{x:null,y:null,destroyed:true,fleeing:false,engaged:null,raiding:null});if(reason)u.leftBoard=reason;}
@@ -147,9 +154,15 @@ export function autoDeploy(s,{team=null}={}){if(s.stage!=='deployment')throw Err
 function deployOrderOf(s,side){return [...s.units.filter(u=>u.team===side&&!isCharacter(u)),...combatants(s).filter(m=>m.role==='warmachine'&&m.team===side),...s.units.filter(u=>u.team===side&&isCharacter(u))];}
 function placePiece(s,p,x,y){return p.role==='warmachine'?(p.team==='ash'?placeRocket(s,x,y):placeCannon(s,p.id,x,y)):place(s,p.id,x,y);}
 function autoSpot(s,p,i,count){
- const b=zoneBounds(s,p.team),middle=(b.top+b.bottom)/2,ideal=b.left+(b.right-b.left)*(i+1)/(count+1),{h}=size(p),rows=[middle,b.top+h/2+.01,b.bottom-h/2-.01];
- const xs=Array.from({length:Math.ceil((b.right-b.left)*2)+1},(_,k)=>b.left+k/2).sort((a,c)=>Math.abs(a-ideal)-Math.abs(c-ideal));
- for(const y of rows)for(const x of xs){try{placePiece(s,p,x,y);return p;}catch{}}
+ // Lines parallel to the army's front (rows, or columns when it faces along the table): the middle
+ // of the zone first, then its back and front edges, each tried nearest the unit's share of the width.
+ const b=zoneBounds(s,p.team),side=[90,270].includes(deploymentFacing(s,p.team)),{h}=size(p);
+ const [a0,a1,d0,d1]=side?[b.top,b.bottom,b.left,b.right]:[b.left,b.right,b.top,b.bottom],ideal=a0+(a1-a0)*(i+1)/(count+1),middle=(d0+d1)/2,at=(line,along)=>side?[line,along]:[along,line];
+ const along=Array.from({length:Math.ceil((a1-a0)*2)+1},(_,k)=>a0+k/2).sort((a,c)=>Math.abs(a-ideal)-Math.abs(c-ideal));
+ for(const line of [middle,d0+h/2+.01,d1-h/2-.01])for(const a of along){try{placePiece(s,p,...at(line,a));return p;}catch{}}
+ // Triangles and quarters: any legal spot in the zone, nearest that ideal one first.
+ const [ix,iy]=at(middle,ideal),grid=[];for(let x=b.left;x<=b.right+EPS;x+=.5)for(let y=b.top;y<=b.bottom+EPS;y+=.5)grid.push({x,y});
+ for(const g of grid.sort((m,n)=>Math.hypot(m.x-ix,m.y-iy)-Math.hypot(n.x-ix,n.y-iy))){try{placePiece(s,p,g.x,g.y);return p;}catch{}}
  throw Error(`No legal deployment space for ${p.name??p.id}.`);
 }
 function searchDeploy(s,team){
@@ -446,13 +459,15 @@ export function canShoot(s,u){return s.stage==='shooting'&&u?.team===s.team&&u.r
 export function shootingPlan(s,u,t,{reaction=false}={}){
  if(!u||!t||u.team===t.team||u.x===null||t.x===null||u.role!=='missile'||aliveCount(u)===0||aliveCount(t)===0)return {error:'Choose an enemy target for a missile regiment.'};
  if(u.raiding)return {error:`${u.name} is destroying a treasure trove and cannot shoot.`};
- if(reaction){if(u.engaged||u.fleeing||u.movementMode==='march')return {error:'Engaged, fleeing, or marched regiments cannot Stand & Shoot.'};if(gap(u,t)+EPS<profile(t).M)return {error:`Charger is too close for Stand & Shoot (less than M${profile(t).M}″).`};}
+ // Stand & Shoot: missile weapons, line of sight, not fleeing or engaged, and the charger at least
+ // its own Movement away (Quick Shot weapons ignore that distance; Cumbersome ones cannot react).
+ if(reaction){const w=missileWeapon(u);if(u.engaged||u.fleeing)return {error:'Engaged or fleeing regiments cannot Stand & Shoot.'};if(w?.cumbersome)return {error:`${w.name}: a Cumbersome weapon cannot Stand & Shoot.`};if(!w?.quickShot&&gap(u,t)+EPS<profile(t).M)return {error:`Charger is too close for Stand & Shoot (less than M${profile(t).M}″).`};}
  else if(!canShoot(s,u))return {error:'This regiment cannot shoot in this phase.'};
  else if(t.engaged)return {error:'Cannot shoot at a regiment in combat.'};
  const weapon=missileWeapon(u),range=weapon.range,half=range/2,clear=shootingModels(s,u).filter(m=>modelCanSee(s,u,t,m,reaction?Math.max(range,gap(u,t)+size(t).w):range));
  if(!clear.length)return {error:'Target is outside the front arc, range, or clear line of sight.',range,half};
  const distance=gap(u,t),models=clear.map(m=>{const point=shotPoint(u,m),poly=corners(t),modelDistance=Math.min(...poly.map((p,i)=>pointSegment(point,p,poly[(i+1)%4])));return {index:m.index,bs:m.command==='C'?championProfile(u).BS:profile(u).BS,distance:modelDistance,long:!reaction&&modelDistance>half+EPS};}),long=models.some(m=>m.long),modifiers=[];
- if(!reaction&&(u.moved||(u.spent??0)>0)&&!weapon.ignoreMove)modifiers.push({label:'Moved',value:-1});
+ if(!reaction&&(u.moved||(u.spent??0)>0)&&!weapon.ignoreMove&&!weapon.quickShot)modifiers.push({label:'Moved',value:-1});
  if(long)modifiers.push({label:'Long range',value:weapon.ignoreLong?0:-1});
  if(reaction)modifiers.push({label:'Stand & Shoot',value:weapon.ignoreStand?0:-1});
  if(weapon.multiple)modifiers.push({label:'Multiple Shots D3',value:0});
@@ -570,7 +585,10 @@ export function declareCharge(s,id,target){
  const reaction=t.role==='warmachine'||t.engaged?'hold':earlier?(earlier==='flee'?'flee':'hold'):'pending';
  u.charge={target,status:'declared',reaction,initialPlan:p};s.history=[];return {...p,reaction};
 }
-export function canStandShoot(s,defender,charger){return !!defender&&!!charger&&defender.role==='missile'&&!defender.engaged&&!defender.fleeing&&defender.movementMode!=='march'&&aliveCount(defender)>0&&gap(defender,charger)+EPS>=profile(charger).M&&!shootingPlan(s,defender,charger,{reaction:true}).error;}
+export function canStandShoot(s,defender,charger){return !!defender&&!!charger&&defender.role==='missile'&&aliveCount(defender)>0&&!shootingPlan(s,defender,charger,{reaction:true}).error;}
+// With several chargers a unit shoots at one; if any of them is too close (nearer than its own
+// Movement) it cannot Stand & Shoot at all, unless its weapon has Quick Shot. Returns that charger.
+export function standShootTooClose(s,defender,chargers){if(missileWeapon(defender)?.quickShot)return null;return chargers.find(v=>v.x!==null&&gap(defender,v)+EPS<profile(v).M)??null;}
 // A charged unit declares one reaction, against every unit charging it: Hold; Stand & Shoot at one
 // chosen charger (holding against the rest, and only if none of them is too close); or Flee,
 // directly away from the charger with the highest Unit Strength (a tie decided at random).
@@ -578,7 +596,7 @@ export function chargeReaction(s,chargerId,choice,random=Math.random){
  const charger=getUnit(s,chargerId),defender=getUnit(s,charger?.charge?.target);
  if(s.stage!=='movement'||!['declare','reactions'].includes(s.movementStep)||charger?.charge?.status!=='declared'||charger.charge.reaction!=='pending')throw Error('No charge reaction is pending.');
  const chargers=s.units.filter(v=>v.charge?.status==='declared'&&v.charge.target===defender.id);
- if(choice==='stand-shoot'&&chargers.some(v=>v.id!==charger.id&&gap(defender,v)+EPS<profile(v).M))throw Error('Another charger is too close: no Stand & Shoot.');
+ if(choice==='stand-shoot'&&standShootTooClose(s,defender,chargers.filter(v=>v.id!==charger.id)))throw Error('Another charger is too close: no Stand & Shoot.');
  if(!['hold','stand-shoot','flee'].includes(choice))throw Error('Choose Hold, Stand & Shoot, or Flee.');
  if(choice==='hold'&&defender.fleeing)throw Error('A fleeing regiment must Flee.');
  if(choice==='stand-shoot'&&!canStandShoot(s,defender,charger))throw Error('This regiment cannot Stand & Shoot against this charge.');

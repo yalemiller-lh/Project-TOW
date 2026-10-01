@@ -7,7 +7,7 @@ const test=(name,fn)=>{fn();console.log('PASS '+name);};
 // Dice in order: each value v rolls 1+floor(6v).
 const seq=values=>{let i=0;return ()=>values[i++]??0;};
 function rng(seed){return ()=>{seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return ((t^t>>>14)>>>0)/4294967296;};}
-const bm=(o={})=>G.createGame('empire',{format:'battle-march',random:()=>0,...o});
+const bm=(o={})=>G.createGame('empire',{format:'battle-march',points:750,random:()=>0,...o});
 function ready(o={}){const s=bm(o);G.autoDeploy(s);G.begin(s,()=>0,{firstPlayer:o.first??'ash'});return s;}
 const clear=s=>{for(const u of G.combatants(s)){u.x=null;u.y=null;}};
 const put=(s,id,x,y,heading)=>Object.assign(G.getUnit(s,id),{x,y,...(heading===undefined?{}:{heading})});
