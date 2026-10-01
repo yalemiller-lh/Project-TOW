@@ -232,7 +232,22 @@ export function inactionReason(s,u){
  if(u.engaged&&!u.combatResolved)return null;
  return u.engaged?'Already fought this Combat phase.':'Not engaged in combat.';
 }
-export function phaseComplete(s,u){if(s.stage==='deployment'||u.team!==s.team)return false;if(aliveCount(u)===0)return true;if(s.stage==='movement')return u.moved||!!u.engaged;if(s.stage==='shooting')return u.role!=='missile'||u.shot||!!u.engaged||u.fleeing;return true;}
+// A piece is done (greyed out) when it has nothing left to do in this phase or step: the same test
+// that offers units to the player. A wizard with a spell to cast and a war machine with a target
+// to shoot are still to act; a missile unit with no target is done.
+export function phaseComplete(s,u){
+ if(s.stage==='deployment'||u.team!==s.team)return false;if(aliveCount(u)===0)return true;
+ if(u.role==='warmachine')return s.stage==='combat'?!(u.engaged&&!u.combatResolved):!(s.stage==='shooting'&&machineReady(s,u));
+ if(s.stage==='movement'&&s.movementStep!=='remaining')return u.moved||!!u.engaged;
+ if(canExchangeSignature(s,u))return false;
+ return inactionReason(s,u)!==null;
+}
+// A war machine that can still fire this phase at a legal target.
+export function machineReady(s,m){
+ if(m?.role!=='warmachine'||m.team!==s.team)return false;
+ if(m.id===s.rocket?.id)return canFireRocket(s)&&[false,true].some(indirect=>rocketTargets(s,{indirect}).some(t=>!t.error));
+ return canFireCannon(s,m.id)&&(cannonTargets(s,m.id,{mode:'grape'}).some(t=>!t.error)||Array.from({length:11},(_,aimShort)=>cannonTargets(s,m.id,{mode:'ball',aimShort}).some(t=>!t.error)).some(Boolean));
+}
 export function needsMarchTest(s,u){if(u.marchRequired!==null&&u.marchRequired!==undefined)return u.marchRequired;return s.units.some(v=>v.team!==u.team&&v.x!==null&&gap(u,v)<=8+EPS);}
 export function marchTest(s,id,dice){const u=getUnit(s,id);if(!canAct(s,u))throw Error('Select an unmoved regiment from the active army.');if(!needsMarchTest(s,u))throw Error('No nearby enemy. This march needs no test.');if(u.marchTest!==null)throw Error('This regiment already took its march test this turn.');if(!Array.isArray(dice)||dice.length!==2||dice.some(d=>!Number.isInteger(d)||d<1||d>6))throw Error('A march test requires two D6.');enterRemaining(s);u.marchTest=dice.reduce((a,b)=>a+b,0)<=leadership(u,'march');return u.marchTest;}
 export function wheelCost(angle,u){return 2*size(u).w*Math.sin(rad(Math.abs(angle))/2);}
@@ -316,10 +331,10 @@ export function phaseHasActions(s){
  if(s.stage==='deployment'||s.stage==='finished'||s.pendingSpell)return true;
  const active=s.units.filter(u=>u.team===s.team&&u.x!==null&&aliveCount(u)>0);
  const spells=phase=>active.some(u=>u.role==='wizard'&&u.spells.some(key=>BATTLE_MAGIC[key]?.phase===phase&&spellTargets(s,u.id,key).some(t=>canCast(s,u.id,key,t.id))));
- if(s.stage==='strategy')return active.some(u=>u.fleeing&&!u.rallyAttempted)||spells('strategy')||s.round===1&&active.some(u=>u.role==='wizard'&&!u.castThisTurn.length&&u.spells.some(key=>SPELL_ROLL.includes(key))&&!u.spells.some(key=>['hammerhand','hashutCurse','ashStorm','hashutFlames'].includes(key)));
+ if(s.stage==='strategy')return active.some(u=>u.fleeing&&!u.rallyAttempted)||spells('strategy')||active.some(u=>canExchangeSignature(s,u));
  if(s.stage==='movement'&&s.movementStep==='reactions')return s.units.some(u=>u.charge?.reaction==='pending');
  if(s.stage==='movement')return s.movementStep==='declare'?active.some(u=>u.charge?.status==='declared'||canAct(s,u)&&availableCharges(s,u).length):s.movementStep==='charges'?active.some(u=>u.charge?.status==='declared'):active.some(u=>canAct(s,u))||spells('movement')||!!s.movementReopened;
- if(s.stage==='shooting')return availableShots(s).length>0||canFireRocket(s)&&[false,true].some(indirect=>rocketTargets(s,{indirect}).some(t=>!t.error))||s.cannons.some(c=>canFireCannon(s,c.id)&&(cannonTargets(s,c.id,{mode:'grape'}).some(t=>!t.error)||Array.from({length:11},(_,aimShort)=>cannonTargets(s,c.id,{mode:'ball',aimShort}).some(t=>!t.error)).some(Boolean)))||spells('shooting');
+ if(s.stage==='shooting')return availableShots(s).length>0||[s.rocket,...s.cannons].some(m=>m&&machineReady(s,m))||spells('shooting');
  return !!s.pendingCombat||!!s.combatSession||combatPairs(s).length>0;
 }
 export function skipEmptySteps(s){
@@ -351,6 +366,12 @@ export const SPELL_TEXT={
  hashutFlames:'Assailment: one enemy unit the caster is fighting suffers D3+1 Strength 4 hits (AP –1) with Flaming Attacks.',
 };
 export const SPELL_ROLL=['fireball','arrow','pillar','urgency','shield','coward'];
+export const SIGNATURE_SPELLS=['hammerhand','hashutCurse','ashStorm','hashutFlames'];
+// Round 1 Strategy, before casting: a Wizard may swap one rolled spell for a signature spell, once.
+export function canExchangeSignature(s,u){return s.stage==='strategy'&&s.round===1&&u?.role==='wizard'&&u.team===s.team&&!u.castThisTurn.length&&u.spells.some(key=>SPELL_ROLL.includes(key))&&!u.spells.some(key=>SIGNATURE_SPELLS.includes(key));}
+// Spells now affecting a unit, for its label: a hex on it or an enchantment it carries.
+const SPELL_TAGS={arrowCurse:['arrow','Arrow Attraction'],oakenShield:['shield','Oaken Shield'],ashStorm:['ashStorm','Storm of Ash'],arcaneUrgency:['urgency','Arcane Urgency']};
+export function activeSpells(u){return Object.entries(SPELL_TAGS).filter(([field])=>u?.[field]).map(([,[key,short]])=>({key,short,name:BATTLE_MAGIC[key].name}));}
 export function generateSpells(random=Math.random){const pool=[...SPELL_ROLL],out=[];for(let i=0;i<2;i++)out.push(pool.splice(Math.min(pool.length-1,Math.floor(random()*pool.length)),1)[0]);return out;}
 export function exchangeSignature(s,id,spell,replacement='hammerhand'){const u=getUnit(s,id),choices=u?.faction==='chaos'?['hammerhand','hashutCurse','ashStorm','hashutFlames']:['hammerhand'];if(s.stage!=='strategy'||s.round!==1||u?.role!=='wizard'||u.castThisTurn.length||!SPELL_ROLL.includes(spell)||!u.spells.includes(spell)||!choices.includes(replacement)||u.spells.some(k=>choices.includes(k)))throw Error('Exchange one generated spell for a permitted signature before casting.');u.spells.splice(u.spells.indexOf(spell),1,replacement);return u.spells;}
 function spellVision(u,t){const a=rad(-heading(u)),dx=t.x-u.x,dy=t.y-u.y,lx=dx*Math.cos(a)-dy*Math.sin(a),ly=dx*Math.sin(a)+dy*Math.cos(a);return ly<0&&Math.abs(lx)<=-ly+Math.max(size(t).w,size(t).h)/2+EPS;}
