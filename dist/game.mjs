@@ -20,7 +20,7 @@ export const PROFILE={M:3,WS:4,BS:3,S:3,T:4,W:1,I:2,A:1,Ld:9,save:4};
 export const SIZE={w:125/25.4,h:100/25.4};
 export const FACTIONS={chaos:{name:'Chaos Dwarf Warriors',army:'Chaos Dwarfs',color:'#b63229',bright:'#ff3f39',base:25,equipment:'Hand weapons · heavy armour · shields',profile:PROFILE,heavy:true,shield:true,shieldwall:true,resolute:true},orc:{name:'Orc Mob',army:'Orc & Goblin Tribes',color:'#418248',bright:'#54ef53',base:30,equipment:'Hand weapons · light armour',profile:{M:4,WS:3,BS:3,S:3,T:4,W:1,I:3,A:1,Ld:6,save:6},choppas:true,furious:true,warband:true,impetuous:true},empire:{name:'State Troops',army:'Empire of Man',color:'#286a9a',bright:'#32aaff',base:25,equipment:'Hand weapons · light armour · shields',profile:{M:4,WS:3,BS:3,S:3,T:3,W:1,I:3,A:1,Ld:7,save:5},shield:true}};
 export const MISSILE={chaos:{name:'Blunderbuss Decimators',equipment:'Hand weapons · blunderbusses · heavy armour',profile:{M:3,WS:3,BS:3,S:3,T:4,W:1,I:2,A:1,Ld:9,save:5},weapon:{name:'Hailshot blunderbuss',range:12,strength:3,ap:1,multiple:'D3',volley:true,ignoreLong:true,ignoreStand:true,hailshot:true}},empire:{name:'State Missile Troops',equipment:'Hand weapons · crossbows',profile:{M:4,WS:3,BS:3,S:3,T:3,W:1,I:3,A:1,Ld:7,save:7},weapon:{name:'Crossbow',range:30,strength:4,ap:0}},orc:{name:'Orc Mob · Warbows',equipment:'Hand weapons · warbows · light armour',profile:{M:4,WS:3,BS:3,S:3,T:4,W:1,I:3,A:1,Ld:6,save:6},weapon:{name:'Warbow',range:24,strength:3,ap:0}}};
-export const WIZARDS={chaos:{name:'Daemonsmith Sorcerer',equipment:'Hand weapon · heavy armour · Blackshard armour · Ensorcelled weapon',profile:{M:3,WS:4,BS:4,S:4,T:4,W:2,I:2,A:2,Ld:9,save:5},lore:'battle',rules:['loreOfHashut']},empire:{name:'Master Mage (Battlemage)',equipment:'Hand weapon',profile:{M:4,WS:3,BS:3,S:3,T:3,W:2,I:3,A:1,Ld:7,save:7},lore:'battle'}};
+export const WIZARDS={chaos:{name:'Daemonsmith Sorcerer',equipment:'Hand weapon · heavy armour · Blackshard armour · Ensorcelled weapon',profile:{M:3,WS:4,BS:4,S:4,T:4,W:2,I:2,A:2,Ld:9,save:5},lore:'daemonology',rules:['loreOfHashut']},empire:{name:'Master Mage (Battlemage)',equipment:'Hand weapon',profile:{M:4,WS:3,BS:3,S:3,T:3,W:2,I:3,A:1,Ld:7,save:7},lore:'battle'}};
 export const CHARACTERS={empireCaptain:{name:'Captain of the Empire',profile:{M:4,WS:5,BS:5,S:4,T:4,W:2,I:4,A:2,Ld:9},equipment:'Hand weapon'}};
 const ARMOUR_SAVE={fullPlate:4,heavy:5,light:6};
 export const isCharacter=u=>u?.role==='wizard'||u?.role==='character';
@@ -164,6 +164,13 @@ function expireEffects(s,when,key){const ends=e=>when==='end'?e.expires===key||(
 export function generalOf(s,team){return s?.units.find(u=>u.team===team&&u.general&&!u.destroyed&&aliveCount(u)>0)??null;}
 // Unless the General is fleeing, a friendly unit within its Command range (its Leadership in
 // inches) may use the General's Leadership instead of its own.
+// ---- Fly ----
+// Fly values a unit has (from Steed of Shadows): separate options, never added together.
+export function flyValues(u){return [...new Set(liveEffects(u).flatMap(e=>(e.rules??[]).filter(r=>r.rule==='fly').map(r=>r.value)))].sort((a,b)=>b-a);}
+// The Movement a move uses: on foot, M; flying, the Fly value. Marching doubles it; difficult
+// terrain takes 1 off first (never below 1).
+export function moveValue(u,medium='ground',fly=null){return medium==='fly'?(fly??flyValues(u)[0]??0):profile(u).M;}
+export function moveAllowance(u,{mode='advance',medium='ground',fly=null,difficult=false}={}){return Math.max(1,moveValue(u,medium,fly)-(difficult?1:0))*(mode==='march'?2:1);}
 export function inspiringPresence(s,u){if(!s||!u||u.x===null)return null;const g=generalOf(s,u.team);if(!g||g.id===u.id||g.fleeing||g.x===null||blocksRule(u,'inspiringPresence'))return null;const ld=profile(g).Ld;return gap(g,u)<=ld+EPS?ld:null;}
 export const boardOf=s=>s?.board??BOARD;
 function offBoard(u,s){const r=rectangle(u),b=boardOf(s);return r.left< -EPS||r.right>b.width+EPS||r.top< -EPS||r.bottom>b.height+EPS;}
@@ -377,7 +384,7 @@ export function machineReady(s,m){
 export function needsMarchTest(s,u){if(u.marchRequired!==null&&u.marchRequired!==undefined)return u.marchRequired;return s.units.some(v=>v.team!==u.team&&v.x!==null&&gap(u,v)<=8+EPS);}
 export function marchTest(s,id,dice){const u=getUnit(s,id);if(!canAct(s,u))throw Error('Select an unmoved regiment from the active army.');if(!needsMarchTest(s,u))throw Error('No nearby enemy. This march needs no test.');if(u.marchTest!==null)throw Error('This regiment already took its march test this turn.');if(!Array.isArray(dice)||dice.length!==2||dice.some(d=>!Number.isInteger(d)||d<1||d>6))throw Error('A march test requires two D6.');enterRemaining(s);u.marchTest=dice.reduce((a,b)=>a+b,0)<=leadership(u,'march',s);return u.marchTest;}
 export function wheelCost(angle,u){return 2*size(u).w*Math.sin(rad(Math.abs(angle))/2);}
-export function maxWheel(mode='advance',u){return 2*Math.asin((mode==='march'?2*profile(u).M:profile(u).M)/(2*size(u).w))*180/Math.PI;}
+export function maxWheel(mode='advance',u,medium='ground'){return 2*Math.asin(Math.min(1,moveAllowance(u,{mode,medium})/(2*size(u).w)))*180/Math.PI;}
 export function wheelPose(u,angle){const {w,h}=size(u),pivot=localPoint(u,(angle<0?-1:1)*w/2,-h/2),a=rad(angle),x=u.x-pivot.x,y=u.y-pivot.y;return {...u,x:pivot.x+x*Math.cos(a)-y*Math.sin(a),y:pivot.y+x*Math.sin(a)+y*Math.cos(a),heading:normalize(heading(u)+angle)};}
 export function forwardPose(u,distance){const a=rad(heading(u));return {...u,x:u.x+Math.sin(a)*distance,y:u.y-Math.cos(a)*distance};}
 export function planMove(u,order){const kind=order.kind??'advance',mode=order.mode??'advance',angle=Number(order.angle??0),distance=Number(order.distance??0),side=order.side??1;let after=u,cost=0,pivot=null;
@@ -406,14 +413,22 @@ export function orderError(s,u,order){
   if(kind==='side'&&![-1,1].includes(order.side))return 'Choose left or right for a sideways move.';
   if(kind==='wheel'&&(angle===0||Math.abs(angle)>90))return 'Choose a wheel angle between −90° and 90°.';
   if(kind==='pivot'&&(angle===0||Math.abs(angle)>180||distance!==0||mode==='march'))return 'A reform pivots up to 180°, uses the whole move, and cannot march.';
+  // Fly (Steed of Shadows): a unit may fly instead of moving on foot. A flight starts and ends on
+  // the ground, passes over units and terrain, and may march within 8″ of an enemy without a
+  // test. Flying or on foot is chosen with the first step.
+  const medium=order.medium??u.movementMedium??'ground',fly=medium==='fly'?(order.fly??u.movementFly??flyValues(u)[0]??null):null;
+  if(!['ground','fly'].includes(medium))return 'Choose to move on foot or to fly.';
+  if(medium==='fly'&&!flyValues(u).includes(fly))return 'This unit cannot fly.';
+  if(u.movementMedium&&u.movementMedium!==medium)return 'Flying or moving on foot is chosen with the first step. Undo all steps to change it.';
   const plan=planMove(u,order);
-  // A vortex is difficult terrain: Movement −1 for the whole move once the unit enters it.
-  const difficult=!!u.difficultThisMove||sweptVortices(s,u,movePoses(plan)).length>0,allowance=Math.max(1,profile(u).M-(difficult?1:0))*(mode==='march'?2:1);
+  // A vortex is difficult terrain: Movement −1 for the whole move once the unit enters it; a
+  // flyer only when it takes off from or lands in one.
+  const difficult=!!u.difficultThisMove||(medium==='fly'?vortexUnder(s,u,plan.start)||vortexUnder(s,u,plan.end):sweptVortices(s,u,movePoses(plan)).length>0),allowance=moveAllowance(u,{mode,medium,fly,difficult});
   if(u.movementMode&&u.movementMode!==mode)return 'Movement mode is locked after the first step. Undo all steps to change it.';
   if(kind==='pivot'&&(u.spent??0)>EPS)return 'A reform requires the whole unused movement allowance.';
   // A reform takes the whole move, whatever the allowance.
   if(kind!=='pivot'&&(u.spent??0)+plan.cost>allowance+EPS)return 'This order exceeds the movement allowance.';
-  if(mode==='march'&&needsMarchTest(s,u)&&u.marchTest!==true)return u.marchTest===false?`March test failed. This unit can still advance up to ${profile(u).M}″.`:'Take the march Leadership test first.';
+  if(mode==='march'&&medium!=='fly'&&needsMarchTest(s,u)&&u.marchTest!==true)return u.marchTest===false?`March test failed. This unit can still advance up to ${profile(u).M}″.`:'Take the march Leadership test first.';
   const error=checkPosition(s,plan.end,plan.end.x,plan.end.y,false,{moving:true});if(error)return error;
   if(kind==='pivot')return null;
   if(kind==='wheel'){
@@ -422,6 +437,8 @@ export function orderError(s,u,order){
     const steps=Math.ceil(Math.abs(angle)/.25);let previous=corners(u).slice(0,2);
     for(let i=1;i<=steps;i++){
       const pose=wheelPose(u,angle*i/steps);if(offBoard(pose,s))return 'The wheel would leave the battlefield.';
+      // A flyer wheels over units and terrain: only the table edge limits it.
+      if(medium==='fly')continue;
       const front=corners(pose).slice(0,2),sweep=hull([...previous,...front]);
       const close=closeAtStart(s,u),blocks=v=>close(v)?polygonGap(shrink(sweep),corners(v))<EPS:polygonGap(sweep,corners(v))<1.0001-EPS;
       for(const v of s.units){if(v.id===u.id||v.x===null)continue;if(blocks(v))return 'Another regiment blocks the leading edge of this wheel.';}
@@ -430,17 +447,19 @@ export function orderError(s,u,order){
       previous=front;
     }
   }
-  if(distance>EPS)return forwardError(s,u,plan.afterWheel,plan.end);
+  if(distance>EPS&&medium!=='fly')return forwardError(s,u,plan.afterWheel,plan.end);
   return null;
 }
-function remember(s,u){s.history.push({id:u.id,x:u.x,y:u.y,heading:heading(u),moved:u.moved,spent:u.spent??0,movementMode:u.movementMode??null,marchRequired:u.marchRequired??null});}
-export function commitOrder(s,id,order,random=Math.random){const u=getUnit(s,id);const error=orderError(s,u,order);if(error)throw Error(error);const plan=planMove(u,order),vortices=sweptVortices(s,u,movePoses(plan)),difficult=!!u.difficultThisMove||vortices.length>0;enterRemaining(s);remember(s,u);const marchRequired=needsMarchTest(s,u),spent=(u.spent??0)+plan.cost,allowance=Math.max(1,profile(u).M-(difficult?1:0))*(plan.mode==='march'?2:1);Object.assign(u,{x:plan.end.x,y:plan.end.y,heading:plan.end.heading,spent,movementMode:plan.mode,marchRequired,moved:plan.kind==='pivot'||spent>=allowance-EPS});if(vortices.length)u.difficultThisMove=true;s.lastVortexHits=vortexMoveHits(s,u,vortices,random);
+const vortexUnder=(s,u,pose)=>sweptVortices(s,u,[pose,pose]).length>0;
+function remember(s,u){s.history.push({id:u.id,x:u.x,y:u.y,heading:heading(u),moved:u.moved,spent:u.spent??0,movementMode:u.movementMode??null,movementMedium:u.movementMedium??null,movementFly:u.movementFly??null,difficultThisMove:!!u.difficultThisMove,marchRequired:u.marchRequired??null});}
+// A flyer that crosses a vortex is struck by it as well; its Movement suffers only for landing in it.
+export function commitOrder(s,id,order,random=Math.random){const u=getUnit(s,id);const error=orderError(s,u,order);if(error)throw Error(error);const medium=order.medium??u.movementMedium??'ground',fly=medium==='fly'?(order.fly??u.movementFly??flyValues(u)[0]):null,plan=planMove(u,order),vortices=sweptVortices(s,u,movePoses(plan)),entered=medium==='fly'?vortexUnder(s,u,plan.start)||vortexUnder(s,u,plan.end):vortices.length>0,difficult=!!u.difficultThisMove||entered;enterRemaining(s);remember(s,u);const marchRequired=medium==='fly'?false:needsMarchTest(s,u),spent=(u.spent??0)+plan.cost,allowance=moveAllowance(u,{mode:plan.mode,medium,fly,difficult});Object.assign(u,{x:plan.end.x,y:plan.end.y,heading:plan.end.heading,spent,movementMode:plan.mode,movementMedium:medium,movementFly:fly,marchRequired,moved:plan.kind==='pivot'||spent>=allowance-EPS});if(entered)u.difficultThisMove=true;s.lastVortexHits=vortexMoveHits(s,u,vortices,random);
  // Dice were rolled for crossing a vortex: this unit's moves can no longer be taken back.
  if(s.lastVortexHits.length)s.history=s.history.filter(h=>h.id!==u.id);return plan;}
 export function movementError(s,u,distance,mode){return orderError(s,u,{kind:'advance',distance,mode,angle:0});}
 export function move(s,id,distance,mode){return commitOrder(s,id,{kind:'advance',distance,mode,angle:0});}
 export function hold(s,id){const u=getUnit(s,id);if(!canAct(s,u))throw Error('This regiment cannot take orders now.');enterRemaining(s);remember(s,u);u.moved=true;}
-export function undo(s){if(s.stage!=='movement')throw Error('Undo is available during Movement only.');const last=s.history.pop();if(!last)throw Error('No move to undo this turn.');const u=getUnit(s,last.id);Object.assign(u,{x:last.x,y:last.y,heading:last.heading,moved:last.moved,spent:last.spent,movementMode:last.movementMode,marchRequired:last.marchRequired});s.selected=u.id;}
+export function undo(s){if(s.stage!=='movement')throw Error('Undo is available during Movement only.');const last=s.history.pop();if(!last)throw Error('No move to undo this turn.');const u=getUnit(s,last.id);Object.assign(u,{x:last.x,y:last.y,heading:last.heading,moved:last.moved,spent:last.spent,movementMode:last.movementMode,movementMedium:last.movementMedium??null,movementFly:last.movementFly??null,difficultThisMove:!!last.difficultThisMove,marchRequired:last.marchRequired});s.selected=u.id;}
 // Format rules modules (such as Battle March objectives and scoring) register what happens at
 // the end of each player's turn and at the end of the game.
 const FORMAT_RULES={};
@@ -456,7 +475,7 @@ export function endOfPlayerTurn(s,team=s.team){
  return true;
 }
 export function finishGame(s,reason){if(s.stage==='finished')return s.result;s.stage='finished';s.pendingCombat=null;s.combatSession=null;s.result={reason,...(formatRules(s)?.endOfGame?.(s)??{})};return s.result;}
-export function nextTurn(s,random=Math.random){if(s.stage!=='combat')throw Error('Finish the Combat phase first.');endOfPlayerTurn(s,s.team);if(s.stage==='finished')return;s.stage='strategy';s.team=s.team==='ash'?'iron':'ash';if(s.team===(s.firstPlayer??'ash'))s.round++;s.units.forEach(u=>{u.moved=false;u.shot=false;u.pursued=false;u.spent=0;u.movementMode=null;u.marchRequired=null;u.marchTest=null;if(u.pursuitPending&&u.engaged)u.pursuitPending=false;else u.charge=null;u.reaction=null;u.combatFocus=null;u.impetuousTest=null;u.combatResolved=false;u.rallyAttempted=false;u.difficultThisMove=false;if(u.role==='wizard'){u.castThisTurn=[];u.magicExhausted=false;u.dispelExhausted=false;u.engineerUsed=false;}});s.fatedDispelUsed={ash:false,iron:false};s.magicLocked={};s.dispelBlocked={};
+export function nextTurn(s,random=Math.random){if(s.stage!=='combat')throw Error('Finish the Combat phase first.');endOfPlayerTurn(s,s.team);if(s.stage==='finished')return;s.stage='strategy';s.team=s.team==='ash'?'iron':'ash';if(s.team===(s.firstPlayer??'ash'))s.round++;s.units.forEach(u=>{u.moved=false;u.shot=false;u.pursued=false;u.spent=0;u.movementMode=null;u.marchRequired=null;u.marchTest=null;if(u.pursuitPending&&u.engaged)u.pursuitPending=false;else u.charge=null;u.reaction=null;u.combatFocus=null;u.impetuousTest=null;u.combatResolved=false;u.rallyAttempted=false;u.difficultThisMove=false;u.movementMedium=null;u.movementFly=null;if(u.role==='wizard'){u.castThisTurn=[];u.magicExhausted=false;u.dispelExhausted=false;u.engineerUsed=false;}});s.fatedDispelUsed={ash:false,iron:false};s.magicLocked={};s.dispelBlocked={};
  // Start of Turn, in this order: (1) effects lasting until the casting side's next Start of Turn
  // end; (2) vortices move; (3) the format's start of turn (Raid & Burn).
  expireEffects(s,'start',`${s.round}:${s.team}`);s.vortexReports=driftVortices(s,random);s.rocket.shot=false;s.rocket.lastShot=null;s.cannons.forEach(c=>{c.shot=false;c.lastShot=null;});s.history=[];s.selected=s.units.find(u=>u.team===s.team).id;formatRules(s)?.startOfTurn?.(s,s.team,random);}
@@ -1098,7 +1117,7 @@ export function modelSquares(s,u){
  });
 }
 
-export function movementRemaining(u,mode=u.movementMode??'advance'){return u.moved||u.engaged||u.charge||u.fleeing?0:Math.max(0,(mode==='march'?2*profile(u).M:profile(u).M)-(u.spent??0));}
+export function movementRemaining(u,mode=u.movementMode??'advance',medium=u.movementMedium??'ground'){return u.moved||u.engaged||u.charge||u.fleeing?0:Math.max(0,moveAllowance(u,{mode,medium,difficult:!!u.difficultThisMove})-(u.spent??0));}
 
 export function aliveCount(u){return u.destroyed?0:isCharacter(u)||u.role==='warmachine'?(u.wounds>0?1:0):startingModels(u)-(u.deadModels?.length??0);}
 export function remainingWounds(u){return isCharacter(u)||u.role==='warmachine'?Math.max(0,u.wounds):aliveCount(u);}

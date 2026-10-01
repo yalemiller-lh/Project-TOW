@@ -125,3 +125,37 @@ test('a vortex is dispelled later by beating 8, and ends with its caster',()=>{
  const t=battle();s.vortices=[];t.vortices=[{id:'V1',spell:'vortexChaos',caster:'A6',team:'ash',x:30,y:24,radius:1.5}];const w=G.getUnit(t,'A6');w.wounds=1;at(t,'shooting','iron');Object.assign(w,{x:30,y:30});
  t.units.forEach(u=>{if(u.id!=='A6')u.engaged=null;});G.removeCasualties(t,w,1);assert.deepEqual(t.vortices,[],'the caster is slain');
 });
+// A Chaos Dwarf regiment with Steed of Shadows' Fly (12), in Red's Remaining Moves.
+function flyer(keep=[]){const s=battle();clearExcept(s,['A1','A6',...keep]);at(s,'movement','ash',{movementStep:'remaining'});const a=G.getUnit(s,'A1');Object.assign(a,{x:30,y:40,heading:0,moved:false,spent:0,movementMode:null});Object.assign(G.getUnit(s,'A6'),{x:6,y:44});
+ G.addEffect(s,[a],{spell:'steed',source:{kind:'spell',caster:'A6',team:'ash'},rules:[{rule:'fly',value:12}],stack:'spell:steed',expiry:G.expiryAt(s,'START_OF_CASTING_PLAYER_NEXT_TURN','ash')});return {s,a};}
+const fwd=(distance,medium='fly',mode='advance')=>({kind:'advance',mode,medium,distance,angle:0});
+test('Fly (12): a flyer moves 12″ (24″ marching), over units in its way, and lands clear of them',()=>{
+ const {s,a}=flyer(['A3']),h=G.size(a).h,front=a.y-h/2,a3=G.getUnit(s,'A3');Object.assign(a3,{x:30,y:front-1.5-h/2,heading:0});
+ assert.deepEqual(G.flyValues(a),[12]);assert.equal(G.moveValue(a,'fly'),12);assert.equal(G.moveValue(a),3);
+ assert.ok(G.orderError(s,a,fwd(1,'ground')),'on foot, the friendly regiment 1.5″ ahead is in the way');
+ assert.equal(G.orderError(s,a,fwd(11)),null,'flying over it');assert.match(G.orderError(s,a,fwd(12.5))??'',/allowance/);
+ assert.ok(G.orderError(s,a,fwd(7)),'it cannot land on the other regiment');
+ a3.x=50;assert.equal(G.orderError(s,a,fwd(3,'ground')),null,'it may still move on foot');
+});
+test('a flyer may march within 8″ of the enemy without a test; on foot it needs one',()=>{
+ const {s,a}=flyer(['I1']),t=G.getUnit(s,'I1');Object.assign(t,{x:a.x+G.size(a).w/2+5+G.size(t).w/2,y:a.y,heading:180});assert.equal(G.needsMarchTest(s,a),true);
+ assert.match(G.orderError(s,a,fwd(6,'ground','march'))??'',/march Leadership test/);assert.equal(G.orderError(s,a,fwd(24,'fly','march')),null);
+});
+test('flying or on foot is chosen with the first step; a flyer\'s wheel still stops at the table edge',()=>{
+ const {s,a}=flyer();G.commitOrder(s,'A1',fwd(2));assert.equal(a.movementMedium,'fly');assert.match(G.orderError(s,a,fwd(1,'ground'))??'',/Undo/);assert.equal(G.movementRemaining(a),10);
+ G.undo(s);assert.equal(a.movementMedium,null);assert.equal(G.orderError(s,a,fwd(1,'ground')),null,'undone: free to choose again');
+ Object.assign(a,{y:G.size(a).h/2+.05});assert.match(G.orderError(s,a,{kind:'wheel',mode:'advance',medium:'fly',angle:30,distance:0})??'',/battlefield/,'the front edge just inside the table');
+ assert.ok(Number.isFinite(G.maxWheel('march',a,'fly')));
+});
+test('Fly lasts until the caster\'s next Start of Turn; Vigour\'s +1 Movement does not change it',()=>{
+ const {s,a}=flyer();G.addEffect(s,[a],{spell:'vigour',mods:[{stat:'M',add:1,max:10}],stack:'spell:vigour',expiry:G.expiryAt(s,'END_CURRENT_PLAYER_TURN')});assert.equal(G.moveValue(a,'fly'),12);assert.equal(G.moveValue(a),4);
+ s.stage='combat';G.nextTurn(s);assert.deepEqual(G.flyValues(a),[12],'in Blue\'s turn');s.stage='combat';G.nextTurn(s);assert.deepEqual(G.flyValues(a),[]);
+});
+test('a flyer crossing a vortex is struck by it, but loses Movement only by landing in it',()=>{
+ {const {s,a}=flyer();s.vortices=[{id:'V1',spell:'vortexChaos',caster:'A6',team:'ash',x:30,y:a.y-G.size(a).h/2-5,radius:1.5}];G.commitOrder(s,'A1',fwd(11),dice(3,1));assert.equal(s.lastVortexHits.length,1);assert.equal(a.difficultThisMove,undefined);assert.equal(G.movementRemaining(a),1);}
+ {const {s,a}=flyer();s.vortices=[{id:'V1',spell:'vortexChaos',caster:'A6',team:'ash',x:30,y:a.y-G.size(a).h/2-9-1,radius:1.5}];G.commitOrder(s,'A1',fwd(9),dice(3,1));assert.equal(a.difficultThisMove,true,'landed in it');assert.equal(G.movementRemaining(a),2,'12 − 1 − 9');}
+});
+test('the Daemonsmith uses Daemonology by default; a Battle March roster may choose Battle Magic',()=>{
+ assert.equal(G.getUnit(G.createGame('empire'),'A6').lore,'daemonology');
+ const s=G.createGame('empire',{format:'battle-march',points:500,rosters:{ash:{faction:'chaos',entries:[{entry:'daemonsmith',general:true,lore:'battle'},{entry:'warriors',models:19},{entry:'decimators',models:9}]}}});assert.equal(G.getUnit(s,'A6').lore,'battle');
+});

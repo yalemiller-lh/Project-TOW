@@ -13,7 +13,7 @@ export const PREFERENCES={excluded:[{name:'K’daai Fireborn',faction:'chaos',re
 // restricted: counts against Battle March's single "0–X per 1,000 points" selection.
 export const ENTRIES={
  chaos:{
-  daemonsmith:{name:'Daemonsmith Sorcerer',category:'characters',role:'wizard',base:85,options:{level2:{name:'Wizard Level 2',cost:30,required:true}},general:true,lores:{options:['daemonology','darkMagic','elementalism','battle'],default:'battle'}},
+  daemonsmith:{name:'Daemonsmith Sorcerer',category:'characters',role:'wizard',base:85,options:{level2:{name:'Wizard Level 2',cost:30,required:true}},general:true,lores:{options:['daemonology','darkMagic','elementalism','battle'],default:'daemonology'}},
   warriors:{name:'Chaos Dwarf Warriors',category:'core',role:'infantry',troop:'heavy',perModel:7,minModels:5,options:{shields:{name:'Shields',perModel:1,required:true}},command:{C:{name:'Veteran Warrior',cost:6},S:{name:'Standard Bearer',cost:6},M:{name:'Musician',cost:6}}},
   decimators:{name:'Blunderbuss Decimators',category:'core',role:'missile',troop:'heavy',perModel:10,minModels:5,options:{shields:{name:'Shields',perModel:1}},command:{C:{name:'Veteran Warrior',cost:6},S:{name:'Standard Bearer',cost:6},M:{name:'Musician',cost:6}}},
   deathshrieker:{name:'Deathshrieker Rocket Launcher',category:'special',role:'warmachine',base:110,restricted:'0–2 per 1,000 points'},

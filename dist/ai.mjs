@@ -169,9 +169,12 @@ function moveRegiment(s,u,random){
  if(u.role==='missile'&&(goal.kind!=='objective'||goal.dist(u)<=BM.CONTROL_RANGE)&&G.canShoot(virtual,u)&&G.shootingTargets(virtual,u).some(t=>!t.plan.error))return endMove(s,u,`${u.id} holds for a clear shot.`);
  if(goal.kind==='objective'&&goal.dist(u)<=.05)return endMove(s,u,`${u.id} holds ${goal.name}.`);
  if(goal.kind==='support'&&goal.dist(u)<=1)return endMove(s,u,`${u.id} stays behind the line.`);
- const separation=goal.dist(u),wantMarch=(goal.kind==='enemy'?u.role!=='missile'&&separation>14:separation>G.profile(u).M+.5)&&u.marchTest!==false,mode=u.movementMode??(wantMarch?'march':'advance');
- if(mode==='march'&&G.needsMarchTest(s,u)&&u.marchTest===null){const dice=roll(random),passed=G.marchTest(s,u.id,dice);return {message:`${u.id} march test ${passed?'passed':'failed'} (${dice.join('+')}).`};}
- const best=bestOrder(s,u,goal,mode)??(mode==='march'?bestOrder(s,u,goal,'advance'):null);
+ // A unit with Fly (Steed of Shadows) flies: further, over anything in the way, and it may march
+ // near the enemy without a test.
+ const fly=G.flyValues(u)[0],medium=u.movementMedium??(fly?'fly':'ground');
+ const separation=goal.dist(u),wantMarch=(goal.kind==='enemy'?u.role!=='missile'&&separation>14:separation>G.moveValue(u,medium)+.5)&&(medium==='fly'||u.marchTest!==false),mode=u.movementMode??(wantMarch?'march':'advance');
+ if(mode==='march'&&medium!=='fly'&&G.needsMarchTest(s,u)&&u.marchTest===null){const dice=roll(random),passed=G.marchTest(s,u.id,dice);return {message:`${u.id} march test ${passed?'passed':'failed'} (${dice.join('+')}).`};}
+ const best=bestOrder(s,u,goal,mode,medium)??(mode==='march'?bestOrder(s,u,goal,'advance',medium):null);
  if(best){G.commitOrder(s,u.id,best.order,random);return {message:`${u.id} ${describeOrder(best.order)} toward ${goal.name}.`};}
  return endMove(s,u,`${u.id} holds position.`);
 }
@@ -211,9 +214,9 @@ function supportGoal(s,u,foe){
 // Try a spread of legal orders (advances, wheels either way with an advance, a reform toward the
 // goal, and short side steps) and take the one that ends closest to the goal, facing the enemy
 // best. A unit blocked in one direction therefore finds another way instead of holding.
-function bestOrder(s,u,goal,mode){
+function bestOrder(s,u,goal,mode,medium='ground'){
  if(u.movementMode&&u.movementMode!==mode)return null;
- const allowance=(mode==='march'?2:1)*G.profile(u).M,left=allowance-(u.spent??0);if(left<.25)return null;
+ const left=G.movementRemaining(u,mode,medium);if(left<.25)return null;
  const target=goal.face??goal,facingError=p=>{const want=G.normalize(Math.atan2(target.x-p.x,-(target.y-p.y))*180/Math.PI);return Math.abs(((want-G.heading(p)+540)%360)-180);};
  const score=p=>-goal.dist(p)-(goal.kind==='enemy'?.03:.01)*facingError(p),steps=d=>[d,d*.75,d*.5,d*.25].filter(x=>x>=.25),orders=[];
  for(const d of steps(left))orders.push({kind:'advance',distance:d,angle:0,mode});
@@ -223,6 +226,7 @@ function bestOrder(s,u,goal,mode){
  // Toward a goal behind or beside the unit (an objective, a place behind the line): reform to
  // face it, or step back.
  if(goal.kind!=='enemy'){if((u.spent??0)===0&&mode==='advance'){const toward=Math.round(((G.normalize(Math.atan2(goal.x-u.x,-(goal.y-u.y))*180/Math.PI)-G.heading(u)+540)%360)-180);if(Math.abs(toward)>60)orders.push({kind:'pivot',angle:toward,distance:0,mode:'advance'});}for(const d of [1,2,3].filter(d=>2*d<=left))orders.push({kind:'back',distance:d,angle:0,mode});}
+ for(const o of orders)o.medium=medium;
  const now=score(u);let best=null;
  for(const order of orders){if(order.kind==='pivot'&&!order.angle)continue;if(G.orderError(s,u,order))continue;const val=score(G.planMove(u,order).end);if(!best||val>best.val)best={order,val};}
  return best&&best.val>now+.05?best:null;
