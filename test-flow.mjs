@@ -22,7 +22,7 @@ test('destroying every enemy model before the Break test offers an overrun',()=>
 });
 test('overrun goes straight forward and engages a fresh enemy as a charge',()=>{
  const {s,winner,loser}=combat(),fresh=G.getUnit(s,'I2');G.getUnit(s,'I2').x=18;G.getUnit(s,'I2').y=10;G.getUnit(s,'I1').x=null;G.getUnit(s,'I1').y=null;G.getUnit(s,'I1').destroyed=true;pending(s,winner,loser,'overrun',{destroyed:true,moved:0});
- const out=G.winnerCombat(s,'follow',()=>.9);assert.equal(out.contact,fresh.id);assert.equal(winner.engaged,fresh.id);assert.equal(fresh.engaged,winner.id);assert.equal(winner.charge.status,'success');assert.ok(out.movement.winner>0&&out.movement.winner<out.pursuitDistance);
+ const out=G.winnerCombat(s,'follow',()=>.9);assert.equal(out.contact,fresh.id);assert.deepEqual(winner.engaged,[fresh.id]);assert.deepEqual(fresh.engaged,[winner.id]);assert.equal(winner.charge.status,'success');assert.ok(out.movement.winner>0&&out.movement.winner<out.pursuitDistance);
  assert.equal(G.combatPairs(s).length,0);G.nextPhase(s);assert.equal(G.combatPairs(s).length,1);assert.equal(winner.charge.status,'success');
 });
 test('overrun stops before a friendly blocker and restraint prevents movement',()=>{
@@ -78,7 +78,7 @@ test('Movement cannot be reopened from Strategy or after a missile unit acts',()
 });
 test('an overrun that contacts a fresh enemy at an angle wheels to align and counts as charging',()=>{
  const {s,winner,loser}=combat(),fresh=G.getUnit(s,'I2');Object.assign(fresh,{x:19.5,y:10,heading:200});loser.x=null;loser.y=null;loser.destroyed=true;pending(s,winner,loser,'overrun',{destroyed:true,moved:0});
- const out=G.winnerCombat(s,'follow',()=>.99);assert.equal(out.contact,'I2');assert.equal(winner.engaged,'I2');
+ const out=G.winnerCombat(s,'follow',()=>.99);assert.equal(out.contact,'I2');assert.deepEqual(winner.engaged,['I2']);
  assert.equal(G.heading(winner),20);assert.ok(G.gap(winner,fresh)<.02);assert.equal(winner.charge.face,'front');assert.equal(winner.charge.status,'success');
 });
 test('an overrun off the battlefield leaves the table and returns in its next Movement phase',()=>{

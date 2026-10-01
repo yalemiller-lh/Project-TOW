@@ -18,6 +18,6 @@ assert.equal(ash.vp,100);
 assert.equal(iron.vp,100);
 assert.equal(ash.units,5);
 state.stage='movement';state.movementStep='charges';
-assert.equal(P.substepIndex(state),1);
+assert.equal(P.substepIndex(state),2);state.movementStep='reactions';assert.equal(P.substepIndex(state),1);assert.equal(P.PHASE_SUBSTEPS.movement[1],'Charge reactions');
 assert.equal(P.shortestTurn(0,330),-30);assert.equal(P.shortestTurn(330,0),30);assert.equal(P.shortestTurn(180,150),-30);assert.equal(P.shortestTurn(350,20),30);assert.equal(P.shortestTurn(0,300),-60);assert.equal(P.shortestTurn(90,90),0);
 console.log('Presentation checks passed.');

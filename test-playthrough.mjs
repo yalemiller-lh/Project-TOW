@@ -11,7 +11,9 @@ function rng(seed){return ()=>{seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(se
 const pick=(r,list)=>list[Math.floor(r()*list.length)];
 function overlaps(s){
  const pieces=G.combatants(s).filter(u=>u.x!==null&&G.aliveCount(u)>0),bad=[],p=s.pendingCombat;
- for(let i=0;i<pieces.length;i++)for(let j=i+1;j<pieces.length;j++){const a=pieces[i],b=pieces[j];if(a.engaged===b.id||b.engaged===a.id)continue;
+ for(let i=0;i<pieces.length;i++)for(let j=i+1;j<pieces.length;j++){const a=pieces[i],b=pieces[j];if(G.engagedWith(a,b))continue;
+  // Friends may end up shoulder to shoulder (after fighting side by side), never on top of each other.
+  if(a.team===b.team){if(G.overlaps(a,b))bad.push(`${a.id}/${b.id} overlap`);continue;}
   // The pair whose combat aftermath is being resolved is briefly apart from its engagement.
   if(p&&[p.winner,p.loser].includes(a.id)&&[p.winner,p.loser].includes(b.id))continue;
   const g=G.gap(a,b);if(g<.001)bad.push(`${a.id}/${b.id} gap ${g.toFixed(3)}`);}
@@ -20,7 +22,7 @@ function overlaps(s){
 const fingerprint=s=>JSON.stringify([s.stage,s.team,s.round,s.movementStep,s.pendingCombat,s.combatSession,s.pendingSpell?.key,G.combatants(s).map(u=>[u.x,u.y,u.heading,u.moved,u.shot,u.engaged,u.charge?.status,u.charge?.reaction,u.fleeing,u.deadModels?.length,u.wounds,u.combatResolved,u.castThisTurn?.length,u.marchTest,u.impetuousTest])]);
 function redStep(s,r){
  const d=AI.humanDecision(s);
- if(d?.kind==='reaction'){const c=s.units.find(u=>u.team==='iron'&&u.charge?.reaction==='pending'),def=G.getUnit(s,c.charge.target);G.chargeReaction(s,c.id,def.fleeing?'flee':G.canStandShoot(s,def,c)&&r()<.5?'stand-shoot':r()<.25?'flee':'hold',r);return 'reaction';}
+ if(d?.kind==='reaction'){const c=s.units.find(u=>u.team==='iron'&&u.charge?.reaction==='pending'),def=G.getUnit(s,c.charge.target),close=s.units.some(v=>v.charge?.status==='declared'&&v.charge.target===def.id&&G.gap(def,v)+1e-9<G.profile(v).M);G.chargeReaction(s,c.id,def.fleeing?'flee':!close&&G.canStandShoot(s,def,c)&&r()<.5?'stand-shoot':r()<.25?'flee':'hold',r);return 'reaction';}
  if(d?.kind==='shieldwall'){G.chooseLoserAction(s,r()<.5?'shieldwall':'fall-back');return 'shieldwall';}
  if(d?.kind==='aftermath'){G.winnerCombat(s,pick(r,['follow','restrain','follow-reform']),r);return 'aftermath';}
  if(d?.kind==='dispel'){const o=G.dispelOptions(s);G.resolveDispel(s,pick(r,['none',...(o.fated?['fated']:[]),...o.wizards.map(w=>w.id)]),r);return 'dispel';}

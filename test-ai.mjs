@@ -13,12 +13,12 @@ for(const faction of ['empire','orc']){
 
 {
  const s=G.createGame('empire');G.autoDeploy(s);G.begin(s);G.nextPhase(s);s.movementStep='declare';for(const u of s.units)if(!['A4','I4'].includes(u.id)){u.x=null;u.y=null;}const charger=G.getUnit(s,'A4'),defender=G.getUnit(s,'I4');charger.x=defender.x=35;charger.y=22;defender.y=15;
- G.declareCharge(s,'A4','I4');assert.equal(AI.shouldAct(s),true);const result=AI.takeStep(s,()=>.2);assert.match(result.message,/chooses/);assert.notEqual(charger.charge.reaction,'pending');
+ G.declareCharge(s,'A4','I4');assert.equal(AI.shouldAct(s),false,'the bot reacts only once every charge is declared');G.finishDeclarations(s);assert.equal(s.movementStep,'reactions');assert.equal(AI.shouldAct(s),true);const result=AI.takeStep(s,()=>.2);assert.match(result.message,/chooses/);assert.notEqual(charger.charge.reaction,'pending');
 }
 
 {
  const s=deploy('empire');s.team='iron';s.stage='movement';s.movementStep='declare';for(const u of s.units)if(!['A1','I1'].includes(u.id)){u.x=null;u.y=null;}const attacker=G.getUnit(s,'I1'),defender=G.getUnit(s,'A1');attacker.x=defender.x=35;attacker.y=20;defender.y=28;
- assert.equal(G.chargePlan(s,attacker,defender).error,undefined);AI.takeStep(s,()=>.5);assert.equal(attacker.charge.reaction,'pending');assert.equal(AI.humanDecision(s).kind,'reaction');assert.equal(AI.shouldAct(s),false);
+ assert.equal(G.chargePlan(s,attacker,defender).error,undefined);AI.takeStep(s,()=>.5);assert.equal(attacker.charge.reaction,'pending');assert.equal(AI.humanDecision(s),null,'no reaction until the bot has declared every charge');AI.takeStep(s,()=>.5);assert.equal(s.movementStep,'reactions');assert.equal(AI.humanDecision(s).kind,'reaction');assert.equal(AI.shouldAct(s),false);
  G.chargeReaction(s,attacker.id,'hold');assert.equal(AI.shouldAct(s),true);
 }
 

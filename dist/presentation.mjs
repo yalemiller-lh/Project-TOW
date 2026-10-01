@@ -6,7 +6,7 @@ export const THEMES={
 
 export const PHASE_SUBSTEPS={
  strategy:['Start of turn & magic','Rally fleeing troops'],
- movement:['Declare charges','Roll charges','Remaining moves & magic'],
+ movement:['Declare charges','Charge reactions','Roll charges','Remaining moves & magic'],
  shooting:['Missiles & magic','Roll to hit & wound','Remove casualties'],
  combat:['Magic & fight by Initiative','Combat result','Break test','Pursuit']
 };
@@ -48,7 +48,7 @@ export function scoreRows(state,game){
 // so a left wheel from 0° to 330° turns 30° left instead of spinning 330° right.
 export function shortestTurn(from,to){return ((((to-from)%360)+540)%360)-180;}
 export function substepIndex(state,uiSub=0){
- if(state.stage==='movement')return {declare:0,charges:1,remaining:2}[state.movementStep]??2;
+ if(state.stage==='movement')return {declare:0,reactions:1,charges:2,remaining:3}[state.movementStep]??3;
  if(state.stage==='combat'){
   if(state.combatSession)return state.combatSession.phase==='attacks'?0:1;
   if(state.pendingCombat)return state.pendingCombat.stage==='winner-choice'?3:2;

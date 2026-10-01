@@ -26,7 +26,7 @@ for(const [faction,name,range] of [['empire','State Missile Troops',30],['orc','
  u.movementMode='advance';u.fleeing=true;assert.equal(G.canShoot(s,u),false);assert.throws(()=>G.shoot(s,u.id,t.id),/cannot shoot/);
 }
 {
- const s=duel('empire');s.movementStep='declare';const c=G.getUnit(s,'A4'),d=G.getUnit(s,'I4');c.y=22;const plan=G.chargePlan(s,c,d);assert.equal(plan.error,undefined);assert.equal(G.canStandShoot(s,d,c),true);const declared=G.declareCharge(s,'A4','I4');assert.equal(declared.reaction,'pending');assert.throws(()=>G.finishDeclarations(s),/reaction/);const r=G.chargeReaction(s,'A4','stand-shoot',()=>0);assert.equal(r.report.toHit,5);assert.equal(r.report.band,'Stand & Shoot');assert.equal(c.charge.reaction,'stand-shoot');G.finishDeclarations(s);assert.equal(s.movementStep,'charges');
+ const s=duel('empire');s.movementStep='declare';const c=G.getUnit(s,'A4'),d=G.getUnit(s,'I4');c.y=22;const plan=G.chargePlan(s,c,d);assert.equal(plan.error,undefined);assert.equal(G.canStandShoot(s,d,c),true);const declared=G.declareCharge(s,'A4','I4');assert.equal(declared.reaction,'pending');const r=G.chargeReaction(s,'A4','stand-shoot',()=>0);assert.equal(r.report.toHit,5);assert.equal(r.report.band,'Stand & Shoot');assert.equal(c.charge.reaction,'stand-shoot');G.finishDeclarations(s);assert.equal(s.movementStep,'charges');
 }
 {
  const s=duel();const c=G.getUnit(s,'A4'),d=G.getUnit(s,'I4');c.y=22;d.heading=0;assert.equal(G.canStandShoot(s,d,c),false);c.y=18;d.heading=180;assert.equal(G.canStandShoot(s,d,c),false);

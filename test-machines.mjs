@@ -37,5 +37,5 @@ test('a unit falling back stops 1″ short of a friendly unit instead of ending 
 test('a loser that cannot give ground stays in the fight',()=>{
  const s=field(['A1','I1','I2']);const w=G.getUnit(s,'A1'),l=G.getUnit(s,'I1'),friend=G.getUnit(s,'I2');Object.assign(w,{x:18,y:30,heading:0});Object.assign(l,{x:18,y:30-G.SIZE.h,heading:180});Object.assign(friend,{x:18,y:l.y-G.SIZE.h-1,heading:180});
  s.stage='combat';s.lastCombat={a:'A1',b:'I1'};s.combatHistory=[s.lastCombat];s.pendingCombat={winner:'A1',loser:'I1',margin:1,stage:'retreat',outcome:'give-ground'};
- const moved=G.moveCombatLoser(s,()=>.99);assert.equal(moved.distance,0);const out=G.winnerCombat(s,'restrain',()=>.99);assert.equal(out.stillEngaged,true);assert.equal(w.engaged,'I1');assert.equal(l.engaged,'A1');
+ const moved=G.moveCombatLoser(s,()=>.99);assert.equal(moved.distance,0);const out=G.winnerCombat(s,'restrain',()=>.99);assert.equal(out.stillEngaged,true);assert.deepEqual(w.engaged,['I1']);assert.deepEqual(l.engaged,['A1']);
 });

@@ -23,7 +23,7 @@ test('the Deathshrieker is a charge target that can only Hold',()=>{
  const declared=G.declareCharge(s,'I1','A5');assert.equal(declared.reaction,'hold');assert.equal(declared.face,'front');
  assert.throws(()=>G.chargeReaction(s,'I1','flee'),/No charge reaction/);
  G.finishDeclarations(s);assert.equal(s.movementStep,'charges');
- const out=G.resolveCharge(s,'I1',[6,6]);assert.equal(out.success,true);assert.equal(orc.engaged,'A5');assert.equal(rocket.engaged,'I1');assert.ok(G.gap(orc,rocket)<.05);
+ const out=G.resolveCharge(s,'I1',[6,6]);assert.equal(out.success,true);assert.deepEqual(orc.engaged,['A5']);assert.deepEqual(rocket.engaged,['I1']);assert.ok(G.gap(orc,rocket)<.05);
  assert.equal(rocket.x,8);assert.equal(rocket.y,42);
 });
 test('an engaged war machine fights, cannot fire, and counts as a combat pair',()=>{
@@ -46,7 +46,7 @@ test('wounds remove crew tokens and the last wound destroys the war machine',()=
 test('a war machine that falls back stays in the fight; one that breaks is abandoned',()=>{
  {
   const {s,orc,rocket}=engaged();pendingBreak(s,'I1','A5');const test=G.rollCombatBreak(s,dice(4,5));assert.equal(test.outcome,'fall-back');assert.equal(test.shieldwallAvailable,false);
-  const out=G.moveCombatLoser(s);assert.equal(out.finished,true);assert.equal(out.distance,0);assert.equal(s.pendingCombat,null);assert.equal(rocket.engaged,'I1');assert.equal(orc.engaged,'A5');assert.equal(rocket.y,42);
+  const out=G.moveCombatLoser(s);assert.equal(out.finished,true);assert.equal(out.distance,0);assert.equal(s.pendingCombat,null);assert.deepEqual(rocket.engaged,['I1']);assert.deepEqual(orc.engaged,['A5']);assert.equal(rocket.y,42);
  }
  {
   const {s,orc,rocket}=engaged();pendingBreak(s,'I1','A5');assert.equal(G.rollCombatBreak(s,dice(6,6)).outcome,'break');

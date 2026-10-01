@@ -96,7 +96,8 @@ export function deployNext(s){
 
 export function humanDecision(s){
  if(s.pendingSpell&&G.getUnit(s,s.pendingSpell.caster)?.team==='iron')return {id:s.pendingSpell.caster,kind:'dispel',message:`Choose how to dispel ${G.BATTLE_MAGIC[s.pendingSpell.key].name}.`};
- const charge=s.units.find(u=>u.team==='iron'&&u.charge?.status==='declared'&&u.charge.reaction==='pending');
+ // Charge reactions are chosen once every charge has been declared.
+ const charge=s.movementStep==='reactions'?s.units.find(u=>u.team==='iron'&&u.charge?.status==='declared'&&u.charge.reaction==='pending'):null;
  if(charge)return {id:charge.charge.target,kind:'reaction',message:`Choose a reaction for ${charge.charge.target} against ${charge.id}.`};
  const p=s.pendingCombat;
  if(p?.stage==='loser-choice'&&G.getUnit(s,p.loser).team==='ash')return {id:p.loser,kind:'shieldwall',message:`Choose ${p.loser}'s Shieldwall or Fall Back.`};
@@ -124,7 +125,7 @@ export function shouldAct(s){
  if(s.stage==='deployment'||s.stage==='finished')return false;
  if(s.pendingSpell)return G.getUnit(s,s.pendingSpell.caster)?.team==='ash';
  if(s.team==='iron')return !humanDecision(s);
- return s.stage==='movement'&&s.movementStep==='declare'&&s.units.some(u=>u.team==='ash'&&u.charge?.status==='declared'&&u.charge.reaction==='pending'&&G.getUnit(s,u.charge.target)?.team==='iron')||!!combatDecision(s)||s.stage==='combat'&&s.units.some(u=>u.team==='iron'&&u.role==='wizard'&&u.engaged&&u.spells.some(key=>['hammerhand','hashutFlames'].includes(key)&&G.canCast(s,u.id,key,u.engaged)));
+ return s.stage==='movement'&&s.movementStep==='reactions'&&s.units.some(u=>u.team==='ash'&&u.charge?.status==='declared'&&u.charge.reaction==='pending'&&G.getUnit(s,u.charge.target)?.team==='iron')||!!combatDecision(s)||s.stage==='combat'&&s.units.some(u=>u.team==='iron'&&u.role==='wizard'&&u.engaged&&u.spells.some(key=>['hammerhand','hashutFlames'].includes(key)&&G.opponents(s,u).some(t=>G.canCast(s,u.id,key,t.id))));
 }
 
 function moveRegiment(s,u,random){
@@ -205,9 +206,13 @@ export function takeStep(s,random=Math.random){
  if(s.pendingSpell)return aiDispel(s,random);
  if(s.team==='ash'){
   if(s.stage==='combat'){if(combatDecision(s))return resolveCombatDecision(s,random);const cast=aiSpell(s,random);if(cast)return cast;return {message:'Waiting for the player.',wait:true};}
+  // One reaction answers every charge on a unit: Stand & Shoot at the strongest charger it can
+  // shoot when none of them is too close, otherwise Hold (a fleeing unit must Flee).
   const charger=s.units.find(u=>u.team==='ash'&&u.charge?.status==='declared'&&u.charge.reaction==='pending'&&G.getUnit(s,u.charge.target)?.team==='iron');
-  const defender=G.getUnit(s,charger.charge.target),choice=defender.fleeing?'flee':G.canStandShoot(s,defender,charger)?'stand-shoot':'hold',point={x:charger.x,y:charger.y},out=G.chargeReaction(s,charger.id,choice,random);
-  return {message:`${defender.id} chooses ${choice==='stand-shoot'?'Stand & Shoot':choice}.`,report:out.report,point};
+  const defender=G.getUnit(s,charger.charge.target),chargers=s.units.filter(u=>u.charge?.status==='declared'&&u.charge.target===defender.id),tooClose=chargers.some(v=>G.gap(defender,v)+1e-9<G.profile(v).M);
+  const shooter=defender.fleeing||tooClose?null:chargers.filter(v=>v.charge.reaction==='pending'&&G.canStandShoot(s,defender,v)).sort((a,b)=>G.unitStrength(b)-G.unitStrength(a))[0];
+  const choice=defender.fleeing?'flee':shooter?'stand-shoot':'hold',at=shooter??charger,point={x:at.x,y:at.y},out=G.chargeReaction(s,at.id,choice,random);
+  return {message:`${defender.id} chooses ${choice==='stand-shoot'?'Stand & Shoot':choice}${choice==='stand-shoot'&&chargers.length>1?' at '+at.id:''}.`,report:out.report,point};
  }
  const decision=humanDecision(s);if(decision)return {...decision,wait:true};
  if(s.stage==='strategy'){
@@ -216,8 +221,9 @@ export function takeStep(s,random=Math.random){
   const cast=aiSpell(s,random);if(cast)return cast;
   G.nextPhase(s);return {message:'The bot begins Movement.'};
  }
+ if(s.stage==='movement'&&s.movementStep==='reactions'){G.finishReactions(s);return {message:'Every charged unit has reacted.'};}
  if(s.stage==='movement'&&s.movementStep==='declare'){
-  const pending=s.units.find(u=>u.team==='iron'&&u.charge?.status==='declared'&&u.charge.reaction==='pending');if(pending)return {...humanDecision(s),wait:true};
+
   for(const u of s.units.filter(u=>u.team==='iron'&&G.canAct(s,u)&&u.faction==='orc'&&u.impetuousTest===null&&G.availableCharges(s,u).length)){const dice=roll(random),passed=G.impetuousTest(s,u.id,dice);s.selected=u.id;return {message:`${u.id} Impetuous test ${passed?'passed':'failed'} (${dice.join('+')}).`};}
   const options=s.units.filter(u=>u.team==='iron'&&G.canAct(s,u)).flatMap(u=>G.availableCharges(s,u).map(t=>({u,t,plan:G.chargePlan(s,u,t)}))).filter(o=>G.hasRule(o.u,'frenzy')||!s.objectives||!(G.isCharacter(o.u)&&G.unitStrength(o.t)>=BM.MIN_CONTROL_US)&&!(s.round>=(s.format.rounds??Infinity)&&holdsObjective(s,o.u))).sort((a,b)=>a.plan.cost-b.plan.cost);
   if(options.length){const {u,t}=options[0];s.selected=u.id;G.declareCharge(s,u.id,t.id);return {message:`${u.id} charges ${t.id}. Choose a reaction.`};}
@@ -245,7 +251,10 @@ export function takeStep(s,random=Math.random){
   if(s.pendingCombat)return resolveCombatDecision(s,random);
   if(s.combatSession?.phase==='attacks'){const out=G.fightCombatStep(s,random);return {message:`Initiative ${out.initiative}: ${out.stages.reduce((n,x)=>n+x.unsaved,0)} slain.`};}
   if(s.combatSession?.phase==='compare'){const out=G.compareCombat(s);return {message:out.winner?`${out.winner} wins combat.`:'Combat is a draw.'};}
-  const pair=G.combatPairs(s)[0];if(pair){const id=pair.find(id=>G.getUnit(s,id).team==='iron')??pair[0];s.selected=id;G.beginCombat(s,id);return {message:`${pair.join(' fights ')}: initiative order shown.`};}
+  const pair=G.combatPairs(s)[0];if(pair){const id=pair.find(id=>G.getUnit(s,id).team==='iron')??pair[0];s.selected=id;
+   // A bot unit fighting several enemies aims its spare attacks at the one closest to destruction.
+   for(const u of pair.map(i=>G.getUnit(s,i)).filter(u=>u.team==='iron')){const foes=G.opponents(s,u);if(foes.length>1)u.combatFocus=foes.sort((a,b)=>G.remainingWounds(a)-G.remainingWounds(b))[0].id;}
+   G.beginCombat(s,id);return {message:`${pair.join(pair.length>2?', ':' fights ')}${pair.length>2?' fight one combat':''}: initiative order shown.`};}
   G.nextPhase(s);return {message:'The bot ends its turn.'};
  }
  return {message:'Waiting for the player.',wait:true};
