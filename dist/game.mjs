@@ -147,14 +147,39 @@ export function checkPosition(state,unit,x,y,deployment=false,{moving=false}={})
   return null;
 }
 export function place(s,id,x,y){if(s.stage!=='deployment')throw Error('Deployment is finished.');const u=getUnit(s,id);if(!u)throw Error('Unknown regiment.');deployGate(s,u);const error=checkPosition(s,u,x,y,true);if(error)throw Error(error);Object.assign(u,{x,y});deployPlaced(s,u);return u;}
-export function placeRocket(s,x,y){if(s.stage!=='deployment')throw Error('Deploy the launcher before battle.');if(s.rocket.absent)throw Error('This army has no Deathshrieker.');deployGate(s,s.rocket);if(!Number.isFinite(x)||!Number.isFinite(y))throw Error('Enter valid coordinates.');if(!inZone(s,'ash',corners({...s.rocket,x,y})))throw Error('Keep the whole launcher in the red deployment zone.');const footprint=rocketFootprint(x,y);if(s.units.some(u=>u.x!==null&&polygonGap(corners(u),footprint)<1-EPS))throw Error('Keep the launcher at least 1″ from regiments.');Object.assign(s.rocket,{x,y});deployPlaced(s,s.rocket);return s.rocket;}
-export function placeCannon(s,id,x,y){if(s.stage!=='deployment')throw Error('Deploy cannons before battle.');const cannon=s.cannons.find(c=>c.id===id);if(!cannon)throw Error('Choose an Empire cannon.');deployGate(s,cannon);if(!Number.isFinite(x)||!Number.isFinite(y))throw Error('Enter valid coordinates.');const footprint=cannonFootprint(x,y);if(!inZone(s,'iron',corners({...cannon,x,y})))throw Error('Keep the whole cannon in the blue deployment zone.');if(s.units.some(u=>u.x!==null&&polygonGap(corners(u),footprint)<1-EPS)||s.cannons.some(c=>c.id!==id&&c.x!==null&&polygonGap(cannonFootprint(c.x,c.y),footprint)<1-EPS))throw Error('Keep cannons at least 1″ from other units.');Object.assign(cannon,{x,y});deployPlaced(s,cannon);return cannon;}
+// A war machine deploys like a regiment: its whole base, as turned, inside its own zone, clear of
+// impassable terrain and at least 1″ from every other unit and war machine.
+function machinePlacementError(s,m,x,y){
+ if(!Number.isFinite(x)||!Number.isFinite(y))return 'Enter valid coordinates.';
+ const poly=corners({...m,x,y}),name=m.id===s.rocket?.id?'launcher':'cannon';
+ if(!inZone(s,m.team,poly))return `Keep the whole ${name} in the ${m.team==='ash'?'red':'blue'} deployment zone.`;
+ if(terrainBlocks(s,poly))return 'War machines cannot be placed on impassable terrain.';
+ if(combatants(s).some(v=>v.id!==m.id&&v.x!==null&&polygonGap(poly,corners(v))<1-EPS))return `Keep the ${name} at least 1″ from other units.`;
+ return null;
+}
+// Why a piece cannot be placed at this spot during deployment, or null when it can.
+export function deployError(s,p,x,y){return p?.role==='warmachine'?machinePlacementError(s,p,x,y):checkPosition(s,p,x,y,true);}
+export function placeRocket(s,x,y){if(s.stage!=='deployment')throw Error('Deploy the launcher before battle.');if(s.rocket.absent)throw Error('This army has no Deathshrieker.');deployGate(s,s.rocket);const error=machinePlacementError(s,s.rocket,x,y);if(error)throw Error(error);Object.assign(s.rocket,{x,y});deployPlaced(s,s.rocket);return s.rocket;}
+export function placeCannon(s,id,x,y){if(s.stage!=='deployment')throw Error('Deploy cannons before battle.');const cannon=s.cannons.find(c=>c.id===id);if(!cannon)throw Error('Choose an Empire cannon.');deployGate(s,cannon);if(!Number.isFinite(x)||!Number.isFinite(y))throw Error('Enter valid coordinates.');const error=machinePlacementError(s,cannon,x,y);if(error)throw Error(error);Object.assign(cannon,{x,y});deployPlaced(s,cannon);return cannon;}
 // Quick deploy. Battle March always uses the deployment plan below; a classic game does too when
 // given a random source (the game's Quick deploy), otherwise it keeps its fixed test layout.
 export function autoDeploy(s,{team=null,random=null}={}){if(s.stage!=='deployment')throw Error('Deployment is finished.');if((s.format?.id??'classic')!=='classic'||random)return alternating(s)?alternateAutoDeploy(s,team,random):searchDeploy(s,team,random);s.units.forEach((u,i)=>{if(!team||u.team===team)Object.assign(u,{x:u.id==='A6'?3.5:u.id==='I7'?70:[18,36,54,64][i%4],y:u.team==='ash'?42:6});});if(!team||team==='ash')placeRocket(s,8,42);if(!team||team==='iron')for(const [i,c]of s.cannons.entries())placeCannon(s,c.id,[8,45][i],6);}
 // Spread each army across the middle of its zone, trying the nearest legal spots.
 function deployOrderOf(s,side){return [...s.units.filter(u=>u.team===side&&!isCharacter(u)),...combatants(s).filter(m=>m.role==='warmachine'&&m.team===side),...s.units.filter(u=>u.team===side&&isCharacter(u))];}
 function placePiece(s,p,x,y){return p.role==='warmachine'?(p.team==='ash'?placeRocket(s,x,y):placeCannon(s,p.id,x,y)):place(s,p.id,x,y);}
+// Manual deployment: place any piece (regiment, character or war machine), turn it where it
+// stands, or pick it back up. Only a piece that has not been confirmed can be changed.
+export function placeAt(s,id,x,y){const p=getUnit(s,id);if(!p)throw Error('Unknown unit.');return placePiece(s,p,x,y);}
+export function turnDeployed(s,id,heading){
+ const p=getUnit(s,id);if(s.stage!=='deployment'||!p||p.x===null)throw Error('Place the unit first.');
+ const old=p.heading;p.heading=normalize(heading);try{placePiece(s,p,p.x,p.y);}catch(e){p.heading=old;throw Error(e.message.replace(/^Keep/,'Turned like that it would not fit: keep'));}return p;
+}
+export function unplace(s,id){
+ const p=getUnit(s,id),d=s.deployOrder;if(s.stage!=='deployment'||!p||p.x===null)throw Error('Nothing to pick up.');
+ if(p.deployed)throw Error(`${p.name} is already deployed; deployed units stay where they are.`);
+ if(alternating(s)&&!d.auto&&d.pending!==p.id)throw Error('Only the unit being placed can be picked up.');
+ Object.assign(p,{x:null,y:null});if(alternating(s)&&d.pending===p.id)d.pending=null;return p;
+}
 // The quick-deploy plan for one army: regiments form the battle line along the front of the zone,
 // war machines stand at its very back toward the flanks (where their long range still reaches),
 // and characters just behind the middle of the line. With a random source the line's order,

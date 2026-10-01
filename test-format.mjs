@@ -62,6 +62,15 @@ test('Quick deploy puts war machines at the back of the zone and varies the line
  assert.notEqual(layout(3),layout(11),'different games deploy differently');assert.equal(layout(0),layout(0),'without a random source the plan is fixed');
  const classic=G.createGame('empire');G.autoDeploy(classic,{random:rng(5)});assert.ok(classic.rocket.y>45&&classic.cannons.every(c=>c.y<3),'classic Quick deploy: machines on the back edges');
 });
+test('manual deployment: place any piece, turn it where it stands or pick it up; a confirmed piece stays put',()=>{
+ const s=bm();G.deploymentRollOff(s,()=>.9);G.chooseDeploymentOrder(s,s.deployOrder.rollOff.winner,'ash');
+ G.placeAt(s,'A1',15,24.5);assert.equal(s.deployOrder.pending,'A1');
+ assert.throws(()=>G.turnDeployed(s,'A1',30),/fit/,'at the front edge of the zone a 30° turn would leave the zone');assert.equal(G.getUnit(s,'A1').heading,0,'a refused turn leaves the facing alone');
+ G.placeAt(s,'A1',15,26.5);G.turnDeployed(s,'A1',30);assert.equal(G.getUnit(s,'A1').heading,30);
+ G.unplace(s,'A1');assert.equal(G.getUnit(s,'A1').x,null);assert.equal(s.deployOrder.pending,null);
+ G.placeAt(s,'A5',8,28);G.turnDeployed(s,'A5',345);assert.equal(s.rocket.heading,345);assert.match(G.deployError(s,s.rocket,8,23),/zone/);assert.equal(G.deployError(s,s.rocket,8,28),null);
+ G.confirmDeployment(s);assert.equal(s.rocket.deployed,true);assert.throws(()=>G.unplace(s,'A5'),/already deployed/);assert.throws(()=>G.turnDeployed(s,'A5',0));
+});
 test('Quick deploy finds legal places for every unit and war machine on the Battle March table',()=>{
  const s=bm();G.autoDeploy(s);for(const u of s.units)assert.equal(G.checkPosition(s,u,u.x,u.y,true),null,u.id);assert.ok(s.cannons.every(c=>c.x!==null));assert.ok(s.rocket.x!==null);
 });
