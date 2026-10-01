@@ -18,10 +18,10 @@ function prepare(s,key,phase='strategy',caster='A6'){s.stage=phase;s.team=caster
  const s=battle(),a=G.getUnit(s,'A6'),b=G.getUnit(s,'I7');assert.equal(a.level,2);assert.equal(b.level,2);assert.equal(a.wounds,2);assert.equal(b.wounds,2);assert.deepEqual(a.spells,['fireball','arrow']);assert.equal(G.size(a).w,25/25.4);assert.equal(G.modelSquares(s,a).length,1);assert.equal(G.profile(a).T,4);assert.equal(G.profile(b).Ld,7);
 }
 {
- const s=battle();prepare(s,'arrow');G.getUnit(s,'I1').x=8;G.getUnit(s,'I1').y=24;const out=G.castSpell(s,'A6','arrow','I1',()=>.8);assert.equal(out.cast,true);assert.equal(G.getUnit(s,'I1').arrowCurse,true);assert.equal(G.canCast(s,'A6','arrow','I1'),false);s.stage='combat';G.nextTurn(s);assert.equal(G.getUnit(s,'I1').arrowCurse,true);s.stage='combat';G.nextTurn(s);assert.equal(G.getUnit(s,'I1').arrowCurse,false);
+ const s=battle();prepare(s,'arrow');G.getUnit(s,'I1').x=8;G.getUnit(s,'I1').y=24;const out=G.castSpell(s,'A6','arrow','I1',()=>.8);assert.equal(out.cast,true);assert.equal(G.hasRule(G.getUnit(s,'I1'),'arrowAttraction'),true);assert.equal(G.canCast(s,'A6','arrow','I1'),false);s.stage='combat';G.nextTurn(s);assert.equal(G.hasRule(G.getUnit(s,'I1'),'arrowAttraction'),true);s.stage='combat';G.nextTurn(s);assert.equal(G.hasRule(G.getUnit(s,'I1'),'arrowAttraction'),false);
 }
 {
- const s=battle();prepare(s,'shield');const out=G.castSpell(s,'A6','shield','A6',()=>.8);assert.equal(out.cast,true);assert.equal(G.getUnit(s,'A6').oakenShield,true);s.stage='combat';G.nextTurn(s);assert.equal(G.getUnit(s,'A6').oakenShield,true);s.stage='combat';G.nextTurn(s);assert.equal(G.getUnit(s,'A6').oakenShield,false);
+ const s=battle();prepare(s,'shield');const out=G.castSpell(s,'A6','shield','A6',()=>.8);assert.equal(out.cast,true);assert.equal(G.hasRule(G.getUnit(s,'A6'),'ward'),true);s.stage='combat';G.nextTurn(s);assert.equal(G.hasRule(G.getUnit(s,'A6'),'ward'),true);s.stage='combat';G.nextTurn(s);assert.equal(G.hasRule(G.getUnit(s,'A6'),'ward'),false);
 }
 {
  const s=battle(),u=prepare(s,'urgency','movement'),t=G.getUnit(s,'A1');s.movementStep='remaining';t.moved=true;t.x=6;t.y=35;const out=G.castSpell(s,u.id,'urgency',t.id,()=>.8);assert.equal(out.cast,true);assert.equal(G.canAct(s,t),true);
@@ -45,7 +45,7 @@ function prepare(s,key,phase='strategy',caster='A6'){s.stage=phase;s.team=caster
  const s=battle(),u=prepare(s,'shield','strategy','I7'),enemy=G.getUnit(s,'A6');enemy.x=70;enemy.y=24;const out=G.castSpell(s,u.id,'shield',u.id,sequence(.8,.8,.99),{dispel:'wizard'});assert.equal(out.dispel.kind,'wizard');assert.equal(out.dispel.success,true);assert.equal(out.cast,false);
 }
 {
- const s=battle(),u=G.getUnit(s,'A6');assert.deepEqual(G.exchangeSignature(s,u.id,'fireball','ashStorm'),['ashStorm','arrow']);assert.throws(()=>G.exchangeSignature(s,u.id,'arrow','hammerhand'));const out=G.castSpell(s,u.id,'ashStorm',u.id,()=>.9);assert.equal(out.cast,true);assert.equal(u.ashStorm,true);
+ const s=battle(),u=G.getUnit(s,'A6');assert.deepEqual(G.exchangeSignature(s,u.id,'fireball','ashStorm'),['ashStorm','arrow']);assert.throws(()=>G.exchangeSignature(s,u.id,'arrow','hammerhand'));const out=G.castSpell(s,u.id,'ashStorm',u.id,()=>.9);assert.equal(out.cast,true);assert.equal(G.hasRule(u,'stormOfAsh'),true);
 }
 {
  const s=battle(),u=prepare(s,'hashutCurse','shooting'),t=G.getUnit(s,'I7');u.x=70;u.y=30;t.x=70;t.y=12;const out=G.castSpell(s,u.id,'hashutCurse',t.id,()=>.9);assert.equal(out.cast,true);assert.ok(out.effect.hits>=1);

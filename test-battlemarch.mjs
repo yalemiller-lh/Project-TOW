@@ -74,10 +74,10 @@ test('the landmark scores 25 and lends its property to the controlling unit unti
  for(const first of ['ash','iron']){
   const s=ready({objectives:'landmark',random:seq([.5]),first}),L=trove(s,'L'),second=first==='ash'?'iron':'ash';clear(s);
   const a=below(s,'A1',L,.5);assert.equal(s.objectives.property.rule,'frenzy');
-  G.endOfPlayerTurn(s,first);assert.equal(G.hasRule(a,'frenzy'),true);assert.equal(a.effects[0].expires,`1:${second}`);assert.equal(s.scoring.ledger.at(-1).vp,25);
+  G.endOfPlayerTurn(s,first);assert.equal(G.hasRule(a,'frenzy'),true);assert.equal(a.effects[0].expiry.at,`1:${second}`);assert.equal(s.scoring.ledger.at(-1).vp,25);
   a.y+=10;G.endOfPlayerTurn(s,second);assert.equal(G.hasRule(a,'frenzy'),false,'expires at the end of the next turn');
-  s.round=2;below(s,'A1',L,.5);G.endOfPlayerTurn(s,first);assert.equal(a.effects.at(-1).expires,`2:${second}`);
-  G.endOfPlayerTurn(s,second);assert.equal(G.hasRule(a,'frenzy'),true,'still holding it: granted again');assert.equal(a.effects.length,1);assert.equal(a.effects[0].expires,`3:${first}`);
+  s.round=2;below(s,'A1',L,.5);G.endOfPlayerTurn(s,first);assert.equal(a.effects.at(-1).expiry.at,`2:${second}`);
+  G.endOfPlayerTurn(s,second);assert.equal(G.hasRule(a,'frenzy'),true,'still holding it: granted again');assert.equal(a.effects.length,1);assert.equal(a.effects[0].expiry.at,`3:${first}`);
  }
  const u={effects:[{rule:'magicResistance',source:'landmark'}]};assert.equal(G.magicResistance(u),2);
 });

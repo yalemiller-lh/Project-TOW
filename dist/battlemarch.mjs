@@ -71,9 +71,8 @@ function nextTurnKey(s,team){return team===s.firstPlayer?turnKey(s.round,other(t
 export function endOfTurn(s,team){
  s.scoring??={ledger:[]};if(!s.objectives)return;
  const key=turnKey(s.round,team);
- // 1. End-of-turn effects: landmark properties granted a turn ago expire now.
- for(const u of G.combatants(s))if(u.effects?.length)u.effects=u.effects.filter(e=>e.expires!==key);
- // 2. Objective control and VP.
+ // Landmark properties granted a turn ago have already expired (game.mjs endOfPlayerTurn).
+ // Objective control and VP:
  for(const obj of s.objectives.items.filter(o=>!o.removed)){
   const control=controlOf(s,obj);obj.control={...control,turn:key};
   if(!control.controller)continue;
@@ -81,8 +80,8 @@ export function endOfTurn(s,team){
   s.scoring.ledger.push({round:s.round,turn:team,team:control.controller,kind:obj.kind,objective:obj.id,unit:unit.id,vp:OBJECTIVE_VP[obj.kind],detail:`${obj.name} held by ${label(unit)} at the end of ${side(s,team)}’s turn ${s.round}`});
   if(obj.kind==='landmark'&&s.objectives.property){
    // The controlling unit gains the landmark's property until the end of the next turn.
-   for(const u of G.combatants(s))if(u.effects)u.effects=u.effects.filter(e=>e.source!=='landmark');
-   unit.effects=[...(unit.effects??[]),{rule:s.objectives.property.rule,source:'landmark',granted:key,expires:nextTurnKey(s,team)}];
+   for(const u of G.combatants(s))G.removeEffects(u,e=>e.source==='landmark'||e.source?.kind==='landmark');
+   const rule=s.objectives.property.rule;G.addEffect(s,[unit],{property:rule,source:{kind:'landmark',team:control.controller,objective:obj.id},rules:[{rule}],stack:'landmark',created:{round:s.round,team},expiry:{kind:'END_OF_NEXT_PLAYER_TURN',at:nextTurnKey(s,team)}});
   }
  }
 }

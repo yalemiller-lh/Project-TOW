@@ -66,7 +66,7 @@ test('the Sorcerer\'s Curse: a 6 always fails the Toughness test, a 1 always pas
 });
 test('miscast 8-9 casts the spell but ends that wizard\'s casting; 10-12 is undispellable and ends the side\'s',()=>{
  {const s=strategy(battle()),w=G.getUnit(s,'A6');Object.assign(w,{spells:['shield','ashStorm'],castThisTurn:[]});const r=G.attemptSpell(s,'A6','shield','A6',dice(1,1,1,4,4));assert.equal(r.cast,true);assert.equal(r.casting,7);assert.equal(r.pending,true);G.resolveDispel(s,'none');assert.match(G.castBlockReason(s,'A6','ashStorm'),/spent/);}
- {const s=strategy(battle()),w=G.getUnit(s,'A6');Object.assign(w,{spells:['shield','ashStorm'],castThisTurn:[]});const r=G.attemptSpell(s,'A6','shield','A6',dice(1,1,1,6,5));assert.equal(r.perfect,true);assert.equal(s.pendingSpell,null);assert.equal(w.oakenShield,true);assert.equal(s.magicLocked.ash,true);}
+ {const s=strategy(battle()),w=G.getUnit(s,'A6');Object.assign(w,{spells:['shield','ashStorm'],castThisTurn:[]});const r=G.attemptSpell(s,'A6','shield','A6',dice(1,1,1,6,5));assert.equal(r.perfect,true);assert.equal(s.pendingSpell,null);assert.equal(G.hasRule(w,'ward'),true);assert.equal(s.magicLocked.ash,true);}
 });
 test('Outclassed in the Art: 8-9 dispels and ends that wizard\'s dispelling; 10-12 dispels and ends the side\'s',()=>{
  const setup=()=>{const s=strategy(battle()),w=G.getUnit(s,'A6');Object.assign(w,{spells:['shield','ashStorm'],castThisTurn:[]});Object.assign(G.getUnit(s,'I7'),{x:w.x+3,y:w.y-6});return s;};

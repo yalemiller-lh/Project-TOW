@@ -14,13 +14,13 @@ function setup(){
 
 test('a cast spell waits for the defender, who may pick an eligible wizard or the Fated Dispel',()=>{
  const {s}=setup(),report=G.attemptSpell(s,'A6','shield','A6',dice(4,3));
- assert.equal(report.casting,8);assert.equal(report.cast,true);assert.equal(report.pending,true);assert.equal(G.getUnit(s,'A6').oakenShield,undefined);
+ assert.equal(report.casting,8);assert.equal(report.cast,true);assert.equal(report.pending,true);assert.equal(G.hasRule(G.getUnit(s,'A6'),'ward'),false);
  const options=G.dispelOptions(s);assert.equal(options.team,'iron');assert.deepEqual(options.wizards.map(w=>[w.id,w.bonus]),[['I7',1]]);assert.equal(options.fated,true);
  assert.throws(()=>G.nextPhase(s),/dispel/);assert.equal(G.phaseHasActions(s),true);assert.deepEqual(G.skipEmptySteps(s),[]);
 });
 test('a Wizardly Dispel adds half the level and must beat the casting result; a tie fails',()=>{
- {const {s}=setup();G.attemptSpell(s,'A6','shield','A6',dice(4,3));const out=G.resolveDispel(s,'I7',dice(4,3));assert.equal(out.dispel.total,8);assert.equal(out.dispel.success,false);assert.equal(out.cast,true);assert.equal(G.getUnit(s,'A6').oakenShield,true);assert.equal(s.pendingSpell,null);}
- {const {s}=setup();G.attemptSpell(s,'A6','shield','A6',dice(4,3));const out=G.resolveDispel(s,'I7',dice(5,3));assert.equal(out.dispel.total,9);assert.equal(out.dispel.success,true);assert.equal(out.cast,false);assert.equal(G.getUnit(s,'A6').oakenShield,undefined);}
+ {const {s}=setup();G.attemptSpell(s,'A6','shield','A6',dice(4,3));const out=G.resolveDispel(s,'I7',dice(4,3));assert.equal(out.dispel.total,8);assert.equal(out.dispel.success,false);assert.equal(out.cast,true);assert.equal(G.hasRule(G.getUnit(s,'A6'),'ward'),true);assert.equal(s.pendingSpell,null);}
+ {const {s}=setup();G.attemptSpell(s,'A6','shield','A6',dice(4,3));const out=G.resolveDispel(s,'I7',dice(5,3));assert.equal(out.dispel.total,9);assert.equal(out.dispel.success,true);assert.equal(out.cast,false);assert.equal(G.hasRule(G.getUnit(s,'A6'),'ward'),false);}
 });
 test('the Fated Dispel is unmodified, once per turn, and may be chosen even when a wizard could dispel',()=>{
  const {s,caster}=setup();G.attemptSpell(s,'A6','shield','A6',dice(4,3));const out=G.resolveDispel(s,'fated',dice(6,3));
@@ -38,11 +38,11 @@ test('double 6 always dispels; double 1 fails, and only a Wizardly Dispel is the
  {const {s}=setup();G.attemptSpell(s,'A6','shield','A6',dice(6,5));assert.equal(s.pendingSpell.report.casting,12);assert.equal(G.resolveDispel(s,'fated',dice(6,6)).dispel.success,true);}
  {const {s}=setup();G.attemptSpell(s,'A6','shield','A6',dice(1,2));assert.equal(s.pendingSpell,undefined);}
  // Outclassed in the Art reads the Miscast table: a 7 (Careless Conjuration) fails the dispel.
- {const {s}=setup();G.attemptSpell(s,'A6','shield','A6',dice(4,3));const out=G.resolveDispel(s,'I7',dice(1,1,4,3,1));assert.equal(out.dispel.success,false);assert.equal(out.dispel.miscast?.kind,'Careless Conjuration');assert.equal(G.getUnit(s,'A6').oakenShield,true);}
+ {const {s}=setup();G.attemptSpell(s,'A6','shield','A6',dice(4,3));const out=G.resolveDispel(s,'I7',dice(1,1,4,3,1));assert.equal(out.dispel.success,false);assert.equal(out.dispel.miscast?.kind,'Careless Conjuration');assert.equal(G.hasRule(G.getUnit(s,'A6'),'ward'),true);}
  {const {s}=setup();G.attemptSpell(s,'A6','shield','A6',dice(4,3));const out=G.resolveDispel(s,'fated',dice(1,1));assert.equal(out.dispel.success,false);assert.equal(out.dispel.miscast,undefined);}
 });
 test('a Perfect Invocation is cast at once and cannot be dispelled',()=>{
- const {s}=setup(),report=G.attemptSpell(s,'A6','shield','A6',dice(6,6));assert.equal(report.perfect,true);assert.equal(report.pending,undefined);assert.equal(s.pendingSpell,null);assert.equal(G.getUnit(s,'A6').oakenShield,true);
+ const {s}=setup(),report=G.attemptSpell(s,'A6','shield','A6',dice(6,6));assert.equal(report.perfect,true);assert.equal(report.pending,undefined);assert.equal(s.pendingSpell,null);assert.equal(G.hasRule(G.getUnit(s,'A6'),'ward'),true);
 });
 test('wizards out of range, fleeing, or engaged against another unit cannot dispel',()=>{
  for(const change of [{x:3.5,y:10},{fleeing:true},{engaged:'A1'}]){const {s,wizard}=setup();Object.assign(wizard,change);G.attemptSpell(s,'A6','shield','A6',dice(4,3));assert.deepEqual(G.dispelOptions(s).wizards,[],JSON.stringify(change));}
