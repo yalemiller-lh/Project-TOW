@@ -575,9 +575,9 @@ export function resolveCharge(s,id,dice){
   for(let i=1;i<=100;i++){const pose=i/100<=wheelCost(wheelAngle,u)/budget?wheelPose(u,wheelAngle*(i/100)*budget/Math.max(wheelCost(wheelAngle,u),EPS)):forwardPose(wheelEnd,Math.min(straight,(i/100)*budget-wheelCost(wheelAngle,u)));if(checkPosition(s,pose,pose.x,pose.y))break;end=pose;travel=budget*i/100;}
  }
  Object.assign(u,{x:end.x,y:end.y,heading:heading(end),moved:true});
- u.charge={...u.charge,status:success?'success':'failed',dice:[...dice],roll,range,distance:travel,face:route?.face};s.history=[];
+ u.charge={...u.charge,status:success?'success':fled?'pursuit':'failed',dice:[...dice],roll,range,distance:travel,face:route?.face};s.history=[];
  if(!s.units.some(v=>v.charge?.status==='declared'))beginRemaining(s);
- return {success,runDown:success&&fled,dice,roll,range,distance:travel,target:t.id,reason:p.error??null};
+ return {success,runDown:success&&fled,pursuit:fled&&!success,targetLeftBoard:fled&&!!t.destroyed,dice,roll,range,distance:travel,target:t.id,reason:p.error??null};
 }
 
 export function modelSquares(s,u){
