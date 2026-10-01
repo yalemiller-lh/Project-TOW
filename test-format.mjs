@@ -19,24 +19,36 @@ test('the basic Battle March setup: 500 points on 44″ × 30″, Pitched Battle
  const small=bm({points:600});assert.deepEqual([small.board.width,small.board.height],[44,30]);
  const chosen=bm({points:500,board:'48x36'});assert.deepEqual([chosen.board.width,chosen.board.height],[48,36]);
 });
-test('the six official maps follow the measurements from their diagrams',()=>{
- const map=(id,o={})=>bm({deployment:{map:id},...o}),inside=(s,team,x,y)=>G.insideZone(s,team,{x,y});
+test('the six maps use the published 44″ × 30″ coordinates; zones A and B, mirroring and a D6 roll',()=>{
+ const map=(id,o={})=>bm({deployment:{map:id,...(o.mirrored?{mirrored:true}:{})},...(o.points?{points:o.points}:{})}),inside=(s,team,x,y)=>G.insideZone(s,team,{x,y}),zones=(id,mirrored=false)=>F.mapZones(F.deploymentMap(id),{width:44,height:30},{mirrored}),bounds=poly=>({left:Math.min(...poly.map(p=>p.x)),right:Math.max(...poly.map(p=>p.x)),top:Math.min(...poly.map(p=>p.y)),bottom:Math.max(...poly.map(p=>p.y))});
  assert.deepEqual(F.DEPLOYMENT_MAPS.filter(m=>m.official).map(m=>[m.roll,m.name,m.available]),[[1,'Pitched Battle',true],[2,'Close Encounter',true],[3,'Opposed Flanks',true],[4,'Meeting Engagement',true],[5,'Mountain Pass',true],[6,'Outflank',true]]);
- // Close Encounter: opposite quarters, outside a 15″-diameter circle at the centre.
- const ce=map('close-encounter');assert.deepEqual(G.zoneBounds(ce,'ash'),{left:0,right:22,top:15,bottom:30});assert.ok(inside(ce,'ash',4,26));assert.ok(!inside(ce,'ash',20,17),'inside the central circle');assert.ok(inside(ce,'ash',14,15.5),'just outside it');assert.ok(!inside(ce,'ash',30,8));assert.ok(inside(ce,'iron',30,8));
- for(const p of G.zoneOf(ce,'iron').filter(p=>p.x>22&&p.x<44&&p.y>0&&p.y<15))assert.ok(Math.abs(Math.hypot(p.x-22,p.y-15)-7.5)<1e-9);
- // Opposed Flanks: triangles along the long edges, an 18″ gap along each side edge.
- const of=map('opposed-flanks');assert.ok(inside(of,'iron',.2,11.8));assert.ok(!inside(of,'iron',.2,12.2));assert.ok(inside(of,'ash',43.8,18.2));assert.ok(!inside(of,'ash',43.8,17.8));assert.ok(!inside(of,'ash',.2,29.5));
- // Meeting Engagement: the 15″ gap, each zone stopping 11″ short of opposite side edges.
- const me=map('meeting-engagement');assert.deepEqual(G.zoneBounds(me,'ash'),{left:0,right:33,top:22.5,bottom:30});assert.deepEqual(G.zoneBounds(me,'iron'),{left:11,right:44,top:0,bottom:7.5});
- // Mountain Pass: the short edges, 11″ either side of the centre line; armies face along the table.
- const mp=map('mountain-pass');assert.deepEqual(G.zoneBounds(mp,'ash'),{left:0,right:11,top:0,bottom:30});assert.deepEqual(G.zoneBounds(mp,'iron'),{left:33,right:44,top:0,bottom:30});assert.equal(G.getUnit(mp,'A1').heading,90);assert.equal(G.getUnit(mp,'I1').heading,270);assert.equal(mp.rocket.heading,90);
- // Outflank: triangles on the short edges, a diagonal strip 22″ wide along the top and bottom edges.
- const ou=map('outflank');assert.ok(inside(ou,'iron',21.5,.2));assert.ok(!inside(ou,'iron',22.5,.2));assert.ok(inside(ou,'ash',22.5,29.8));assert.ok(!inside(ou,'ash',21.5,29.8));assert.ok(inside(ou,'iron',.2,29.5));
- const wide=map('outflank',{points:750});assert.ok(inside(wide,'iron',25.5,.2));assert.ok(!inside(wide,'iron',26.5,.2));
+ assert.equal(F.exactMapBoard({width:44,height:30}),true);assert.equal(F.exactMapBoard({width:48,height:36}),false,'48″ × 36″ is an adaptation');
+ // Pitched Battle: A 0–7.5 at the top, B 22.5–30 at the bottom (Red takes B unless the zone choice says otherwise).
+ assert.deepEqual(bounds(zones('pitched-battle').A),{left:0,right:44,top:0,bottom:7.5});assert.deepEqual(bounds(zones('pitched-battle').B),{left:0,right:44,top:22.5,bottom:30});
+ // Close Encounter: A top-left, B bottom-right, minus a circle of radius 7.5 (not 15).
+ const ce=map('close-encounter');assert.deepEqual(G.zoneBounds(ce,'ash'),{left:22,right:44,top:15,bottom:30});assert.deepEqual(G.zoneBounds(ce,'iron'),{left:0,right:22,top:0,bottom:15});
+ assert.ok(inside(ce,'ash',40,26));assert.ok(!inside(ce,'ash',24,17),'inside the central circle');assert.ok(inside(ce,'ash',30,15.5),'just outside it');assert.ok(inside(ce,'iron',4,4));
+ for(const p of G.zoneOf(ce,'iron').filter(p=>p.x>0&&p.x<22&&p.y>0&&p.y<15))assert.ok(Math.abs(Math.hypot(p.x-22,p.y-15)-7.5)<1e-9,'radius 7.5');
+ const u=G.getUnit(ce,'A1');assert.equal(Math.hypot(30-22,23-15)>7.5,true);assert.match(G.checkPosition(ce,{...u,heading:0},28.5,19.5,true)??'',/zone/,'a centre outside the circle still fails when a base crosses into it');
+ const cem=map('close-encounter',{mirrored:true});assert.deepEqual(G.zoneBounds(cem,'ash'),{left:0,right:22,top:15,bottom:30},'mirrored: bottom-left');assert.deepEqual(G.zoneBounds(cem,'iron'),{left:22,right:44,top:0,bottom:15},'and top-right');
+ // Opposed Flanks: y = 12 − (12/44)x above, y = 30 − (12/44)x below: 18″ apart vertically.
+ const of=map('opposed-flanks');assert.ok(inside(of,'iron',.2,11.8));assert.ok(!inside(of,'iron',.2,12.2));assert.ok(inside(of,'ash',43.8,18.2));assert.ok(!inside(of,'ash',43.8,17.8));
+ for(const x of [0,11,22,33,44]){const top=12-12/44*x,bottom=30-12/44*x;assert.ok(Math.abs(bottom-top-18)<1e-9);}
+ const ofm=map('opposed-flanks',{mirrored:true});assert.ok(inside(ofm,'iron',43.8,11.8),'mirrored: deepest on the right');assert.ok(!inside(ofm,'iron',.2,11.8));
+ // Meeting Engagement: A x 0–33 at the top, B x 11–44 at the bottom; mirrored the other way round.
+ assert.deepEqual(bounds(zones('meeting-engagement').A),{left:0,right:33,top:0,bottom:7.5});assert.deepEqual(bounds(zones('meeting-engagement').B),{left:11,right:44,top:22.5,bottom:30});
+ assert.deepEqual(bounds(zones('meeting-engagement',true).A),{left:11,right:44,top:0,bottom:7.5});assert.deepEqual(bounds(zones('meeting-engagement',true).B),{left:0,right:33,top:22.5,bottom:30});
+ // Mountain Pass: the short edges, a 22″ strip; armies face along the table.
+ const mp=map('mountain-pass');assert.deepEqual(G.zoneBounds(mp,'iron'),{left:0,right:11,top:0,bottom:30});assert.deepEqual(G.zoneBounds(mp,'ash'),{left:33,right:44,top:0,bottom:30});assert.equal(G.getUnit(mp,'A1').heading,270);assert.equal(G.getUnit(mp,'I1').heading,90);assert.equal(mp.rocket.heading,270);
+ // Outflank: x = 22 − (22/30)y and x = 44 − (22/30)y: 22″ apart horizontally.
+ const ou=map('outflank');assert.ok(inside(ou,'iron',21.5,.2));assert.ok(!inside(ou,'iron',22.5,.2));assert.ok(inside(ou,'ash',22.5,29.8));assert.ok(!inside(ou,'ash',21.5,29.8));
+ for(const y of [0,10,20,30]){const l=22-22/30*y,r=44-22/30*y;assert.ok(Math.abs(r-l-22)<1e-9);}
+ const oum=map('outflank',{mirrored:true});assert.ok(inside(oum,'iron',43.8,.5),'mirrored: top-right');assert.ok(!inside(oum,'iron',.2,.5));
+ // A D6 for the map: 4 is Meeting Engagement; the roll is recorded.
+ const rolled=bm({deployment:{map:'roll'},random:()=>.5});assert.equal(rolled.format.deployment.map,'meeting-engagement');assert.equal(rolled.format.deployment.roll,4);
  // A depth only shapes the custom preset; Quick deploy fits every army in every map's zones.
  assert.deepEqual(G.zoneBounds(bm({deployment:{map:'pitched-battle',depth:14}}),'iron').bottom,7.5);
- for(const m of F.DEPLOYMENT_MAPS)for(const points of [500,750]){const s=map(m.id,{points});G.autoDeploy(s);for(const p of G.combatants(s))assert.ok(p.x!==null&&G.inZone(s,p.team,G.corners(p)),`${m.id} ${points}: ${p.id}`);}
+ for(const m of F.DEPLOYMENT_MAPS)for(const points of [500,750])for(const mirrored of [false,true]){const s=map(m.id,{points,mirrored});G.autoDeploy(s);for(const p of G.combatants(s))assert.ok(p.x!==null&&G.inZone(s,p.team,G.corners(p)),`${m.id} ${points}${mirrored?' mirrored':''}: ${p.id}`);}
 });
 test('the custom long-edge preset stays labelled and adjustable',()=>{
  const custom=F.DEPLOYMENT_MAPS.find(m=>!m.official);assert.match(custom.name,/not an official map/);
@@ -65,7 +77,7 @@ test('Quick deploy puts war machines at the back of the zone and varies the line
  const classic=G.createGame('empire');G.autoDeploy(classic,{random:rng(5)});assert.ok(classic.rocket.y>45&&classic.cannons.every(c=>c.y<3),'classic Quick deploy: machines on the back edges');
 });
 test('manual deployment: place any piece, turn it where it stands or pick it up; a confirmed piece stays put',()=>{
- const s=bm();G.deploymentRollOff(s,()=>.9);G.chooseDeploymentOrder(s,s.deployOrder.rollOff.winner,'ash');
+ const s=bm();G.chooseDeploymentZone(s,'iron','A');G.deploymentRollOff(s,()=>.9);
  G.placeAt(s,'A1',15,24.5);assert.equal(s.deployOrder.pending,'A1');
  assert.throws(()=>G.turnDeployed(s,'A1',30),/fit/,'at the front edge of the zone a 30° turn would leave the zone');assert.equal(G.getUnit(s,'A1').heading,0,'a refused turn leaves the facing alone');
  G.placeAt(s,'A1',15,26.5);G.turnDeployed(s,'A1',30);assert.equal(G.getUnit(s,'A1').heading,30);

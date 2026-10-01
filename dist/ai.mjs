@@ -69,6 +69,7 @@ export function deployOpponent(s,random=null){
 // takes the first turn when it wins that roll-off.
 export function deploymentChoice(s){
  const d=s.deployOrder;if(s.stage!=='deployment'||!d?.alternate)return null;
+ if(!d.zonesChosen&&G.deploymentZoneChooser(s)==='iron')return 'zone';
  if(d.rollOff&&!d.first&&d.rollOff.winner==='iron')return 'deploy-order';
  if(s.firstTurn&&!s.firstTurn.chosen&&s.firstTurn.winner==='iron')return 'first-turn';
  if(G.deploymentTurn(s)==='iron')return 'deploy';
@@ -76,9 +77,11 @@ export function deploymentChoice(s){
 }
 export function takeDeploymentStep(s,random=null){
  const choice=deploymentChoice(s);
+ // Red set up the map, so the bot picks a zone (either, at random when it has a random source).
+ if(choice==='zone'){const zone=random?(random()<.5?'A':'B'):'A';G.chooseDeploymentZone(s,'iron',zone);return {message:`Red chose the map, so the bot chooses a zone: it takes ${zone==='A'?'zone A':'zone B'}.`,zone};}
  if(choice==='deploy-order'){G.chooseDeploymentOrder(s,'iron','ash');return {message:'The bot won the deployment roll-off and has you deploy first.'};}
  if(choice==='first-turn'){G.chooseFirstTurn(s,'iron','iron');return {message:'The bot won the roll-off and takes the first turn.'};}
- if(choice==='deploy'){const out=deployNext(s,random),p=G.getUnit(s,out.id);return {message:`The bot deploys ${p.name}.`,id:out.id,...out};}
+ if(choice==='deploy'){const out=deployNext(s,random),names=(out.ids??[out.id]).map(id=>G.getUnit(s,id).name);return {message:`The bot deploys ${names.join(' and ')}.`,id:out.id,...out};}
  return null;
 }
 // The bot plans its whole remaining deployment against what is on the table now, then places
@@ -95,7 +98,11 @@ export function deployNext(s,random=null){
  const order=PLAN_ORDER[s.units.find(u=>u.team==='iron')?.faction==='empire'?'empire':'other'];
  for(const p of G.deploymentPieces(s,'iron').filter(p=>!p.deployed).sort((a,b)=>order.indexOf(a.role)-order.indexOf(b.role))){
   const planned=G.getUnit(trial,p.id);if(planned?.x==null)continue;
-  try{if(p.role==='warmachine')G.placeCannon(s,p.id,planned.x,planned.y);else G.place(s,p.id,planned.x,planned.y);return G.confirmDeployment(s);}catch{}
+  try{G.placeAt(s,p.id,planned.x,planned.y);}catch{continue;}
+  // The rest of its batch (all war machines, or all characters) goes where the plan put them;
+  // anything that no longer fits is placed by quick deployment, which then confirms the batch.
+  for(const id of s.deployOrder.batch?.ids??[]){const q=G.getUnit(s,id),pl=G.getUnit(trial,id);if(q.x===null&&pl?.x!=null)try{G.placeAt(s,id,pl.x,pl.y);}catch{}}
+  return G.autoDeploy(s,{team:'iron',random});
  }
  return G.autoDeploy(s,{team:'iron',random});
 }

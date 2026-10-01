@@ -43,7 +43,7 @@ function redStep(s,r){
 // off for the first turn; the bot makes its own choices when it wins.
 function deploy(s,r){
  if(!s.deployOrder?.alternate){G.autoDeploy(s,{team:'ash',random:r});AI.deployOpponent(s,r);return G.begin(s,r);}
- const d=s.deployOrder;G.deploymentRollOff(s,r);if(d.rollOff.winner==='ash')G.chooseDeploymentOrder(s,'ash',r()<.5?'ash':'iron');else AI.takeDeploymentStep(s,r);
+ const d=s.deployOrder;if(AI.deploymentChoice(s)==='zone')AI.takeDeploymentStep(s,r);else G.chooseDeploymentZone(s,G.deploymentZoneChooser(s),r()<.5?'A':'B');G.deploymentRollOff(s,r);
  for(let guard=0;guard<40&&!d.complete;guard++){if(AI.deploymentChoice(s)==='deploy')AI.takeDeploymentStep(s,r);else G.autoDeploy(s,{team:'ash',random:r});}
  assert.ok(d.complete,'deployment finishes');
  G.firstTurnRollOff(s,r);if(s.firstTurn.winner==='ash')G.chooseFirstTurn(s,'ash',r()<.5?'ash':'iron');else AI.takeDeploymentStep(s);
@@ -70,6 +70,6 @@ function play(seed,options){
  return s;
 }
 const SEEDS=Number(process.env.SEEDS??2);let games=0;
-for(const [opponent,format,points,extra]of [['empire','battle-march',500],['empire','battle-march',750,{objectives:'landmark'}],['empire','battle-march',600,{objectives:'troves3',optional:{raidAndBurn:true}}],['empire','battle-march',500,{deployment:{map:'mountain-pass'}}],['empire','battle-march',750,{deployment:{map:'opposed-flanks'},objectives:'troves2'}],['orc','classic',null],['empire','classic',null]])
+for(const [opponent,format,points,extra]of [['empire','battle-march',500],['empire','battle-march',750,{objectives:'landmark'}],['empire','battle-march',600,{objectives:'troves3',optional:{raidAndBurn:true}}],['empire','battle-march',500,{deployment:{map:'mountain-pass'}}],['empire','battle-march',750,{deployment:{map:'opposed-flanks',mirrored:true},objectives:'troves2'}],['orc','classic',null],['empire','classic',null]])
  for(let seed=1;seed<=SEEDS;seed++){play(seed*97+(points??1),{opponent,format,points,...extra});games++;}
 console.log(`PASS ${games} seeded games played with no overlaps, stalls or idle bot turns`);

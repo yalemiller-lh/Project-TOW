@@ -69,6 +69,10 @@ export function createGame(opponent='chaos',{format='classic',board=null,points=
  if(fmt.id==='battle-march')return createRosterGame(opponent,fmt,field,setup,points,rosters,{objectives,optional,random});const units=Array.from({length:8},(_,i)=>{const faction=i<4?'chaos':opponent,role=i%4===3?'missile':'infantry';return {id:(i<4?'A':'I')+(i%4+1),team:i<4?'ash':'iron',faction,role,name:role==='missile'?MISSILE[faction].name:FACTIONS[faction].name,x:null,y:null,heading:i<4?0:180,moved:false,shot:false,spent:0,movementMode:null,marchRequired:null,marchTest:null,engaged:null,charge:null,impetuousTest:null,combatResolved:false,fleeing:false,rallyAttempted:false,rallied:false,shieldwallUsed:false,deadModels:[]};});units.push(createWizard('ash','chaos'));if(opponent==='empire')units.push(createWizard('iron','empire'));return {stage:'deployment',team:'ash',round:1,selected:'A1',rocket:{id:'A5',name:'Deathshrieker Rocket Launcher',...machineFields('ash','chaos'),x:null,y:null,heading:0,wounds:3,crew:3,shot:false,disabledUntil:0,lastShot:null},cannons:createCannons(opponent),units,history:[],vortices:[],fatedDispelUsed:false,format:{id:fmt.id,name:fmt.name,rulesVersion:fmt.rulesVersion,points:fmt.points?(points??fmt.points.default):null,rounds:fmt.rounds,deployment:setup,resultPolicy:fmt.resultPolicy??null,optional:{...(fmt.optional??{})}},board:field,zones:F.deploymentZones(fmt,field,setup??{}),firstPlayer:'ash',turnLog:[]};}
 function optionalRules(fmt,chosen){const rules={...fmt.optional};for(const [key,on]of Object.entries(chosen??{})){const rule=F.OPTIONAL_RULES[key];if(!(key in rules)||!rule)throw Error(`Unknown optional rule "${key}".`);if(on&&!rule.available)throw Error(`${rule.name} is not available yet: ${rule.reason}.`);rules[key]=!!on;}return rules;}
 function createRosterGame(opponent,fmt,field,setup,points,rosters,{objectives=null,optional=null,random=Math.random}={}){
+ // The deployment map is chosen or rolled on a D6. Red sets up the game, so Red counts as the map
+ // selector (shown to the players) and the opponent chooses its zone.
+ if(setup?.map==='roll'){const roll=rollD6(1,random)[0];setup={...setup,map:F.DEPLOYMENT_MAPS.find(m=>m.roll===roll).id,roll};}
+ if(setup)setup={selector:'ash',mirrored:false,sides:{...F.DEFAULT_SIDES},...setup};
  const limit=points??fmt.points.default,chosen={ash:rosters?.ash??A.defaultRoster('chaos',limit),iron:rosters?.iron??A.defaultRoster(opponent,limit)};
  if(!chosen.iron)throw Error(A.GAPS[opponent]?.[0]??`No Battle March army is available for ${opponent}.`);
  if(chosen.ash.faction!=='chaos'||chosen.iron.faction!==opponent)throw Error('Red must be Chaos Dwarfs and the opponent must match the chosen army.');
@@ -77,7 +81,7 @@ function createRosterGame(opponent,fmt,field,setup,points,rosters,{objectives=nu
  const armies=Object.fromEntries(Object.entries(chosen).map(([team,roster])=>[team,{roster,validation:A.validateRoster(roster,limit),source:A.SOURCES[roster.faction]}]));
  const s={stage:'deployment',team:'ash',round:1,selected:red.units[0]?.id,rocket,cannons:blue.cannons,units:[...red.units,...blue.units],history:[],vortices:[],fatedDispelUsed:false,
   format:{id:fmt.id,name:fmt.name,rulesVersion:fmt.rulesVersion,points:limit,rounds:fmt.rounds,deployment:setup,resultPolicy:fmt.resultPolicy,optional:optionalRules(fmt,optional),objectives:objectives??fmt.objectives??'roll'},board:field,zones:F.deploymentZones(fmt,field,setup??{}),facing:F.deploymentFacing(fmt,setup??{}),firstPlayer:'ash',turnLog:[],armies,sources:{system:A.SOURCES.system,preferences:A.PREFERENCES},
-  deployOrder:fmt.deployment?.order==='alternate'?{alternate:true,rollOff:null,first:null,chosenBy:null,next:null,pending:null,log:[],complete:false}:null,firstTurn:null};
+  deployOrder:fmt.deployment?.order==='alternate'?{alternate:true,rule:fmt.deployment.rollOff??'winner-chooses',zonesChosen:false,rollOff:null,first:null,chosenBy:null,next:null,pending:null,batch:null,log:[],complete:false}:null,firstTurn:null};
  // Each army deploys facing the way its map sets (across the table, or along it in Mountain Pass).
  for(const p of combatants(s))p.heading=deploymentFacing(s,p.team);
  // The format's own rules (objectives for Battle March) set up the battlefield before deployment.
@@ -178,8 +182,9 @@ export function turnDeployed(s,id,heading){
 export function unplace(s,id){
  const p=getUnit(s,id),d=s.deployOrder;if(s.stage!=='deployment'||!p||p.x===null)throw Error('Nothing to pick up.');
  if(p.deployed)throw Error(`${p.name} is already deployed; deployed units stay where they are.`);
- if(alternating(s)&&!d.auto&&d.pending!==p.id)throw Error('Only the unit being placed can be picked up.');
- Object.assign(p,{x:null,y:null});if(alternating(s)&&d.pending===p.id)d.pending=null;return p;
+ if(alternating(s)&&!d.auto&&!d.batch?.ids.includes(p.id))throw Error('Only a unit being placed this turn can be picked up.');
+ Object.assign(p,{x:null,y:null});
+ if(alternating(s)&&d.batch){const still=d.batch.ids.find(id=>getUnit(s,id)?.x!==null);d.pending=still??null;if(!still)d.batch=null;}return p;
 }
 // The quick-deploy plan for one army: regiments form the battle line along the front of the zone,
 // war machines stand at its very back toward the flanks (where their long range still reaches),
@@ -217,28 +222,47 @@ function searchDeploy(s,team,random=null){
 const alternating=s=>s.stage==='deployment'&&!!s.deployOrder?.alternate;
 export function deploymentPieces(s,team){return combatants(s).filter(p=>p.team===team);}
 export function deploymentTurn(s){return alternating(s)&&s.deployOrder.first&&!s.deployOrder.complete?s.deployOrder.next:null;}
-function deployGate(s,p){const d=s.deployOrder;if(!alternating(s)||d.auto)return;if(!d.first)throw Error('Roll off first: the winner chooses who deploys first.');if(d.complete||p.deployed)throw Error(`${p.name} is already deployed; deployed units stay where they are.`);if(p.team!==d.next)throw Error(`${armyName(d.next,s)} deploys the next unit.`);}
-function deployPlaced(s,p){const d=s.deployOrder;if(!alternating(s)||d.auto)return;if(d.pending&&d.pending!==p.id){const old=getUnit(s,d.pending);if(old&&!old.deployed)Object.assign(old,{x:null,y:null});}d.pending=p.id;}
+// Deployment batches: a regiment is one turn; all of an army's war machines go down together in
+// one turn (anywhere in the zone); its characters go down together, last, once the rest is down.
+export function deploymentBatch(s,p){const kind=p.role==='warmachine'?'machines':isCharacter(p)?'characters':'unit';return {kind,team:p.team,ids:kind==='unit'?[p.id]:deploymentPieces(s,p.team).filter(q=>!q.deployed&&(kind==='machines'?q.role==='warmachine':isCharacter(q))).map(q=>q.id)};}
+const charactersWait=(s,p)=>isCharacter(p)&&deploymentPieces(s,p.team).some(q=>!q.deployed&&!isCharacter(q));
+function deployGate(s,p){const d=s.deployOrder;if(!alternating(s)||d.auto)return;if(!d.zonesChosen)throw Error('Choose the deployment zones first.');if(!d.first)throw Error('Roll off first: the winner deploys the first unit.');if(d.complete||p.deployed)throw Error(`${p.name} is already deployed; deployed units stay where they are.`);if(p.team!==d.next)throw Error(`${armyName(d.next,s)} deploys the next unit.`);if(charactersWait(s,p))throw Error('Characters deploy last, all together, once every other unit of the army is down.');}
+function deployPlaced(s,p){const d=s.deployOrder;if(!alternating(s)||d.auto)return;
+ // Starting a different batch puts back what the unconfirmed one had placed.
+ if(d.batch&&!d.batch.ids.includes(p.id))for(const id of d.batch.ids){const q=getUnit(s,id);if(q&&!q.deployed)Object.assign(q,{x:null,y:null});}
+ if(!d.batch?.ids.includes(p.id))d.batch=deploymentBatch(s,p);d.pending=p.id;}
+// Battle March: the player who did not select the map chooses a deployment zone; the other army
+// takes the other zone. The facing defaults follow.
+export const deploymentZoneChooser=s=>{const sel=s.format?.deployment?.selector??'ash';return sel==='ash'?'iron':'ash';};
+export function chooseDeploymentZone(s,team,zone){
+ const d=s.deployOrder,setup=s.format.deployment;if(!alternating(s))throw Error('This game has no deployment zone choice.');if(d.zonesChosen)throw Error('The deployment zones have been chosen.');
+ if(team!==deploymentZoneChooser(s))throw Error(`${armyName(deploymentZoneChooser(s),s)} chooses the deployment zone.`);if(!['A','B'].includes(zone))throw Error('Choose zone A or zone B.');
+ setup.sides={[team]:zone,[team==='ash'?'iron':'ash']:zone==='A'?'B':'A'};s.zones=F.deploymentZones(s.format.id,s.board,setup);s.facing=F.deploymentFacing(s.format.id,setup);
+ for(const p of combatants(s))if(p.x===null)p.heading=deploymentFacing(s,p.team);d.zonesChosen=true;return {...setup.sides};
+}
 function rollOff(random){const rolls=[];for(let i=0;i<100;i++){const [ash]=rollD6(1,random),[iron]=rollD6(1,random);rolls.push({ash,iron});if(ash!==iron)return {rolls,winner:ash>iron?'ash':'iron'};}return {rolls,winner:'ash'};}
-export function deploymentRollOff(s,random=Math.random){if(!alternating(s))throw Error('This game has no deployment roll-off.');const d=s.deployOrder;if(d.rollOff||d.first)throw Error('The deployment roll-off has been made.');d.rollOff=rollOff(random);return d.rollOff;}
-export function chooseDeploymentOrder(s,team,first){const d=s.deployOrder;if(!alternating(s)||!d.rollOff)throw Error('Roll off for deployment first.');if(d.first)throw Error('Who deploys first has already been chosen.');if(team!==d.rollOff.winner)throw Error('Only the roll-off winner chooses who deploys first.');if(!['ash','iron'].includes(first))throw Error('Choose Red or the opponent.');Object.assign(d,{first,next:first,chosenBy:team});return first;}
+// Battle March: the winner deploys the first unit. Under the core rule the winner chooses instead.
+export function deploymentRollOff(s,random=Math.random){if(!alternating(s))throw Error('This game has no deployment roll-off.');const d=s.deployOrder;if(!d.zonesChosen)throw Error('Choose the deployment zones first.');if(d.rollOff||d.first)throw Error('The deployment roll-off has been made.');d.rollOff=rollOff(random);if(d.rule==='winner-deploys')Object.assign(d,{first:d.rollOff.winner,next:d.rollOff.winner,chosenBy:null});return d.rollOff;}
+export function chooseDeploymentOrder(s,team,first){const d=s.deployOrder;if(!alternating(s)||!d.rollOff)throw Error('Roll off for deployment first.');if(d.rule==='winner-deploys')throw Error('In Battle March the roll-off winner deploys the first unit.');if(d.first)throw Error('Who deploys first has already been chosen.');if(team!==d.rollOff.winner)throw Error('Only the roll-off winner chooses who deploys first.');if(!['ash','iron'].includes(first))throw Error('Choose Red or the opponent.');Object.assign(d,{first,next:first,chosenBy:team});return first;}
 export function confirmDeployment(s){
  const d=s.deployOrder;if(!alternating(s))throw Error('This game does not deploy one unit at a time.');
- const p=d.pending?getUnit(s,d.pending):null;if(!p||p.x===null)throw Error('Place a unit before confirming.');
- p.deployed=true;d.pending=null;d.log.push({team:p.team,id:p.id});
- const left=team=>deploymentPieces(s,team).some(q=>!q.deployed),other=p.team==='ash'?'iron':'ash';
- d.next=left(other)?other:left(p.team)?p.team:null;d.complete=!d.next;
- return {id:p.id,next:d.next,complete:d.complete};
+ const b=d.batch,placed=(b?.ids??[]).map(id=>getUnit(s,id)).filter(q=>q&&q.x!==null);if(!b||!placed.length)throw Error('Place a unit before confirming.');
+ const missing=b.ids.map(id=>getUnit(s,id)).filter(q=>q&&q.x===null);if(missing.length)throw Error(`${b.kind==='machines'?'War machines':'Characters'} deploy together: place ${missing.map(q=>q.name).join(' and ')} too, then confirm.`);
+ for(const q of placed){q.deployed=true;d.log.push({team:q.team,id:q.id});}d.batch=null;d.pending=null;
+ const team=placed[0].team,left=t=>deploymentPieces(s,t).some(q=>!q.deployed),other=team==='ash'?'iron':'ash';
+ d.next=left(other)?other:left(team)?team:null;d.complete=!d.next;
+ return {id:placed[0].id,ids:placed.map(q=>q.id),kind:b.kind,next:d.next,complete:d.complete};
 }
 // With a team: place and confirm that side's next unit. Without: deploy both armies at once
 // (a quick start for testing and two-player setups).
 function alternateAutoDeploy(s,team,random=null){
  const d=s.deployOrder;
  if(!team){d.auto=true;try{searchDeploy(s,null,random);}finally{d.auto=false;}for(const p of [...deploymentPieces(s,'ash'),...deploymentPieces(s,'iron')])p.deployed=true;d.first??='ash';Object.assign(d,{next:null,pending:null,complete:true});return null;}
- if(!d.first)throw Error('Roll off first: the winner chooses who deploys first.');
+ if(!d.first)throw Error('Roll off first: the winner deploys the first unit.');
  if(d.next!==team)throw Error(d.complete?'Both armies are deployed.':`${armyName(d.next,s)} deploys the next unit.`);
- const order=deployOrderOf(s,team),pending=d.pending?getUnit(s,d.pending):null,p=pending??order.find(q=>!q.deployed);
- if(!pending)autoSpot(s,p,deployPlan(s,team,random)[p.id]);
+ // The batch already started, or the next one in order; every piece of it goes down, then it is confirmed.
+ const order=deployOrderOf(s,team),pending=d.pending?getUnit(s,d.pending):null,p=pending??order.find(q=>!q.deployed),plan=deployPlan(s,team,random);
+ for(const id of (d.batch??deploymentBatch(s,p)).ids){const q=getUnit(s,id);if(q.x===null)autoSpot(s,q,plan[q.id]);}
  return confirmDeployment(s);
 }
 export function deploymentComplete(s){return combatants(s).every(p=>p.x!==null)&&(!s.deployOrder?.alternate||s.deployOrder.complete);}

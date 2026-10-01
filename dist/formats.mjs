@@ -3,32 +3,39 @@
 export const MM_PER_INCH=25.4;
 export const rect=(x0,y0,x1,y1)=>[{x:x0,y:y0},{x:x1,y:y0},{x:x1,y:y1},{x:x0,y:y1}];
 
-// Battle March deployment maps, built from the measurements of the six official diagrams (supplied
-// 1 October 2026). Boundaries sit at fixed distances from the centre lines, so the zones follow the
-// battlefield: Pitched Battle zones are 7.5″ deep on 44″ × 30″ and 10.5″ deep on 48″ × 36″.
-// Red (ash) takes the bottom zone, or the left one in Mountain Pass. Which corner or side each army
-// takes on the asymmetric maps is a mirror choice the measurements leave open, and the triangular
-// zones are read as running corner to corner.
-const arc=(cx,cy,r,from,to,steps=24)=>Array.from({length:steps+1},(_,i)=>{const a=(from+(to-from)*i/steps)*Math.PI/180;return {x:cx+r*Math.cos(a),y:cy+r*Math.sin(a)};});
-// Headings armies deploy facing: 0 faces the top edge. These are defaults (players can turn each
-// unit as they deploy): along the table on the short-edge maps, toward the centre from the quarters.
-const UPRIGHT={ash:0,iron:180},SIDEWAYS={ash:90,iron:270};
+// Battle March deployment maps. The published coordinates are for a 44″ × 30″ battlefield (origin
+// top-left, x right, y down), and every zone below reproduces them exactly there. Zone A and zone
+// B are labels only: the players choose which zone each takes. On 48″ × 36″ the same distances from
+// the centre lines are used — an agreed adaptation, not a published map. Mirroring reflects an
+// asymmetric map left to right, which changes its geometry (Close Encounter's quarters, the
+// triangles' slopes, which end of Meeting Engagement is cut off).
+const arc=(cx,cy,r,from,to,steps=24)=>Array.from({length:steps+1},(_,i)=>{const a=(from+(to-from)*i/steps)*Math.PI/180;return {x:Math.round((cx+r*Math.cos(a))*1e9)/1e9,y:Math.round((cy+r*Math.sin(a))*1e9)/1e9};});
+// The heading each zone deploys facing by default (0 faces the top edge): toward the other zone.
+// Players can still turn every unit as they deploy it.
+const ACROSS={A:180,B:0};
+export const DEFAULT_SIDES={ash:'B',iron:'A'};
 export const DEPLOYMENT_MAPS=[
- {id:'pitched-battle',name:'Pitched Battle',roll:1,summary:'zones along the long edges; each boundary is 7.5″ from the centre line, leaving a 15″ gap.',
-  zones:b=>{const d=b.height/2-7.5;return {ash:rect(0,b.height-d,b.width,b.height),iron:rect(0,0,b.width,d)};}},
- {id:'close-encounter',name:'Close Encounter',roll:2,facing:{ash:45,iron:225},summary:'opposite quarters, excluding a 15″-diameter circle centred on the battlefield.',
-  zones:b=>{const cx=b.width/2,cy=b.height/2,r=7.5;return {ash:[{x:0,y:cy},...arc(cx,cy,r,180,90),{x:cx,y:b.height},{x:0,y:b.height}],iron:[{x:cx,y:0},{x:b.width,y:0},{x:b.width,y:cy},...arc(cx,cy,r,0,-90)]};}},
- {id:'opposed-flanks',name:'Opposed Flanks',roll:3,summary:'opposite triangles along the long edges; their diagonal boundaries leave an 18″ gap along each side edge.',
-  zones:b=>{const leg=b.height-18;return {ash:[{x:0,y:b.height},{x:b.width,y:b.height},{x:b.width,y:b.height-leg}],iron:[{x:0,y:0},{x:b.width,y:0},{x:0,y:leg}]};}},
- {id:'meeting-engagement',name:'Meeting Engagement',roll:4,summary:'Pitched Battle’s 15″ central gap, each zone stopping 11″ short of one side edge, on opposite sides.',
-  zones:b=>{const d=b.height/2-7.5;return {ash:rect(0,b.height-d,b.width-11,b.height),iron:rect(11,0,b.width,d)};}},
- {id:'mountain-pass',name:'Mountain Pass',roll:5,facing:SIDEWAYS,summary:'zones on the opposite short edges; each boundary is 11″ from the centre line, leaving a 22″ gap.',
-  zones:b=>{const d=b.width/2-11;return {ash:rect(0,0,d,b.height),iron:rect(b.width-d,0,b.width,b.height)};}},
- {id:'outflank',name:'Outflank',roll:6,facing:{ash:270,iron:90},summary:'opposite triangles on the short edges, with a diagonal central strip 22″ wide along the top and bottom edges.',
-  zones:b=>{const leg=b.width-22;return {ash:[{x:b.width-leg,y:b.height},{x:b.width,y:b.height},{x:b.width,y:0}],iron:[{x:0,y:0},{x:leg,y:0},{x:0,y:b.height}]};}},
-].map(m=>({official:true,available:true,facing:UPRIGHT,...m}));
-DEPLOYMENT_MAPS.push({id:'custom-long-edges',name:'Custom preset: long-edge zones (not an official map)',official:false,available:true,adjustable:true,facing:UPRIGHT,summary:'long-edge zones of the chosen depth.',
- zones:(board,depth)=>({ash:rect(0,board.height-depth,board.width,board.height),iron:rect(0,0,board.width,depth)})});
+ {id:'pitched-battle',name:'Pitched Battle',roll:1,symmetric:true,zoneNames:{A:'the top long edge',B:'the bottom long edge'},summary:'zones along the long edges, 7.5″ deep on 44″ × 30″, leaving a 15″ central strip.',
+  zones:b=>{const d=b.height/2-7.5;return {A:rect(0,0,b.width,d),B:rect(0,b.height-d,b.width,b.height)};}},
+ {id:'close-encounter',name:'Close Encounter',roll:2,facing:{A:135,B:315},zoneNames:{A:'the top-left quarter',B:'the bottom-right quarter'},mirrorNames:{A:'the top-right quarter',B:'the bottom-left quarter'},summary:'opposite quarters, minus a central circle 15″ across (7.5″ radius) that no unit may enter.',
+  zones:b=>{const cx=b.width/2,cy=b.height/2,r=7.5;return {A:[{x:0,y:0},{x:cx,y:0},...arc(cx,cy,r,270,180),{x:0,y:cy}],B:[{x:b.width,y:b.height},{x:cx,y:b.height},...arc(cx,cy,r,90,0),{x:b.width,y:cy}]};}},
+ {id:'opposed-flanks',name:'Opposed Flanks',roll:3,zoneNames:{A:'the top edge, deepest on the left',B:'the bottom edge, deepest on the right'},mirrorNames:{A:'the top edge, deepest on the right',B:'the bottom edge, deepest on the left'},summary:'opposite triangles along the long edges, their diagonal boundaries 18″ apart measured vertically.',
+  zones:b=>{const leg=b.height-18;return {A:[{x:0,y:0},{x:b.width,y:0},{x:0,y:leg}],B:[{x:0,y:b.height},{x:b.width,y:b.height},{x:b.width,y:b.height-leg}]};}},
+ {id:'meeting-engagement',name:'Meeting Engagement',roll:4,zoneNames:{A:'the top edge, stopping 11″ short of the right edge',B:'the bottom edge, starting 11″ from the left edge'},mirrorNames:{A:'the top edge, starting 11″ from the left edge',B:'the bottom edge, stopping 11″ short of the right edge'},summary:'Pitched Battle’s 15″ central strip, each zone stopping 11″ short of opposite side edges. No reserve rule is added.',
+  zones:b=>{const d=b.height/2-7.5;return {A:rect(0,0,b.width-11,d),B:rect(11,b.height-d,b.width,b.height)};}},
+ {id:'mountain-pass',name:'Mountain Pass',roll:5,symmetric:true,facing:{A:90,B:270},zoneNames:{A:'the left short edge',B:'the right short edge'},summary:'zones on the opposite short edges, 11″ either side of the centre line (a 22″ central strip). The table edges stay open.',
+  zones:b=>{const d=b.width/2-11;return {A:rect(0,0,d,b.height),B:rect(b.width-d,0,b.width,b.height)};}},
+ {id:'outflank',name:'Outflank',roll:6,facing:{A:90,B:270},zoneNames:{A:'the top-left triangle (left short edge)',B:'the bottom-right triangle (right short edge)'},mirrorNames:{A:'the top-right triangle (right short edge)',B:'the bottom-left triangle (left short edge)'},summary:'opposite triangles on the short edges, their diagonal boundaries 22″ apart measured horizontally.',
+  zones:b=>{const leg=b.width-22;return {A:[{x:0,y:0},{x:leg,y:0},{x:0,y:b.height}],B:[{x:b.width,y:0},{x:b.width,y:b.height},{x:22,y:b.height}]};}},
+].map(m=>({official:true,available:true,facing:ACROSS,...m}));
+DEPLOYMENT_MAPS.push({id:'custom-long-edges',name:'Custom preset: long-edge zones (not an official map)',official:false,available:true,adjustable:true,symmetric:true,facing:ACROSS,zoneNames:{A:'the top long edge',B:'the bottom long edge'},summary:'long-edge zones of the chosen depth.',
+ zones:(board,depth)=>({A:rect(0,0,board.width,depth),B:rect(0,board.height-depth,board.width,board.height)})});
+// The published maps are exact on 44″ × 30″ only.
+export const exactMapBoard=b=>b?.width===44&&b?.height===30;
+export function zoneName(m,zone,mirrored=false){return (mirrored&&!m.symmetric&&m.mirrorNames?m.mirrorNames:m.zoneNames)?.[zone]??`zone ${zone}`;}
+const flip=(poly,b)=>poly.map(p=>({x:b.width-p.x,y:p.y}));
+// Zones A and B of a map on this battlefield, mirrored if asked.
+export function mapZones(m,board,{depth=null,mirrored=false}={}){const z=m.adjustable?m.zones(board,depth):m.zones(board);return mirrored&&!m.symmetric?{A:flip(z.A,board),B:flip(z.B,board)}:z;}
 export function deploymentMap(id){const m=DEPLOYMENT_MAPS.find(m=>m.id===id);if(!m)throw Error(`Unknown deployment map "${id}".`);return m;}
 
 export const FORMATS={
@@ -43,9 +50,10 @@ export const FORMATS={
   points:{min:400,max:750,step:50,default:500},
   // Displayed width x depth. The smaller board suits 400-600 points, the larger bigger games.
   boards:[{id:'44x30',width:44,height:30,maxPoints:600},{id:'48x36',width:48,height:36}],defaultBoard:'48x36',
-  // Players deploy one unit at a time; the deployment roll-off winner chooses who starts.
+  // The opponent of the player who selected the map chooses a zone; the roll-off winner deploys the
+  // first unit; the armies then alternate (a regiment a turn, all war machines together, characters last).
   // The basic setup: Pitched Battle. The depth applies only to the custom preset.
-  deployment:{map:'pitched-battle',depth:12,minDepth:6,maxDepth:14,order:'alternate'},
+  deployment:{map:'pitched-battle',depth:12,minDepth:6,maxDepth:14,order:'alternate',rollOff:'winner-deploys'},
   objectives:'roll',
   rounds:5,scoring:'battle-march',terrainMaxWidth:12,eventTerrainMaxWidth:8,
   // Result classification for Battle March is not confirmed by the brief; the default reuses the
@@ -72,14 +80,15 @@ export function boardFor(f,{board=null,points=null}={}){
  const limit=points??fmt.points?.default??null,chosen=board?fmt.boards.find(b=>b.id===board):limit!==null?fmt.boards.find(b=>b.maxPoints&&limit<=b.maxPoints)??fmt.boards.find(b=>b.id===fmt.defaultBoard):fmt.boards.find(b=>b.id===fmt.defaultBoard);
  if(!chosen)throw Error(`Unknown battlefield "${board}" for ${fmt.name}.`);return {id:chosen.id,width:chosen.width,height:chosen.height};
 }
-export function deploymentZones(f,board,{map=null,depth=null}={}){
+// The zones each army deploys in: the map’s zones A and B, mirrored if asked, given to the
+// armies by sides (Red takes B, the bottom or right, unless the zone choice says otherwise).
+export function deploymentZones(f,board,{map=null,depth=null,mirrored=false,sides=DEFAULT_SIDES}={}){
  const fmt=typeof f==='string'?format(f):f;
  if(fmt.id==='classic')return fmt.deployment.zones(board);
  const chosen=deploymentMap(map??fmt.deployment.map);
  if(!chosen.available)throw Error(`${chosen.name}: ${chosen.unavailable}`);
- if(!chosen.adjustable)return chosen.zones(board);
- const d=depth??fmt.deployment.depth;if(d<fmt.deployment.minDepth||d>fmt.deployment.maxDepth)throw Error(`Deployment depth must be ${fmt.deployment.minDepth}–${fmt.deployment.maxDepth}″.`);
- return chosen.zones(board,d);
+ let d=null;if(chosen.adjustable){d=depth??fmt.deployment.depth;if(d<fmt.deployment.minDepth||d>fmt.deployment.maxDepth)throw Error(`Deployment depth must be ${fmt.deployment.minDepth}–${fmt.deployment.maxDepth}″.`);}
+ const z=mapZones(chosen,board,{depth:d,mirrored});return {ash:z[sides.ash],iron:z[sides.iron]};
 }
-// The heading each army deploys facing on this map.
-export function deploymentFacing(f,{map=null}={}){const fmt=typeof f==='string'?format(f):f;return fmt.id==='classic'?{ash:0,iron:180}:deploymentMap(map??fmt.deployment.map).facing;}
+// The heading each army deploys facing on this map (reflected when the map is mirrored).
+export function deploymentFacing(f,{map=null,mirrored=false,sides=DEFAULT_SIDES}={}){const fmt=typeof f==='string'?format(f):f;if(fmt.id==='classic')return {ash:0,iron:180};const m=deploymentMap(map??fmt.deployment.map),face=zone=>{const h=m.facing[zone];return mirrored&&!m.symmetric?(360-h)%360:h;};return {ash:face(sides.ash),iron:face(sides.iron)};}

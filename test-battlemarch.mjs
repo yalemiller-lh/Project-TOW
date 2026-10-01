@@ -40,7 +40,7 @@ test('treasure troves can be moved before deployment, on the table, clear of ter
  assert.throws(()=>BM.placeObjective(s,'T1',trove(s,'T2').x+.5,trove(s,'T2').y),/overlap/);
  s.terrain=[{id:'hill',x:30,y:8,r:2}];const clearance=2+20/25.4+3;
  assert.throws(()=>BM.placeObjective(s,'T1',30+clearance-.05,8),/3″ of a terrain/);BM.placeObjective(s,'T1',30+clearance+.05,8);
- G.deploymentRollOff(s,seq([.9,0]));G.chooseDeploymentOrder(s,'ash','ash');G.autoDeploy(s,{team:'ash'});
+ G.chooseDeploymentZone(s,'iron','A');G.deploymentRollOff(s,seq([.9,0]));G.autoDeploy(s,{team:'ash'});
  assert.equal(BM.canPlaceObjectives(s),false);assert.throws(()=>BM.placeObjective(s,'T1',12,12),/before any unit/);
  assert.throws(()=>BM.placeObjective(bm({objectives:'landmark'}),'L',10,10),/centre/);
 });
@@ -114,31 +114,42 @@ for(const first of ['ash','iron'])test(`with ${first} first, skipped phases stil
  assert.throws(()=>G.nextPhase(s),/over/);assert.equal(G.endOfPlayerTurn(s,s.team),false);
 });
 
-test('armies deploy one unit at a time; the roll-off winner chooses who starts',()=>{
+test('zones first, then a roll-off whose winner deploys first, then turns: a regiment, all war machines together, characters last',()=>{
  const s=bm({objectives:'troves2'}),d=s.deployOrder;
- assert.throws(()=>G.place(s,'A1',10,30),/Roll off first/);
- assert.throws(()=>G.chooseDeploymentOrder(s,'ash','ash'),/Roll off/);
+ // A second Great Cannon, to show that war machines go down together in one turn.
+ s.cannons.push({...structuredClone(s.cannons[0]),id:'I6',name:'Great Cannon B'});
+ assert.equal(G.deploymentZoneChooser(s),'iron','Red set up the map, so Blue chooses the zone');
+ assert.throws(()=>G.deploymentRollOff(s),/zones first/);assert.throws(()=>G.place(s,'A1',10,30),/zones first/);
+ assert.throws(()=>G.chooseDeploymentZone(s,'ash','A'),/chooses the deployment zone/);
+ assert.deepEqual(G.chooseDeploymentZone(s,'iron','B'),{iron:'B',ash:'A'});assert.ok(G.zoneBounds(s,'iron').top>18,'Blue now deploys along the bottom');assert.equal(G.getUnit(s,'I1').heading,0,'and faces up the table');assert.equal(G.getUnit(s,'A1').heading,180);
+ assert.throws(()=>G.chooseDeploymentZone(s,'iron','A'),/have been chosen/);
  const r=G.deploymentRollOff(s,seq([.5,.5,.9,0]));assert.deepEqual(r.rolls,[{ash:4,iron:4},{ash:6,iron:1}],'ties are re-rolled');assert.equal(r.winner,'ash');
- assert.throws(()=>G.deploymentRollOff(s),/has been made/);assert.throws(()=>G.chooseDeploymentOrder(s,'iron','iron'),/winner/);
- G.chooseDeploymentOrder(s,'ash','iron');assert.equal(G.deploymentTurn(s),'iron');
- assert.throws(()=>G.place(s,'A1',10,30),/deploys the next unit/);
- G.place(s,'I1',10,6);assert.equal(d.pending,'I1');G.place(s,'I2',20,6);assert.equal(G.getUnit(s,'I1').x,null,'the other unit returns to reserve');assert.equal(d.pending,'I2');
- G.place(s,'I2',22,6);assert.equal(G.getUnit(s,'I2').x,22,'adjustable until confirmed');
- assert.equal(G.confirmDeployment(s).next,'ash');assert.throws(()=>G.place(s,'I2',25,6),/already deployed|deploys the next/);
- assert.throws(()=>G.confirmDeployment(s),/Place a unit/);
- while(!d.complete)G.autoDeploy(s,{team:d.next});
- assert.deepEqual(d.log.map(e=>e.team),['iron','ash','iron','ash','iron','ash','iron','ash','iron','ash','iron'],'alternate until Red is down, then the rest');
+ assert.equal(d.first,'ash','in Battle March the roll-off winner deploys the first unit');assert.throws(()=>G.chooseDeploymentOrder(s,'ash','iron'),/winner deploys/);
+ assert.throws(()=>G.deploymentRollOff(s),/has been made/);assert.throws(()=>G.place(s,'I1',10,30),/deploys the next unit/);
+ G.place(s,'A1',10,5);assert.deepEqual(d.batch.ids,['A1']);G.place(s,'A2',20,5);assert.equal(G.getUnit(s,'A1').x,null,'another regiment puts the first back');assert.deepEqual(d.batch.ids,['A2']);
+ G.place(s,'A2',22,5);assert.equal(G.getUnit(s,'A2').x,22,'adjustable until confirmed');
+ assert.throws(()=>G.place(s,'A6',30,3),/Characters deploy last/);
+ assert.equal(G.confirmDeployment(s).next,'iron');assert.throws(()=>G.place(s,'A2',25,5),/already deployed|deploys the next/);
+ // Blue: the cannons are one batch, so one alone cannot be confirmed.
+ G.placeAt(s,'I5',8,34);assert.equal(d.batch.kind,'machines');assert.deepEqual(d.batch.ids,['I5','I6']);
+ assert.throws(()=>G.confirmDeployment(s),/deploy together/);G.placeAt(s,'I6',40,34);
+ const machines=G.confirmDeployment(s);assert.deepEqual(machines.ids,['I5','I6'],'both cannons in one turn');assert.equal(machines.next,'ash');
+ const turns=[];while(!d.complete)turns.push(G.autoDeploy(s,{team:d.next}));
+ for(const t of turns){const team=G.getUnit(s,t.id).team;if(t.kind==='unit')assert.equal(t.ids.length,1);if(t.kind==='characters')assert.ok(t.ids.every(id=>G.isCharacter(G.getUnit(s,id))));
+  if(t.kind==='characters')assert.ok(G.deploymentPieces(s,team).filter(p=>!G.isCharacter(p)).every(p=>d.log.findIndex(e=>e.id===p.id)<d.log.findIndex(e=>e.id===t.ids[0])),'characters after the rest of their army');}
+ assert.ok(turns.filter(t=>t.kind==='characters').length<=2,'one character batch per army');
  for(const u of s.units)assert.equal(G.checkPosition(s,u,u.x,u.y,true),null,u.id);
  assert.throws(()=>G.begin(s),/Roll off for the first turn/);
  const f=G.firstTurnRollOff(s,seq([0,.9]));assert.equal(f.winner,'iron');assert.throws(()=>G.chooseFirstTurn(s,'ash','ash'),/winner/);
- G.chooseFirstTurn(s,'iron','ash');G.begin(s,()=>0);assert.equal(s.team,'ash');assert.equal(s.firstPlayer,'ash');
+ G.chooseFirstTurn(s,'iron','ash');G.begin(s,()=>0);assert.equal(s.team,'ash','the first-turn winner may choose the opponent');assert.equal(s.firstPlayer,'ash');
 });
 test('a placement the player has not confirmed does not finish deployment',()=>{
- const s=bm({objectives:'troves2'});G.deploymentRollOff(s,seq([.9,0]));G.chooseDeploymentOrder(s,'ash','ash');
- while(G.deploymentPieces(s,'ash').concat(G.deploymentPieces(s,'iron')).filter(p=>!p.deployed).length>1)G.autoDeploy(s,{team:s.deployOrder.next});
- const last=G.deploymentPieces(s,'ash').concat(G.deploymentPieces(s,'iron')).find(p=>!p.deployed);assert.equal(last.team,'iron');
- const spot=[...Array(47).keys()].flatMap(x=>[...Array(11).keys()].map(y=>({x:x+1,y:y+1}))).find(p=>last.role==='warmachine'?(()=>{try{const t=structuredClone(s);G.placeCannon(t,last.id,p.x,p.y);return true;}catch{return false;}})():G.checkPosition(s,last,p.x,p.y,true)===null);
- if(last.role==='warmachine')G.placeCannon(s,last.id,spot.x,spot.y);else G.place(s,last.id,spot.x,spot.y);assert.equal(s.deployOrder.pending,last.id);
+ const s=bm({objectives:'troves2'});G.chooseDeploymentZone(s,'iron','A');G.deploymentRollOff(s,seq([.9,0]));
+ const batchesLeft=()=>['ash','iron'].reduce((n,t)=>{const p=G.deploymentPieces(s,t).filter(q=>!q.deployed);return n+p.filter(q=>!G.isCharacter(q)&&q.role!=='warmachine').length+(p.some(q=>q.role==='warmachine')?1:0)+(p.some(q=>G.isCharacter(q))?1:0);},0);
+ while(batchesLeft()>1)G.autoDeploy(s,{team:s.deployOrder.next});
+ const last=G.deploymentPieces(s,'ash').concat(G.deploymentPieces(s,'iron')).filter(p=>!p.deployed);assert.ok(last.length>=1);
+ for(const p of last){const spot=[...Array(47).keys()].flatMap(x=>[...Array(11).keys()].map(y=>({x:x+1,y:y+1}))).find(q=>G.deployError(s,p,q.x,q.y)===null);G.placeAt(s,p.id,spot.x,spot.y);}
+ assert.ok(s.deployOrder.batch.ids.includes(last[0].id));
  assert.throws(()=>G.firstTurnRollOff(s),/Deploy both armies/);G.confirmDeployment(s);assert.equal(s.deployOrder.complete,true);
 });
 
@@ -175,10 +186,10 @@ test('a player may concede, or the players may stop at an agreed time limit and 
  const t=ready({objectives:'troves2'});put(t,'A1',trove(t,'T1').x,trove(t,'T1').y,0);G.endOfPlayerTurn(t,'ash');BM.endByAgreement(t);assert.equal(t.stage,'finished');assert.equal(t.result.totals.ash,10);assert.match(t.result.reason,/agreed/);assert.throws(()=>BM.endByAgreement(t),/already over/);
 });
 
-test('the bot deploys one legal unit per turn, answers the roll-offs, and moves to claim objectives',()=>{
+test('the bot chooses its zone, deploys one legal batch per turn, answers the roll-offs, and moves to claim objectives',()=>{
  const r=rng(7),s=bm({objectives:'troves3'}),d=s.deployOrder;
- G.deploymentRollOff(s,seq([0,.9]));assert.equal(AI.deploymentChoice(s),'deploy-order');AI.takeDeploymentStep(s);assert.equal(d.first,'ash');
- while(!d.complete){const before=d.log.length;if(AI.deploymentChoice(s)==='deploy'){AI.takeDeploymentStep(s);const last=G.getUnit(s,d.log.at(-1).id);assert.equal(last.team,'iron');assert.ok(G.inZone(s,'iron',G.corners(last)),last.id);}else G.autoDeploy(s,{team:'ash'});assert.equal(d.log.length,before+1);}
+ assert.equal(AI.deploymentChoice(s),'zone','Red chose the map, so the bot chooses a zone');AI.takeDeploymentStep(s);assert.equal(d.zonesChosen,true);G.deploymentRollOff(s,seq([0,.9]));assert.equal(d.first,'iron','the bot won the roll-off and deploys first');
+ while(!d.complete){const before=d.log.length;if(AI.deploymentChoice(s)==='deploy'){AI.takeDeploymentStep(s);const last=G.getUnit(s,d.log.at(-1).id);assert.equal(last.team,'iron');assert.ok(G.inZone(s,'iron',G.corners(last)),last.id);}else G.autoDeploy(s,{team:'ash'});assert.ok(d.log.length>before);}
  for(const u of s.units)assert.equal(G.checkPosition(s,u,u.x,u.y,true),null,u.id);
  G.firstTurnRollOff(s,seq([0,.9]));assert.equal(AI.deploymentChoice(s),'first-turn');AI.takeDeploymentStep(s);assert.equal(s.firstTurn.chosen,'iron');
  G.begin(s,r);assert.equal(s.team,'iron');

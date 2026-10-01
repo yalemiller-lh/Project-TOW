@@ -97,6 +97,10 @@ body{padding-right:340px;background:#e8e0c8;color:#302c22}.topbar{margin:10px 18
 .deploy-chip.chosen{border-color:var(--army-primary,#853921);background:#fff3cc;box-shadow:inset 0 0 0 1px var(--army-primary,#853921)}
 .deploy-chip.placed small{color:#2f6b2f}
 .deploy-chip.done{opacity:.5;cursor:default}
+.deploy-chip:disabled:not(.done){opacity:.45;cursor:not-allowed}
+.deploy-group h4{margin:8px 0 2px;font:700 12px/1.2 Georgia,serif;letter-spacing:.04em;text-transform:uppercase;color:var(--army-ink,#302c22)}
+.deploy-group h4 small{font-weight:400;text-transform:none;letter-spacing:0;color:#6b6450}
+.zone-choice{display:grid;gap:6px;margin-top:6px}
 .deploy-adjust .adjust-turns{display:grid;grid-template-columns:1fr 1.35fr 1fr;gap:6px;margin:2px 0 6px}
 .deploy-adjust .adjust-error{margin:2px 0;color:#a42f24;font-size:11.5px}
 .deploy-adjust .adjust-error:empty{display:none}
@@ -271,32 +275,39 @@ const F=(()=>{// Game formats: battlefield, deployment zones, game length and sc
 const MM_PER_INCH=25.4;
 const rect=(x0,y0,x1,y1)=>[{x:x0,y:y0},{x:x1,y:y0},{x:x1,y:y1},{x:x0,y:y1}];
 
-// Battle March deployment maps, built from the measurements of the six official diagrams (supplied
-// 1 October 2026). Boundaries sit at fixed distances from the centre lines, so the zones follow the
-// battlefield: Pitched Battle zones are 7.5″ deep on 44″ × 30″ and 10.5″ deep on 48″ × 36″.
-// Red (ash) takes the bottom zone, or the left one in Mountain Pass. Which corner or side each army
-// takes on the asymmetric maps is a mirror choice the measurements leave open, and the triangular
-// zones are read as running corner to corner.
-const arc=(cx,cy,r,from,to,steps=24)=>Array.from({length:steps+1},(_,i)=>{const a=(from+(to-from)*i/steps)*Math.PI/180;return {x:cx+r*Math.cos(a),y:cy+r*Math.sin(a)};});
-// Headings armies deploy facing: 0 faces the top edge. These are defaults (players can turn each
-// unit as they deploy): along the table on the short-edge maps, toward the centre from the quarters.
-const UPRIGHT={ash:0,iron:180},SIDEWAYS={ash:90,iron:270};
+// Battle March deployment maps. The published coordinates are for a 44″ × 30″ battlefield (origin
+// top-left, x right, y down), and every zone below reproduces them exactly there. Zone A and zone
+// B are labels only: the players choose which zone each takes. On 48″ × 36″ the same distances from
+// the centre lines are used — an agreed adaptation, not a published map. Mirroring reflects an
+// asymmetric map left to right, which changes its geometry (Close Encounter's quarters, the
+// triangles' slopes, which end of Meeting Engagement is cut off).
+const arc=(cx,cy,r,from,to,steps=24)=>Array.from({length:steps+1},(_,i)=>{const a=(from+(to-from)*i/steps)*Math.PI/180;return {x:Math.round((cx+r*Math.cos(a))*1e9)/1e9,y:Math.round((cy+r*Math.sin(a))*1e9)/1e9};});
+// The heading each zone deploys facing by default (0 faces the top edge): toward the other zone.
+// Players can still turn every unit as they deploy it.
+const ACROSS={A:180,B:0};
+const DEFAULT_SIDES={ash:'B',iron:'A'};
 const DEPLOYMENT_MAPS=[
- {id:'pitched-battle',name:'Pitched Battle',roll:1,summary:'zones along the long edges; each boundary is 7.5″ from the centre line, leaving a 15″ gap.',
-  zones:b=>{const d=b.height/2-7.5;return {ash:rect(0,b.height-d,b.width,b.height),iron:rect(0,0,b.width,d)};}},
- {id:'close-encounter',name:'Close Encounter',roll:2,facing:{ash:45,iron:225},summary:'opposite quarters, excluding a 15″-diameter circle centred on the battlefield.',
-  zones:b=>{const cx=b.width/2,cy=b.height/2,r=7.5;return {ash:[{x:0,y:cy},...arc(cx,cy,r,180,90),{x:cx,y:b.height},{x:0,y:b.height}],iron:[{x:cx,y:0},{x:b.width,y:0},{x:b.width,y:cy},...arc(cx,cy,r,0,-90)]};}},
- {id:'opposed-flanks',name:'Opposed Flanks',roll:3,summary:'opposite triangles along the long edges; their diagonal boundaries leave an 18″ gap along each side edge.',
-  zones:b=>{const leg=b.height-18;return {ash:[{x:0,y:b.height},{x:b.width,y:b.height},{x:b.width,y:b.height-leg}],iron:[{x:0,y:0},{x:b.width,y:0},{x:0,y:leg}]};}},
- {id:'meeting-engagement',name:'Meeting Engagement',roll:4,summary:'Pitched Battle’s 15″ central gap, each zone stopping 11″ short of one side edge, on opposite sides.',
-  zones:b=>{const d=b.height/2-7.5;return {ash:rect(0,b.height-d,b.width-11,b.height),iron:rect(11,0,b.width,d)};}},
- {id:'mountain-pass',name:'Mountain Pass',roll:5,facing:SIDEWAYS,summary:'zones on the opposite short edges; each boundary is 11″ from the centre line, leaving a 22″ gap.',
-  zones:b=>{const d=b.width/2-11;return {ash:rect(0,0,d,b.height),iron:rect(b.width-d,0,b.width,b.height)};}},
- {id:'outflank',name:'Outflank',roll:6,facing:{ash:270,iron:90},summary:'opposite triangles on the short edges, with a diagonal central strip 22″ wide along the top and bottom edges.',
-  zones:b=>{const leg=b.width-22;return {ash:[{x:b.width-leg,y:b.height},{x:b.width,y:b.height},{x:b.width,y:0}],iron:[{x:0,y:0},{x:leg,y:0},{x:0,y:b.height}]};}},
-].map(m=>({official:true,available:true,facing:UPRIGHT,...m}));
-DEPLOYMENT_MAPS.push({id:'custom-long-edges',name:'Custom preset: long-edge zones (not an official map)',official:false,available:true,adjustable:true,facing:UPRIGHT,summary:'long-edge zones of the chosen depth.',
- zones:(board,depth)=>({ash:rect(0,board.height-depth,board.width,board.height),iron:rect(0,0,board.width,depth)})});
+ {id:'pitched-battle',name:'Pitched Battle',roll:1,symmetric:true,zoneNames:{A:'the top long edge',B:'the bottom long edge'},summary:'zones along the long edges, 7.5″ deep on 44″ × 30″, leaving a 15″ central strip.',
+  zones:b=>{const d=b.height/2-7.5;return {A:rect(0,0,b.width,d),B:rect(0,b.height-d,b.width,b.height)};}},
+ {id:'close-encounter',name:'Close Encounter',roll:2,facing:{A:135,B:315},zoneNames:{A:'the top-left quarter',B:'the bottom-right quarter'},mirrorNames:{A:'the top-right quarter',B:'the bottom-left quarter'},summary:'opposite quarters, minus a central circle 15″ across (7.5″ radius) that no unit may enter.',
+  zones:b=>{const cx=b.width/2,cy=b.height/2,r=7.5;return {A:[{x:0,y:0},{x:cx,y:0},...arc(cx,cy,r,270,180),{x:0,y:cy}],B:[{x:b.width,y:b.height},{x:cx,y:b.height},...arc(cx,cy,r,90,0),{x:b.width,y:cy}]};}},
+ {id:'opposed-flanks',name:'Opposed Flanks',roll:3,zoneNames:{A:'the top edge, deepest on the left',B:'the bottom edge, deepest on the right'},mirrorNames:{A:'the top edge, deepest on the right',B:'the bottom edge, deepest on the left'},summary:'opposite triangles along the long edges, their diagonal boundaries 18″ apart measured vertically.',
+  zones:b=>{const leg=b.height-18;return {A:[{x:0,y:0},{x:b.width,y:0},{x:0,y:leg}],B:[{x:0,y:b.height},{x:b.width,y:b.height},{x:b.width,y:b.height-leg}]};}},
+ {id:'meeting-engagement',name:'Meeting Engagement',roll:4,zoneNames:{A:'the top edge, stopping 11″ short of the right edge',B:'the bottom edge, starting 11″ from the left edge'},mirrorNames:{A:'the top edge, starting 11″ from the left edge',B:'the bottom edge, stopping 11″ short of the right edge'},summary:'Pitched Battle’s 15″ central strip, each zone stopping 11″ short of opposite side edges. No reserve rule is added.',
+  zones:b=>{const d=b.height/2-7.5;return {A:rect(0,0,b.width-11,d),B:rect(11,b.height-d,b.width,b.height)};}},
+ {id:'mountain-pass',name:'Mountain Pass',roll:5,symmetric:true,facing:{A:90,B:270},zoneNames:{A:'the left short edge',B:'the right short edge'},summary:'zones on the opposite short edges, 11″ either side of the centre line (a 22″ central strip). The table edges stay open.',
+  zones:b=>{const d=b.width/2-11;return {A:rect(0,0,d,b.height),B:rect(b.width-d,0,b.width,b.height)};}},
+ {id:'outflank',name:'Outflank',roll:6,facing:{A:90,B:270},zoneNames:{A:'the top-left triangle (left short edge)',B:'the bottom-right triangle (right short edge)'},mirrorNames:{A:'the top-right triangle (right short edge)',B:'the bottom-left triangle (left short edge)'},summary:'opposite triangles on the short edges, their diagonal boundaries 22″ apart measured horizontally.',
+  zones:b=>{const leg=b.width-22;return {A:[{x:0,y:0},{x:leg,y:0},{x:0,y:b.height}],B:[{x:b.width,y:0},{x:b.width,y:b.height},{x:22,y:b.height}]};}},
+].map(m=>({official:true,available:true,facing:ACROSS,...m}));
+DEPLOYMENT_MAPS.push({id:'custom-long-edges',name:'Custom preset: long-edge zones (not an official map)',official:false,available:true,adjustable:true,symmetric:true,facing:ACROSS,zoneNames:{A:'the top long edge',B:'the bottom long edge'},summary:'long-edge zones of the chosen depth.',
+ zones:(board,depth)=>({A:rect(0,0,board.width,depth),B:rect(0,board.height-depth,board.width,board.height)})});
+// The published maps are exact on 44″ × 30″ only.
+const exactMapBoard=b=>b?.width===44&&b?.height===30;
+function zoneName(m,zone,mirrored=false){return (mirrored&&!m.symmetric&&m.mirrorNames?m.mirrorNames:m.zoneNames)?.[zone]??`zone ${zone}`;}
+const flip=(poly,b)=>poly.map(p=>({x:b.width-p.x,y:p.y}));
+// Zones A and B of a map on this battlefield, mirrored if asked.
+function mapZones(m,board,{depth=null,mirrored=false}={}){const z=m.adjustable?m.zones(board,depth):m.zones(board);return mirrored&&!m.symmetric?{A:flip(z.A,board),B:flip(z.B,board)}:z;}
 function deploymentMap(id){const m=DEPLOYMENT_MAPS.find(m=>m.id===id);if(!m)throw Error(`Unknown deployment map "${id}".`);return m;}
 
 const FORMATS={
@@ -311,9 +322,10 @@ const FORMATS={
   points:{min:400,max:750,step:50,default:500},
   // Displayed width x depth. The smaller board suits 400-600 points, the larger bigger games.
   boards:[{id:'44x30',width:44,height:30,maxPoints:600},{id:'48x36',width:48,height:36}],defaultBoard:'48x36',
-  // Players deploy one unit at a time; the deployment roll-off winner chooses who starts.
+  // The opponent of the player who selected the map chooses a zone; the roll-off winner deploys the
+  // first unit; the armies then alternate (a regiment a turn, all war machines together, characters last).
   // The basic setup: Pitched Battle. The depth applies only to the custom preset.
-  deployment:{map:'pitched-battle',depth:12,minDepth:6,maxDepth:14,order:'alternate'},
+  deployment:{map:'pitched-battle',depth:12,minDepth:6,maxDepth:14,order:'alternate',rollOff:'winner-deploys'},
   objectives:'roll',
   rounds:5,scoring:'battle-march',terrainMaxWidth:12,eventTerrainMaxWidth:8,
   // Result classification for Battle March is not confirmed by the brief; the default reuses the
@@ -340,19 +352,20 @@ function boardFor(f,{board=null,points=null}={}){
  const limit=points??fmt.points?.default??null,chosen=board?fmt.boards.find(b=>b.id===board):limit!==null?fmt.boards.find(b=>b.maxPoints&&limit<=b.maxPoints)??fmt.boards.find(b=>b.id===fmt.defaultBoard):fmt.boards.find(b=>b.id===fmt.defaultBoard);
  if(!chosen)throw Error(`Unknown battlefield "${board}" for ${fmt.name}.`);return {id:chosen.id,width:chosen.width,height:chosen.height};
 }
-function deploymentZones(f,board,{map=null,depth=null}={}){
+// The zones each army deploys in: the map’s zones A and B, mirrored if asked, given to the
+// armies by sides (Red takes B, the bottom or right, unless the zone choice says otherwise).
+function deploymentZones(f,board,{map=null,depth=null,mirrored=false,sides=DEFAULT_SIDES}={}){
  const fmt=typeof f==='string'?format(f):f;
  if(fmt.id==='classic')return fmt.deployment.zones(board);
  const chosen=deploymentMap(map??fmt.deployment.map);
  if(!chosen.available)throw Error(`${chosen.name}: ${chosen.unavailable}`);
- if(!chosen.adjustable)return chosen.zones(board);
- const d=depth??fmt.deployment.depth;if(d<fmt.deployment.minDepth||d>fmt.deployment.maxDepth)throw Error(`Deployment depth must be ${fmt.deployment.minDepth}–${fmt.deployment.maxDepth}″.`);
- return chosen.zones(board,d);
+ let d=null;if(chosen.adjustable){d=depth??fmt.deployment.depth;if(d<fmt.deployment.minDepth||d>fmt.deployment.maxDepth)throw Error(`Deployment depth must be ${fmt.deployment.minDepth}–${fmt.deployment.maxDepth}″.`);}
+ const z=mapZones(chosen,board,{depth:d,mirrored});return {ash:z[sides.ash],iron:z[sides.iron]};
 }
-// The heading each army deploys facing on this map.
-function deploymentFacing(f,{map=null}={}){const fmt=typeof f==='string'?format(f):f;return fmt.id==='classic'?{ash:0,iron:180}:deploymentMap(map??fmt.deployment.map).facing;}
+// The heading each army deploys facing on this map (reflected when the map is mirrored).
+function deploymentFacing(f,{map=null,mirrored=false,sides=DEFAULT_SIDES}={}){const fmt=typeof f==='string'?format(f):f;if(fmt.id==='classic')return {ash:0,iron:180};const m=deploymentMap(map??fmt.deployment.map),face=zone=>{const h=m.facing[zone];return mirrored&&!m.symmetric?(360-h)%360:h;};return {ash:face(sides.ash),iron:face(sides.iron)};}
 
-return {DEPLOYMENT_MAPS,FORMATS,MM_PER_INCH,OPTIONAL_RULES,boardFor,deploymentFacing,deploymentMap,deploymentZones,format,rect};})();
+return {DEFAULT_SIDES,DEPLOYMENT_MAPS,FORMATS,MM_PER_INCH,OPTIONAL_RULES,boardFor,deploymentFacing,deploymentMap,deploymentZones,exactMapBoard,format,mapZones,rect,zoneName};})();
 const A=(()=>{// Costed army entries this engine can play, and Battle March muster validation.
 // Costs come from the newrecruit Old World data files (BattleScribe format) named in SOURCES.
 const SOURCES={
@@ -546,6 +559,10 @@ function createGame(opponent='chaos',{format='classic',board=null,points=null,de
  if(fmt.id==='battle-march')return createRosterGame(opponent,fmt,field,setup,points,rosters,{objectives,optional,random});const units=Array.from({length:8},(_,i)=>{const faction=i<4?'chaos':opponent,role=i%4===3?'missile':'infantry';return {id:(i<4?'A':'I')+(i%4+1),team:i<4?'ash':'iron',faction,role,name:role==='missile'?MISSILE[faction].name:FACTIONS[faction].name,x:null,y:null,heading:i<4?0:180,moved:false,shot:false,spent:0,movementMode:null,marchRequired:null,marchTest:null,engaged:null,charge:null,impetuousTest:null,combatResolved:false,fleeing:false,rallyAttempted:false,rallied:false,shieldwallUsed:false,deadModels:[]};});units.push(createWizard('ash','chaos'));if(opponent==='empire')units.push(createWizard('iron','empire'));return {stage:'deployment',team:'ash',round:1,selected:'A1',rocket:{id:'A5',name:'Deathshrieker Rocket Launcher',...machineFields('ash','chaos'),x:null,y:null,heading:0,wounds:3,crew:3,shot:false,disabledUntil:0,lastShot:null},cannons:createCannons(opponent),units,history:[],vortices:[],fatedDispelUsed:false,format:{id:fmt.id,name:fmt.name,rulesVersion:fmt.rulesVersion,points:fmt.points?(points??fmt.points.default):null,rounds:fmt.rounds,deployment:setup,resultPolicy:fmt.resultPolicy??null,optional:{...(fmt.optional??{})}},board:field,zones:F.deploymentZones(fmt,field,setup??{}),firstPlayer:'ash',turnLog:[]};}
 function optionalRules(fmt,chosen){const rules={...fmt.optional};for(const [key,on]of Object.entries(chosen??{})){const rule=F.OPTIONAL_RULES[key];if(!(key in rules)||!rule)throw Error(`Unknown optional rule "${key}".`);if(on&&!rule.available)throw Error(`${rule.name} is not available yet: ${rule.reason}.`);rules[key]=!!on;}return rules;}
 function createRosterGame(opponent,fmt,field,setup,points,rosters,{objectives=null,optional=null,random=Math.random}={}){
+ // The deployment map is chosen or rolled on a D6. Red sets up the game, so Red counts as the map
+ // selector (shown to the players) and the opponent chooses its zone.
+ if(setup?.map==='roll'){const roll=rollD6(1,random)[0];setup={...setup,map:F.DEPLOYMENT_MAPS.find(m=>m.roll===roll).id,roll};}
+ if(setup)setup={selector:'ash',mirrored:false,sides:{...F.DEFAULT_SIDES},...setup};
  const limit=points??fmt.points.default,chosen={ash:rosters?.ash??A.defaultRoster('chaos',limit),iron:rosters?.iron??A.defaultRoster(opponent,limit)};
  if(!chosen.iron)throw Error(A.GAPS[opponent]?.[0]??`No Battle March army is available for ${opponent}.`);
  if(chosen.ash.faction!=='chaos'||chosen.iron.faction!==opponent)throw Error('Red must be Chaos Dwarfs and the opponent must match the chosen army.');
@@ -554,7 +571,7 @@ function createRosterGame(opponent,fmt,field,setup,points,rosters,{objectives=nu
  const armies=Object.fromEntries(Object.entries(chosen).map(([team,roster])=>[team,{roster,validation:A.validateRoster(roster,limit),source:A.SOURCES[roster.faction]}]));
  const s={stage:'deployment',team:'ash',round:1,selected:red.units[0]?.id,rocket,cannons:blue.cannons,units:[...red.units,...blue.units],history:[],vortices:[],fatedDispelUsed:false,
   format:{id:fmt.id,name:fmt.name,rulesVersion:fmt.rulesVersion,points:limit,rounds:fmt.rounds,deployment:setup,resultPolicy:fmt.resultPolicy,optional:optionalRules(fmt,optional),objectives:objectives??fmt.objectives??'roll'},board:field,zones:F.deploymentZones(fmt,field,setup??{}),facing:F.deploymentFacing(fmt,setup??{}),firstPlayer:'ash',turnLog:[],armies,sources:{system:A.SOURCES.system,preferences:A.PREFERENCES},
-  deployOrder:fmt.deployment?.order==='alternate'?{alternate:true,rollOff:null,first:null,chosenBy:null,next:null,pending:null,log:[],complete:false}:null,firstTurn:null};
+  deployOrder:fmt.deployment?.order==='alternate'?{alternate:true,rule:fmt.deployment.rollOff??'winner-chooses',zonesChosen:false,rollOff:null,first:null,chosenBy:null,next:null,pending:null,batch:null,log:[],complete:false}:null,firstTurn:null};
  // Each army deploys facing the way its map sets (across the table, or along it in Mountain Pass).
  for(const p of combatants(s))p.heading=deploymentFacing(s,p.team);
  // The format's own rules (objectives for Battle March) set up the battlefield before deployment.
@@ -655,8 +672,9 @@ function turnDeployed(s,id,heading){
 function unplace(s,id){
  const p=getUnit(s,id),d=s.deployOrder;if(s.stage!=='deployment'||!p||p.x===null)throw Error('Nothing to pick up.');
  if(p.deployed)throw Error(`${p.name} is already deployed; deployed units stay where they are.`);
- if(alternating(s)&&!d.auto&&d.pending!==p.id)throw Error('Only the unit being placed can be picked up.');
- Object.assign(p,{x:null,y:null});if(alternating(s)&&d.pending===p.id)d.pending=null;return p;
+ if(alternating(s)&&!d.auto&&!d.batch?.ids.includes(p.id))throw Error('Only a unit being placed this turn can be picked up.');
+ Object.assign(p,{x:null,y:null});
+ if(alternating(s)&&d.batch){const still=d.batch.ids.find(id=>getUnit(s,id)?.x!==null);d.pending=still??null;if(!still)d.batch=null;}return p;
 }
 // The quick-deploy plan for one army: regiments form the battle line along the front of the zone,
 // war machines stand at its very back toward the flanks (where their long range still reaches),
@@ -694,28 +712,47 @@ function searchDeploy(s,team,random=null){
 const alternating=s=>s.stage==='deployment'&&!!s.deployOrder?.alternate;
 function deploymentPieces(s,team){return combatants(s).filter(p=>p.team===team);}
 function deploymentTurn(s){return alternating(s)&&s.deployOrder.first&&!s.deployOrder.complete?s.deployOrder.next:null;}
-function deployGate(s,p){const d=s.deployOrder;if(!alternating(s)||d.auto)return;if(!d.first)throw Error('Roll off first: the winner chooses who deploys first.');if(d.complete||p.deployed)throw Error(`${p.name} is already deployed; deployed units stay where they are.`);if(p.team!==d.next)throw Error(`${armyName(d.next,s)} deploys the next unit.`);}
-function deployPlaced(s,p){const d=s.deployOrder;if(!alternating(s)||d.auto)return;if(d.pending&&d.pending!==p.id){const old=getUnit(s,d.pending);if(old&&!old.deployed)Object.assign(old,{x:null,y:null});}d.pending=p.id;}
+// Deployment batches: a regiment is one turn; all of an army's war machines go down together in
+// one turn (anywhere in the zone); its characters go down together, last, once the rest is down.
+function deploymentBatch(s,p){const kind=p.role==='warmachine'?'machines':isCharacter(p)?'characters':'unit';return {kind,team:p.team,ids:kind==='unit'?[p.id]:deploymentPieces(s,p.team).filter(q=>!q.deployed&&(kind==='machines'?q.role==='warmachine':isCharacter(q))).map(q=>q.id)};}
+const charactersWait=(s,p)=>isCharacter(p)&&deploymentPieces(s,p.team).some(q=>!q.deployed&&!isCharacter(q));
+function deployGate(s,p){const d=s.deployOrder;if(!alternating(s)||d.auto)return;if(!d.zonesChosen)throw Error('Choose the deployment zones first.');if(!d.first)throw Error('Roll off first: the winner deploys the first unit.');if(d.complete||p.deployed)throw Error(`${p.name} is already deployed; deployed units stay where they are.`);if(p.team!==d.next)throw Error(`${armyName(d.next,s)} deploys the next unit.`);if(charactersWait(s,p))throw Error('Characters deploy last, all together, once every other unit of the army is down.');}
+function deployPlaced(s,p){const d=s.deployOrder;if(!alternating(s)||d.auto)return;
+ // Starting a different batch puts back what the unconfirmed one had placed.
+ if(d.batch&&!d.batch.ids.includes(p.id))for(const id of d.batch.ids){const q=getUnit(s,id);if(q&&!q.deployed)Object.assign(q,{x:null,y:null});}
+ if(!d.batch?.ids.includes(p.id))d.batch=deploymentBatch(s,p);d.pending=p.id;}
+// Battle March: the player who did not select the map chooses a deployment zone; the other army
+// takes the other zone. The facing defaults follow.
+const deploymentZoneChooser=s=>{const sel=s.format?.deployment?.selector??'ash';return sel==='ash'?'iron':'ash';};
+function chooseDeploymentZone(s,team,zone){
+ const d=s.deployOrder,setup=s.format.deployment;if(!alternating(s))throw Error('This game has no deployment zone choice.');if(d.zonesChosen)throw Error('The deployment zones have been chosen.');
+ if(team!==deploymentZoneChooser(s))throw Error(`${armyName(deploymentZoneChooser(s),s)} chooses the deployment zone.`);if(!['A','B'].includes(zone))throw Error('Choose zone A or zone B.');
+ setup.sides={[team]:zone,[team==='ash'?'iron':'ash']:zone==='A'?'B':'A'};s.zones=F.deploymentZones(s.format.id,s.board,setup);s.facing=F.deploymentFacing(s.format.id,setup);
+ for(const p of combatants(s))if(p.x===null)p.heading=deploymentFacing(s,p.team);d.zonesChosen=true;return {...setup.sides};
+}
 function rollOff(random){const rolls=[];for(let i=0;i<100;i++){const [ash]=rollD6(1,random),[iron]=rollD6(1,random);rolls.push({ash,iron});if(ash!==iron)return {rolls,winner:ash>iron?'ash':'iron'};}return {rolls,winner:'ash'};}
-function deploymentRollOff(s,random=Math.random){if(!alternating(s))throw Error('This game has no deployment roll-off.');const d=s.deployOrder;if(d.rollOff||d.first)throw Error('The deployment roll-off has been made.');d.rollOff=rollOff(random);return d.rollOff;}
-function chooseDeploymentOrder(s,team,first){const d=s.deployOrder;if(!alternating(s)||!d.rollOff)throw Error('Roll off for deployment first.');if(d.first)throw Error('Who deploys first has already been chosen.');if(team!==d.rollOff.winner)throw Error('Only the roll-off winner chooses who deploys first.');if(!['ash','iron'].includes(first))throw Error('Choose Red or the opponent.');Object.assign(d,{first,next:first,chosenBy:team});return first;}
+// Battle March: the winner deploys the first unit. Under the core rule the winner chooses instead.
+function deploymentRollOff(s,random=Math.random){if(!alternating(s))throw Error('This game has no deployment roll-off.');const d=s.deployOrder;if(!d.zonesChosen)throw Error('Choose the deployment zones first.');if(d.rollOff||d.first)throw Error('The deployment roll-off has been made.');d.rollOff=rollOff(random);if(d.rule==='winner-deploys')Object.assign(d,{first:d.rollOff.winner,next:d.rollOff.winner,chosenBy:null});return d.rollOff;}
+function chooseDeploymentOrder(s,team,first){const d=s.deployOrder;if(!alternating(s)||!d.rollOff)throw Error('Roll off for deployment first.');if(d.rule==='winner-deploys')throw Error('In Battle March the roll-off winner deploys the first unit.');if(d.first)throw Error('Who deploys first has already been chosen.');if(team!==d.rollOff.winner)throw Error('Only the roll-off winner chooses who deploys first.');if(!['ash','iron'].includes(first))throw Error('Choose Red or the opponent.');Object.assign(d,{first,next:first,chosenBy:team});return first;}
 function confirmDeployment(s){
  const d=s.deployOrder;if(!alternating(s))throw Error('This game does not deploy one unit at a time.');
- const p=d.pending?getUnit(s,d.pending):null;if(!p||p.x===null)throw Error('Place a unit before confirming.');
- p.deployed=true;d.pending=null;d.log.push({team:p.team,id:p.id});
- const left=team=>deploymentPieces(s,team).some(q=>!q.deployed),other=p.team==='ash'?'iron':'ash';
- d.next=left(other)?other:left(p.team)?p.team:null;d.complete=!d.next;
- return {id:p.id,next:d.next,complete:d.complete};
+ const b=d.batch,placed=(b?.ids??[]).map(id=>getUnit(s,id)).filter(q=>q&&q.x!==null);if(!b||!placed.length)throw Error('Place a unit before confirming.');
+ const missing=b.ids.map(id=>getUnit(s,id)).filter(q=>q&&q.x===null);if(missing.length)throw Error(`${b.kind==='machines'?'War machines':'Characters'} deploy together: place ${missing.map(q=>q.name).join(' and ')} too, then confirm.`);
+ for(const q of placed){q.deployed=true;d.log.push({team:q.team,id:q.id});}d.batch=null;d.pending=null;
+ const team=placed[0].team,left=t=>deploymentPieces(s,t).some(q=>!q.deployed),other=team==='ash'?'iron':'ash';
+ d.next=left(other)?other:left(team)?team:null;d.complete=!d.next;
+ return {id:placed[0].id,ids:placed.map(q=>q.id),kind:b.kind,next:d.next,complete:d.complete};
 }
 // With a team: place and confirm that side's next unit. Without: deploy both armies at once
 // (a quick start for testing and two-player setups).
 function alternateAutoDeploy(s,team,random=null){
  const d=s.deployOrder;
  if(!team){d.auto=true;try{searchDeploy(s,null,random);}finally{d.auto=false;}for(const p of [...deploymentPieces(s,'ash'),...deploymentPieces(s,'iron')])p.deployed=true;d.first??='ash';Object.assign(d,{next:null,pending:null,complete:true});return null;}
- if(!d.first)throw Error('Roll off first: the winner chooses who deploys first.');
+ if(!d.first)throw Error('Roll off first: the winner deploys the first unit.');
  if(d.next!==team)throw Error(d.complete?'Both armies are deployed.':`${armyName(d.next,s)} deploys the next unit.`);
- const order=deployOrderOf(s,team),pending=d.pending?getUnit(s,d.pending):null,p=pending??order.find(q=>!q.deployed);
- if(!pending)autoSpot(s,p,deployPlan(s,team,random)[p.id]);
+ // The batch already started, or the next one in order; every piece of it goes down, then it is confirmed.
+ const order=deployOrderOf(s,team),pending=d.pending?getUnit(s,d.pending):null,p=pending??order.find(q=>!q.deployed),plan=deployPlan(s,team,random);
+ for(const id of (d.batch??deploymentBatch(s,p)).ids){const q=getUnit(s,id);if(q.x===null)autoSpot(s,q,plan[q.id]);}
  return confirmDeployment(s);
 }
 function deploymentComplete(s){return combatants(s).every(p=>p.x!==null)&&(!s.deployOrder?.alternate||s.deployOrder.complete);}
@@ -1690,7 +1727,7 @@ function finishCombat(s,choice='follow',random=Math.random,reformHeading=null){
  return out??s.lastCombat?.aftermath;
 }
 
-return {BATTLE_MAGIC,BOARD,CANNON_BASE,CHARACTERS,COMMAND_SLOTS,FACTIONS,MISSILE,PHASES,PROFILE,ROCKET_BASE,ROCKET_PROFILES,SIGNATURE_SPELLS,SIZE,SPELL_ROLL,SPELL_TEXT,TROOP_TYPES,WAR_MACHINE_CREW,WAR_MACHINE_STATS,WIZARDS,activeSpells,aliveCount,armyName,attackAllocation,attemptSpell,autoDeploy,availableCharges,availableShots,baseSize,begin,beginCombat,boardOf,canAct,canCast,canDispelVortex,canEngineerReroll,canExchangeSignature,canFireCannon,canFireRocket,canReturnToMovement,canShoot,canStandShoot,cancelCharge,cannonFootprint,cannonPlan,cannonTargets,castSpell,championProfile,chargeFace,chargePlan,chargeReaction,checkPosition,chooseDeploymentOrder,chooseFirstTurn,chooseLoserAction,circleGap,combatGroup,combatPairs,combatants,combats,commandAlive,commandSlots,commitOrder,compareCombat,confirmDeployment,corners,createCannons,createGame,createWizard,declareCharge,deployError,deploymentComplete,deploymentFacing,deploymentPieces,deploymentRollOff,deploymentTurn,dispelOptions,dispelVortex,driftVortices,endOfPlayerTurn,engagedWith,engineerReroll,enterRemaining,equipment,exchangeSignature,fightCombatStep,filesOf,finishCombat,finishDeclarations,finishGame,finishReactions,finishShooting,fireCannon,fireRocket,firstTurnRollOff,forwardPose,gap,generateSpells,getUnit,hasRule,hasShield,heading,hitTarget,hold,impetuousTest,inVisionArc,inZone,inactionReason,insideZone,isCharacter,leadership,localPoint,machineReady,magicResistance,marchTest,maxWheel,missileWeapon,modelSquares,move,moveCombatLoser,movementError,movementRemaining,needsMarchTest,nextPhase,nextTurn,normalize,opponentIds,opponents,orderError,overlaps,phaseComplete,phaseHasActions,place,placeAt,placeCannon,placeRocket,planMove,polygonGap,profile,rally,ranksOf,rectangle,registerFormatRules,remainingWounds,removeCasualties,resolveCharge,resolveCombat,resolveDispel,returnToMovement,rocketFootprint,rocketPlan,rocketTargets,rollCannonDice,rollCombatBreak,rollD6,rollRocketDice,saveTarget,setOpponent,shoot,shootingPlan,shootingTargets,shotToughness,size,skipEmptySteps,spellTargets,standShootTooClose,startingModels,startingUnitStrength,startingWounds,terrainBlocks,troopType,turnDeployed,undo,unitStrength,unplace,vortexDispellers,wheelCost,wheelPose,winnerCombat,woundTarget,zoneBounds,zoneOf};})();
+return {BATTLE_MAGIC,BOARD,CANNON_BASE,CHARACTERS,COMMAND_SLOTS,FACTIONS,MISSILE,PHASES,PROFILE,ROCKET_BASE,ROCKET_PROFILES,SIGNATURE_SPELLS,SIZE,SPELL_ROLL,SPELL_TEXT,TROOP_TYPES,WAR_MACHINE_CREW,WAR_MACHINE_STATS,WIZARDS,activeSpells,aliveCount,armyName,attackAllocation,attemptSpell,autoDeploy,availableCharges,availableShots,baseSize,begin,beginCombat,boardOf,canAct,canCast,canDispelVortex,canEngineerReroll,canExchangeSignature,canFireCannon,canFireRocket,canReturnToMovement,canShoot,canStandShoot,cancelCharge,cannonFootprint,cannonPlan,cannonTargets,castSpell,championProfile,chargeFace,chargePlan,chargeReaction,checkPosition,chooseDeploymentOrder,chooseDeploymentZone,chooseFirstTurn,chooseLoserAction,circleGap,combatGroup,combatPairs,combatants,combats,commandAlive,commandSlots,commitOrder,compareCombat,confirmDeployment,corners,createCannons,createGame,createWizard,declareCharge,deployError,deploymentBatch,deploymentComplete,deploymentFacing,deploymentPieces,deploymentRollOff,deploymentTurn,deploymentZoneChooser,dispelOptions,dispelVortex,driftVortices,endOfPlayerTurn,engagedWith,engineerReroll,enterRemaining,equipment,exchangeSignature,fightCombatStep,filesOf,finishCombat,finishDeclarations,finishGame,finishReactions,finishShooting,fireCannon,fireRocket,firstTurnRollOff,forwardPose,gap,generateSpells,getUnit,hasRule,hasShield,heading,hitTarget,hold,impetuousTest,inVisionArc,inZone,inactionReason,insideZone,isCharacter,leadership,localPoint,machineReady,magicResistance,marchTest,maxWheel,missileWeapon,modelSquares,move,moveCombatLoser,movementError,movementRemaining,needsMarchTest,nextPhase,nextTurn,normalize,opponentIds,opponents,orderError,overlaps,phaseComplete,phaseHasActions,place,placeAt,placeCannon,placeRocket,planMove,polygonGap,profile,rally,ranksOf,rectangle,registerFormatRules,remainingWounds,removeCasualties,resolveCharge,resolveCombat,resolveDispel,returnToMovement,rocketFootprint,rocketPlan,rocketTargets,rollCannonDice,rollCombatBreak,rollD6,rollRocketDice,saveTarget,setOpponent,shoot,shootingPlan,shootingTargets,shotToughness,size,skipEmptySteps,spellTargets,standShootTooClose,startingModels,startingUnitStrength,startingWounds,terrainBlocks,troopType,turnDeployed,undo,unitStrength,unplace,vortexDispellers,wheelCost,wheelPose,winnerCombat,woundTarget,zoneBounds,zoneOf};})();
 const BM=(()=>{// Battle March rules layered on the core engine: objectives, objective control, scoring and the
 // end of the game. The engine calls these hooks through registerFormatRules; the UI and the bot
 // call the same functions.
@@ -1976,6 +2013,7 @@ function deployOpponent(s,random=null){
 // takes the first turn when it wins that roll-off.
 function deploymentChoice(s){
  const d=s.deployOrder;if(s.stage!=='deployment'||!d?.alternate)return null;
+ if(!d.zonesChosen&&G.deploymentZoneChooser(s)==='iron')return 'zone';
  if(d.rollOff&&!d.first&&d.rollOff.winner==='iron')return 'deploy-order';
  if(s.firstTurn&&!s.firstTurn.chosen&&s.firstTurn.winner==='iron')return 'first-turn';
  if(G.deploymentTurn(s)==='iron')return 'deploy';
@@ -1983,9 +2021,11 @@ function deploymentChoice(s){
 }
 function takeDeploymentStep(s,random=null){
  const choice=deploymentChoice(s);
+ // Red set up the map, so the bot picks a zone (either, at random when it has a random source).
+ if(choice==='zone'){const zone=random?(random()<.5?'A':'B'):'A';G.chooseDeploymentZone(s,'iron',zone);return {message:`Red chose the map, so the bot chooses a zone: it takes ${zone==='A'?'zone A':'zone B'}.`,zone};}
  if(choice==='deploy-order'){G.chooseDeploymentOrder(s,'iron','ash');return {message:'The bot won the deployment roll-off and has you deploy first.'};}
  if(choice==='first-turn'){G.chooseFirstTurn(s,'iron','iron');return {message:'The bot won the roll-off and takes the first turn.'};}
- if(choice==='deploy'){const out=deployNext(s,random),p=G.getUnit(s,out.id);return {message:`The bot deploys ${p.name}.`,id:out.id,...out};}
+ if(choice==='deploy'){const out=deployNext(s,random),names=(out.ids??[out.id]).map(id=>G.getUnit(s,id).name);return {message:`The bot deploys ${names.join(' and ')}.`,id:out.id,...out};}
  return null;
 }
 // The bot plans its whole remaining deployment against what is on the table now, then places
@@ -2002,7 +2042,11 @@ function deployNext(s,random=null){
  const order=PLAN_ORDER[s.units.find(u=>u.team==='iron')?.faction==='empire'?'empire':'other'];
  for(const p of G.deploymentPieces(s,'iron').filter(p=>!p.deployed).sort((a,b)=>order.indexOf(a.role)-order.indexOf(b.role))){
   const planned=G.getUnit(trial,p.id);if(planned?.x==null)continue;
-  try{if(p.role==='warmachine')G.placeCannon(s,p.id,planned.x,planned.y);else G.place(s,p.id,planned.x,planned.y);return G.confirmDeployment(s);}catch{}
+  try{G.placeAt(s,p.id,planned.x,planned.y);}catch{continue;}
+  // The rest of its batch (all war machines, or all characters) goes where the plan put them;
+  // anything that no longer fits is placed by quick deployment, which then confirms the batch.
+  for(const id of s.deployOrder.batch?.ids??[]){const q=G.getUnit(s,id),pl=G.getUnit(trial,id);if(q.x===null&&pl?.x!=null)try{G.placeAt(s,id,pl.x,pl.y);}catch{}}
+  return G.autoDeploy(s,{team:'iron',random});
  }
  return G.autoDeploy(s,{team:'iron',random});
 }
@@ -2197,8 +2241,8 @@ command.insertAdjacentHTML('afterbegin','<div class="command-heading"><span clas
 $('sidePhase').insertAdjacentHTML('afterend','<small id="aiStatus" class="ai-status"></small>');
 const sideStack=$('sideStack'),sideActions=document.querySelector('.side-actions');
 sideStack.insertAdjacentHTML('beforeend','<section id="idleOrders" class="panel idle-orders"><h2>Select a regiment</h2><p>Choose a unit on the battlefield for its orders.</p></section>');
-$('opponentPicker').insertAdjacentHTML('beforebegin','<div id="formatSetup" class="format-setup"><label class="opponent-picker">FORMAT <select id="formatSelect" aria-label="Game format"><option value="battle-march">Battle March</option><option value="classic">Classic battle</option></select></label><label class="opponent-picker" id="pointsPicker">POINTS <select id="pointsSelect" aria-label="Points limit"></select></label><label class="opponent-picker" id="boardPicker">BATTLEFIELD <select id="boardSelect" aria-label="Battlefield size"></select></label><label class="opponent-picker" id="mapPicker">DEPLOYMENT <select id="mapSelect" aria-label="Deployment map"></select></label><label class="opponent-picker" id="depthPicker">ZONE DEPTH <input id="depthInput" type="number" min="6" max="14" step="1" value="12" aria-label="Deployment zone depth in inches">″</label><label class="opponent-picker" id="objectivesPicker">OBJECTIVES <select id="objectivesSelect" aria-label="Primary objectives"></select></label><fieldset id="optionalRules" class="optional-rules"><legend>OPTIONAL RULES</legend></fieldset><p id="formatNote" class="control-help"></p><div id="rosterSummary" class="roster-summary"></div></div>');
-{const bmf=F.FORMATS['battle-march'];for(let p=bmf.points.min;p<=bmf.points.max;p+=bmf.points.step)$('pointsSelect').add(new Option(p+' points',p));for(const b of bmf.boards)$('boardSelect').add(new Option(`${b.width}″ × ${b.height}″${b.maxPoints?' (up to '+b.maxPoints+' points)':''}`,b.id));for(const m of F.DEPLOYMENT_MAPS){const o=new Option(m.available?m.name:m.name+' — diagram not supplied',m.id);o.disabled=!m.available;$('mapSelect').add(o);}$('pointsSelect').value=String(bmf.points.default);$('boardSelect').value=F.boardFor(bmf,{points:bmf.points.default}).id;$('mapSelect').value=bmf.deployment.map;$('depthInput').min=bmf.deployment.minDepth;$('depthInput').max=bmf.deployment.maxDepth;}
+$('opponentPicker').insertAdjacentHTML('beforebegin','<div id="formatSetup" class="format-setup"><label class="opponent-picker">FORMAT <select id="formatSelect" aria-label="Game format"><option value="battle-march">Battle March</option><option value="classic">Classic battle</option></select></label><label class="opponent-picker" id="pointsPicker">POINTS <select id="pointsSelect" aria-label="Points limit"></select></label><label class="opponent-picker" id="boardPicker">BATTLEFIELD <select id="boardSelect" aria-label="Battlefield size"></select></label><label class="opponent-picker" id="mapPicker">DEPLOYMENT <select id="mapSelect" aria-label="Deployment map"></select></label><label class="opponent-picker" id="depthPicker">ZONE DEPTH <input id="depthInput" type="number" min="6" max="14" step="1" value="12" aria-label="Deployment zone depth in inches">″</label><label class="opponent-picker" id="mirrorPicker"><input id="mirrorInput" type="checkbox"> MIRRORED</label><label class="opponent-picker" id="objectivesPicker">OBJECTIVES <select id="objectivesSelect" aria-label="Primary objectives"></select></label><fieldset id="optionalRules" class="optional-rules"><legend>OPTIONAL RULES</legend></fieldset><p id="formatNote" class="control-help"></p><div id="rosterSummary" class="roster-summary"></div></div>');
+{const bmf=F.FORMATS['battle-march'];for(let p=bmf.points.min;p<=bmf.points.max;p+=bmf.points.step)$('pointsSelect').add(new Option(p+' points',p));for(const b of bmf.boards)$('boardSelect').add(new Option(`${b.width}″ × ${b.height}″${b.maxPoints?' (up to '+b.maxPoints+' points)':''}`,b.id));$('mapSelect').add(new Option('Roll a D6 for the map','roll'));for(const m of F.DEPLOYMENT_MAPS){const o=new Option(m.available?(m.roll?m.roll+' · ':'')+m.name:m.name+' — diagram not supplied',m.id);o.disabled=!m.available;$('mapSelect').add(o);}$('pointsSelect').value=String(bmf.points.default);$('boardSelect').value=F.boardFor(bmf,{points:bmf.points.default}).id;$('mapSelect').value=bmf.deployment.map;$('depthInput').min=bmf.deployment.minDepth;$('depthInput').max=bmf.deployment.maxDepth;}
 $('idleOrders').append($('formatSetup'),$('opponentPicker'),$('boardAutoDeploy'));
 for(const [key,label]of Object.entries(BM.OBJECTIVE_CHOICES))$('objectivesSelect').add(new Option(label,key));
 for(const [key,rule]of Object.entries(F.OPTIONAL_RULES)){const l=document.createElement('label');l.className='optional-rule'+(rule.available?'':' unavailable');l.title=rule.available?rule.summary:`Not available yet: ${rule.reason}.`;l.innerHTML=`<input type="checkbox" id="opt-${key}"${rule.available?'':' disabled'}> ${rule.name}${rule.available?'':' <small>rules not supplied</small>'}`;$('optionalRules').append(l);}
@@ -2394,12 +2438,15 @@ function objectiveSummary(){
  if(o.kind==='landmark'){const p=o.property;return `${how}one strategic landmark at the centre (100 mm, impassable, blocks line of sight; 25 VP to its holder at the end of every player turn). Property rolled ${p.roll}: ${BM.PROPERTY_NAME[p.rule]} for the unit holding it, until the end of the next turn.`;}
  return `${how}${o.items.length} treasure troves (40 mm; 10 VP each to their holder at the end of every player turn). Custom even layout, not an official diagram${BM.canPlaceObjectives(state)?': drag a trove to move it before the first unit deploys':''}.`;
 }
-function bmHint(){const d=state.deployOrder,f=state.firstTurn;if(!d.rollOff)return 'Battle March: roll off for deployment. The winner chooses who deploys first; then units deploy one at a time.';if(!d.first)return 'The roll-off winner chooses who deploys first.';if(!d.complete)return humanSide(d.next)?`${armyName(d.next)}: place one unit, adjust it if needed, then confirm.`:'The bot is placing a unit.';if(!f)return 'Both armies are deployed. Roll off for the first turn.';if(!f.chosen)return 'The roll-off winner chooses who takes the first turn.';return `${armyName(f.chosen)} takes the first turn. Begin the battle.`;}
+function bmHint(){const d=state.deployOrder,f=state.firstTurn;if(!d.zonesChosen)return `${armyName(G.deploymentZoneChooser(state))} chooses a deployment zone (the other player chose the map).`;if(!d.rollOff)return d.rule==='winner-deploys'?'Battle March: roll off. The winner deploys the first unit; then the armies take turns.':'Roll off: the winner chooses who deploys first.';if(!d.first)return 'The roll-off winner chooses who deploys first.';if(!d.complete)return humanSide(d.next)?`${armyName(d.next)}: pick a unit from the list, place it, move or turn it, then Confirm.`:'The bot is placing a unit.';if(!f)return 'Both armies are deployed. Roll off for the first turn.';if(!f.chosen)return 'The roll-off winner chooses who takes the first turn.';return `${armyName(f.chosen)} takes the first turn. Begin the battle.`;}
+// The confirm button for the batch being placed: a regiment, all war machines, or all characters.
+function batchConfirm(b){const missing=b.ids.filter(id=>G.getUnit(state,id)?.x===null).length,what=b.kind==='machines'?'war machine':'character';if(missing)return {label:`Place ${missing} more ${what}${missing>1?'s':''} (they deploy together)`,disabled:true};return {label:`Confirm ${b.ids.length>1?(b.kind==='machines'?'the war machines':'the characters'):pieceName(b.ids[0])} ✓`,disabled:false};}
 function bmNextStep(){
  const d=state.deployOrder,f=state.firstTurn;
+ if(!d.zonesChosen){const c=G.deploymentZoneChooser(state);return {label:humanSide(c)?`${armyName(c)}: choose a deployment zone`:'Bot is choosing a zone',disabled:true};}
  if(!d.rollOff)return {label:'Roll off for deployment',disabled:false};
  if(!d.first)return {label:humanSide(d.rollOff.winner)?'Choose who deploys first':'Bot is choosing',disabled:true};
- if(!d.complete){if(!humanSide(d.next))return {label:'Bot is deploying',disabled:true};return d.pending?{label:`Confirm ${pieceName(d.pending)} ✓`,disabled:false}:{label:`${armyName(d.next)}: pick a unit to place`,disabled:true};}
+ if(!d.complete){if(!humanSide(d.next))return {label:'Bot is deploying',disabled:true};return d.batch?batchConfirm(d.batch):{label:`${armyName(d.next)}: pick a unit to place`,disabled:true};}
  if(!f)return {label:'Roll off for the first turn',disabled:false};
  if(!f.chosen)return {label:humanSide(f.winner)?'Choose who goes first':'Bot is choosing',disabled:true};
  return {label:'Begin battle',disabled:false};
@@ -2407,6 +2454,7 @@ function bmNextStep(){
 // One setup step from the main button; false once the battle should begin.
 function bmDeployStep(){
  const d=state.deployOrder,f=state.firstTurn;
+ if(!d.zonesChosen)throw Error(`${armyName(G.deploymentZoneChooser(state))} chooses a deployment zone first.`);
  if(!d.rollOff){rollDeployment();return true;}
  if(!d.first)throw Error('The roll-off winner chooses who deploys first.');
  if(!d.complete){confirmPlacement();return true;}
@@ -2414,21 +2462,22 @@ function bmDeployStep(){
  if(!f.chosen)throw Error('The roll-off winner chooses who takes the first turn.');
  return false;
 }
-function rollDeployment(){const r=G.deploymentRollOff(state),last=r.rolls.at(-1);animatedRoll(2,'Deployment roll-off',[last.ash,last.iron]).catch(()=>{});notify(`Deployment roll-off: ${rollText(r)}. ${armyName(r.winner)} chooses who deploys first.`);}
+function rollDeployment(){const r=G.deploymentRollOff(state),last=r.rolls.at(-1);animatedRoll(2,'Deployment roll-off',[last.ash,last.iron]).catch(()=>{});notify(`Deployment roll-off: ${rollText(r)}. ${armyName(r.winner)} ${state.deployOrder.rule==='winner-deploys'?'deploys the first unit.':'chooses who deploys first.'}`);if(state.deployOrder.first)selectNextReserve(state.deployOrder.first);}
 function rollFirstTurn(){const r=G.firstTurnRollOff(state),last=r.rolls.at(-1);animatedRoll(2,'First-turn roll-off',[last.ash,last.iron]).catch(()=>{});notify(`First-turn roll-off: ${rollText(r)}. ${armyName(r.winner)} chooses who takes the first turn.`);}
 function confirmPlacement(){
- const id=state.deployOrder.pending;if(!id)throw Error('Place a unit first: select it, then click inside your deployment zone.');
+ if(!state.deployOrder.batch)throw Error('Place a unit first: pick it from the list, then click inside your deployment zone.');
  const out=G.confirmDeployment(state);ordersOpen=false;rocketSelected=false;cannonSelected=null;
  selectNextReserve(out.next);
- notify(`${pieceName(id)} deployed.${out.complete?' Both armies are deployed: roll off for the first turn.':' '+armyName(out.next)+' deploys next.'}`);
+ notify(`${out.ids.map(pieceName).join(' and ')} deployed.${out.complete?' Both armies are deployed: roll off for the first turn.':' '+armyName(out.next)+' deploys next.'}`);
 }
-function bmQuickDeploy(){safely(()=>{const d=state.deployOrder;if(!d.rollOff)rollDeployment();if(!d.first&&humanSide(d.rollOff.winner))G.chooseDeploymentOrder(state,d.rollOff.winner,d.rollOff.winner);autoPlace=true;notify(`${rollText(d.rollOff)}. Quick deploy: units are placed one at a time as their turns come.`);});}
+function bmQuickDeploy(){safely(()=>{const d=state.deployOrder,chooser=G.deploymentZoneChooser(state);if(!d.zonesChosen&&humanSide(chooser))G.chooseDeploymentZone(state,chooser,state.format.deployment.sides[chooser]);autoPlace=true;if(d.zonesChosen&&!d.rollOff)rollDeployment();if(d.rollOff&&!d.first&&humanSide(d.rollOff.winner))G.chooseDeploymentOrder(state,d.rollOff.winner,d.rollOff.winner);notify('Quick deploy: your units are placed as your turns come.');});}
 // The bot's placements and choices, and quick deployment, one step at a time so each shows.
 function alternateDeploy(){
  if(deployTimer||state.stage!=='deployment')return;
- const turn=G.deploymentTurn(state),botTurn=aiMode==='ai'&&AI.deploymentChoice(state),mine=autoPlace&&turn&&humanSide(turn);
- if(!botTurn&&!mine)return;
+ const turn=G.deploymentTurn(state),botTurn=aiMode==='ai'&&AI.deploymentChoice(state),mine=autoPlace&&turn&&humanSide(turn),roll=autoPlace&&state.deployOrder.zonesChosen&&!state.deployOrder.rollOff;
+ if(!botTurn&&!mine&&!roll)return;
  deployTimer=setTimeout(()=>{deployTimer=null;if(state.stage!=='deployment')return;safely(()=>{
+  if(autoPlace&&state.deployOrder.zonesChosen&&!state.deployOrder.rollOff){rollDeployment();return;}
   if(aiMode==='ai'&&AI.deploymentChoice(state)){const out=AI.takeDeploymentStep(state,Math.random),next=G.deploymentTurn(state);selectNextReserve(next);notify(out.message+(next&&humanSide(next)&&!autoPlace?' Your turn to deploy a unit.':''));}
   else if(autoPlace&&G.deploymentTurn(state)&&humanSide(G.deploymentTurn(state))){const out=G.autoDeploy(state,{team:G.deploymentTurn(state),random:Math.random});notify(`${pieceName(out.id)} deployed.`);}
   if(state.deployOrder.complete)autoPlace=false;
@@ -2440,22 +2489,30 @@ function renderBmSteps(){
  const btn=(act,label,primary=false,disabled=false)=>`<button data-act="${act}" class="${primary?'primary':'secondary'} wide"${disabled?' disabled':''}>${label}</button>`;
  const step=(n,heading,status,body)=>`<section class="bm-step ${status}"><h3><span>${n}</span>${heading}</h3>${body}</section>`;
  const other=team=>team==='ash'?'iron':'ash';
- const order=!d.rollOff?step(2,'Who deploys first','current',`<p>Roll off: the winner chooses who deploys first. The armies then deploy one unit at a time, taking turns.</p>${btn('roll-deploy','Roll off for deployment',true)}`)
-  :!d.first?step(2,'Who deploys first','current',`<p>${rollText(d.rollOff)}: <b>${armyName(d.rollOff.winner)} wins</b> and chooses.</p>${humanSide(d.rollOff.winner)?`<div class="two-buttons">${btn('deploy-first:'+d.rollOff.winner,'We deploy first',true)}${btn('deploy-first:'+other(d.rollOff.winner),'They deploy first')}</div>`:'<p class="muted">The bot is choosing…</p>'}`)
-  :step(2,'Who deploys first','done',`<p>${rollText(d.rollOff)}. ${armyName(d.chosenBy??d.rollOff.winner)} chose: ${armyName(d.first)} deploys first.</p>`);
- const deploying=!d.first?step(3,'Deploy one unit at a time','later','<p>After the roll-off.</p>')
-  :!d.complete?step(3,'Deploy one unit at a time','current',`<p>${count('ash')} · ${count('iron')} deployed.</p><p><b>${armyName(d.next)}</b> ${humanSide(d.next)?(d.pending?`has placed ${pieceName(d.pending)}: drag to adjust, then confirm.`:'to deploy: select a unit in reserve, then click in your zone.'):'is placing a unit…'}</p>${humanSide(d.next)?btn('confirm',d.pending?'Confirm '+pieceName(d.pending):'Confirm placement',true,!d.pending)+`<div class="two-buttons">${btn('auto-one','Auto-place one')}${btn('auto-all',autoPlace?'Quick deploying…':'Quick deploy the rest',false,autoPlace)}</div>`:''}`)
-  :step(3,'Deploy one unit at a time','done',`<p>${count('ash')} · ${count('iron')} deployed.</p>`);
- const first=!d.complete?step(4,'First turn','later','<p>After deployment: roll off; the winner chooses who goes first.</p>')
-  :!f?step(4,'First turn','current',`<p>Roll off: the winner chooses who takes the first turn.</p>${btn('roll-turn','Roll off for the first turn',true)}`)
-  :!f.chosen?step(4,'First turn','current',`<p>${rollText(f)}: <b>${armyName(f.winner)} wins</b> and chooses.</p>${humanSide(f.winner)?`<div class="two-buttons">${btn('first:'+f.winner,'We go first',true)}${btn('first:'+other(f.winner),'They go first')}</div>`:'<p class="muted">The bot is choosing…</p>'}`)
-  :step(4,'First turn','done',`<p>${rollText(f)}. ${armyName(f.winner)} chose: <b>${armyName(f.chosen)} goes first</b>. Begin the battle below.</p>`);
- box.innerHTML=`<div class="panel-kicker"><span>BATTLE MARCH SETUP</span><span>${state.format.points} PTS</span></div>${step(1,'Objectives',BM.canPlaceObjectives(state)?'current':'done',`<p>${objectiveSummary()}</p>`)}${order}${deploying}${first}`;
+ // Zone choice: the player who did not select the map picks a zone (the map was chosen or rolled in the setup panel).
+ const setup=state.format.deployment,map=F.DEPLOYMENT_MAPS.find(m=>m.id===setup?.map),mir=!!setup?.mirrored,chooser=G.deploymentZoneChooser(state),selector=other(chooser),sides=setup?.sides??{ash:'B',iron:'A'},zoneLabel=z=>`zone ${z}: ${map?F.zoneName(map,z,mir):''}`;
+ const zones=!d.zonesChosen?step(2,'Deployment zones','current',`<p>${armyName(selector)} ${setup?.roll?`rolled the map (${setup.roll}: ${map?.name})`:`chose the map (${map?.name})`}, so <b>${armyName(chooser)}</b> chooses a zone.</p>${humanSide(chooser)?`<div class="zone-choice">${btn('zone:A','Take '+zoneLabel('A'),true)}${btn('zone:B','Take '+zoneLabel('B'))}</div>`:'<p class="muted">The bot is choosing…</p>'}`)
+  :step(2,'Deployment zones','done',`<p>${armyName('ash')}: ${zoneLabel(sides.ash)}.<br>${armyName('iron')}: ${zoneLabel(sides.iron)}.</p>`);
+ const winnerDeploys=d.rule==='winner-deploys';
+ const order=!d.zonesChosen?step(3,'Who deploys first','later','<p>After the zones are chosen.</p>')
+  :!d.rollOff?step(3,'Who deploys first','current',`<p>Roll off: ${winnerDeploys?'the winner deploys the first unit':'the winner chooses who deploys first'}. Then the armies take turns: one regiment a turn, all of an army’s war machines together in one turn, and its characters together, last.</p>${btn('roll-deploy','Roll off for deployment',true)}`)
+  :!d.first?step(3,'Who deploys first','current',`<p>${rollText(d.rollOff)}: <b>${armyName(d.rollOff.winner)} wins</b> and chooses.</p>${humanSide(d.rollOff.winner)?`<div class="two-buttons">${btn('deploy-first:'+d.rollOff.winner,'We deploy first',true)}${btn('deploy-first:'+other(d.rollOff.winner),'They deploy first')}</div>`:'<p class="muted">The bot is choosing…</p>'}`)
+  :step(3,'Who deploys first','done',`<p>${rollText(d.rollOff)}. ${winnerDeploys?`${armyName(d.first)} won and deploys the first unit.`:`${armyName(d.chosenBy??d.rollOff.winner)} chose: ${armyName(d.first)} deploys first.`}</p>`);
+ const confirmStep=d.batch?batchConfirm(d.batch):{label:'Confirm placement',disabled:true};
+ const deploying=!d.first?step(4,'Deploy, taking turns','later','<p>After the roll-off.</p>')
+  :!d.complete?step(4,'Deploy, taking turns','current',`<p>${count('ash')} · ${count('iron')} deployed.</p><p><b>${armyName(d.next)}</b> ${humanSide(d.next)?(d.batch?`is placing ${d.batch.ids.map(pieceName).join(' and ')}: move or turn ${d.batch.ids.length>1?'them':'it'}, then confirm.`:'to deploy: pick a regiment, or the war machines (they go together); characters go last.'):'is placing a unit…'}</p>${humanSide(d.next)?btn('confirm',confirmStep.label,true,confirmStep.disabled)+`<div class="two-buttons">${btn('auto-one','Auto-place one')}${btn('auto-all',autoPlace?'Quick deploying…':'Quick deploy the rest',false,autoPlace)}</div>`:''}`)
+  :step(4,'Deploy, taking turns','done',`<p>${count('ash')} · ${count('iron')} deployed.</p>`);
+ const first=!d.complete?step(5,'First turn','later','<p>After deployment: a separate roll-off; the winner chooses who goes first.</p>')
+  :!f?step(5,'First turn','current',`<p>Roll off: the winner chooses who takes the first turn.</p>${btn('roll-turn','Roll off for the first turn',true)}`)
+  :!f.chosen?step(5,'First turn','current',`<p>${rollText(f)}: <b>${armyName(f.winner)} wins</b> and chooses.</p>${humanSide(f.winner)?`<div class="two-buttons">${btn('first:'+f.winner,'We go first',true)}${btn('first:'+other(f.winner),'They go first')}</div>`:'<p class="muted">The bot is choosing…</p>'}`)
+  :step(5,'First turn','done',`<p>${rollText(f)}. ${armyName(f.winner)} chose: <b>${armyName(f.chosen)} goes first</b>. Begin the battle below.</p>`);
+ box.innerHTML=`<div class="panel-kicker"><span>BATTLE MARCH SETUP</span><span>${state.format.points} PTS</span></div>${step(1,'Objectives',BM.canPlaceObjectives(state)?'current':'done',`<p>${objectiveSummary()}</p>`)}${zones}${order}${deploying}${first}`;
  box.querySelectorAll('[data-act]').forEach(b=>b.onclick=()=>bmAction(b.dataset.act));
 }
 function bmAction(act){safely(()=>{
  const [kind,team]=act.split(':'),d=state.deployOrder;
- if(kind==='roll-deploy')rollDeployment();
+ if(kind==='zone'){const c=G.deploymentZoneChooser(state),sides=G.chooseDeploymentZone(state,c,team);notify(`${armyName(c)} takes zone ${sides[c]}; ${armyName(c==='ash'?'iron':'ash')} takes zone ${sides[c==='ash'?'iron':'ash']}. Now roll off: the winner deploys the first unit.`);}
+ else if(kind==='roll-deploy')rollDeployment();
  else if(kind==='deploy-first'){G.chooseDeploymentOrder(state,d.rollOff.winner,team);selectNextReserve(team);notify(`${armyName(team)} deploys first.`);}
  else if(kind==='confirm')confirmPlacement();
  else if(kind==='auto-one'){const out=G.autoDeploy(state,{team:d.next,random:Math.random});selectNextReserve(out.next);notify(`${pieceName(out.id)} deployed.${out.complete?' Both armies are deployed.':' '+armyName(out.next)+' deploys next.'}`);}
@@ -2694,8 +2751,9 @@ $('rulesButton').onclick=()=>$('rulesDialog').showModal();$('closeRules').onclic
 {const ref=$('spellReference');for(const [key,spell]of Object.entries(G.BATTLE_MAGIC)){const p=document.createElement('p');p.innerHTML=`<b>${spell.name}</b> · ${title(spell.type)} · ${spell.cast}+ · ${spell.range?spell.range+'″':['hammerhand','hashutFlames'].includes(key)?'Combat':'Self'}${['hashutCurse','ashStorm','hashutFlames'].includes(key)?' · Lore of Hashut (Daemonsmith signature)':''}<br>`;p.append(G.SPELL_TEXT[key]??'');ref.append(p);}}
 // The chosen deployment map in one line for the setup panel.
 const MIRRORED_MAPS=['close-encounter','opposed-flanks','meeting-engagement','outflank'];
-function mapNote(){const id=state.format.deployment?.map,m=F.DEPLOYMENT_MAPS.find(m=>m.id===id);if(!m)return '';const b=state.board,d=id==='pitched-battle'?` (${b.height/2-7.5}″ deep on this ${b.width}″ × ${b.height}″ battlefield)`:'';return `${m.name}: ${m.summary.replace(/\.$/,'')}${d}.${MIRRORED_MAPS.includes(id)?' Which corner or side each army takes is a mirror choice the measurements leave open.':''}${id==='mountain-pass'?' Armies deploy facing each other along the battlefield.':''}`;}
-function setupOptions(){const format=$('formatSelect').value;if(format==='classic')return {format};return {format,points:Number($('pointsSelect').value),board:$('boardSelect').value,deployment:{map:$('mapSelect').value,depth:Number($('depthInput').value)},objectives:$('objectivesSelect').value,optional:Object.fromEntries(Object.keys(F.OPTIONAL_RULES).map(key=>[key,$('opt-'+key).checked]))};}
+function mapNote(){const setup=state.format.deployment,m=F.DEPLOYMENT_MAPS.find(m=>m.id===setup?.map);if(!m)return '';const b=state.board,mir=!!setup.mirrored&&!m.symmetric;
+ return `${m.name}${setup.roll?` (rolled ${setup.roll})`:''}${mir?', mirrored':''}: ${m.summary.replace(/\.$/,'')}. Zone A: ${F.zoneName(m,'A',mir)}; zone B: ${F.zoneName(m,'B',mir)}.${m.official&&!F.exactMapBoard(b)?` On this ${b.width}″ × ${b.height}″ battlefield the zones keep the published distances from the centre lines: an agreed adaptation of the 44″ × 30″ map, not the published map.`:''}`;}
+function setupOptions(){const format=$('formatSelect').value;if(format==='classic')return {format};return {format,points:Number($('pointsSelect').value),board:$('boardSelect').value,deployment:{map:$('mapSelect').value,depth:Number($('depthInput').value),mirrored:$('mirrorInput').checked},objectives:$('objectivesSelect').value,optional:Object.fromEntries(Object.keys(F.OPTIONAL_RULES).map(key=>[key,$('opt-'+key).checked]))};}
 $('objectivesSelect').onchange=changeSetup;for(const key of Object.keys(F.OPTIONAL_RULES))$('opt-'+key).onchange=changeSetup;
 function newGame(message='Choose an opponent, then deploy all regiments and war machines or use Quick deploy.'){$('diceAnimation').hidden=true;chargeTarget=null;shootTarget=null;rocketTarget=null;rocketSelected=false;cannonSelected=null;cannonTarget=null;cannonMode='ball';cannonAimShort=6;rocketProfile='demolition';rocketIndirect=false;manualOrders=null;autoPlace=false;deployDone=false;deployFocus=null;resultShown=false;seenRaids=null;clearTimeout(deployTimer);deployTimer=null;if($('resultDialog').open)$('resultDialog').close();state=G.createGame($('opponentSelect').value,setupOptions());rolls=[];ordersOpen=false;resetOrder();$('diceResults').innerHTML='<span class="empty-die">?</span><span class="empty-die">?</span>';$('diceSummary').textContent='';$('boardRoll').textContent='';$('rollHistory').innerHTML='<li>No rolls yet.</li>';render();notify(message);}
 $('confirmReset').onclick=()=>{$('resetDialog').close();newGame();};
@@ -2706,13 +2764,14 @@ $('endAgreed').onclick=()=>{$('endDialog').close();safely(()=>{BM.endByAgreement
 $('resultClose').onclick=()=>$('resultDialog').close();$('resultNew').onclick=()=>{$('resultDialog').close();newGame();};
 // Changing the setup starts a fresh deployment with the chosen format, points and battlefield.
 function changeSetup(){if($('formatSelect').value==='battle-march'&&$('opponentSelect').value==='orc'){$('opponentSelect').value='empire';notify('Orcs cannot field a Battle March General in this game yet, so the Empire army is used.');}try{newGame(state.format.id==='battle-march'?`Battle March · ${state.format.points} points on a ${state.board.width}″ × ${state.board.height}″ battlefield. Deploy your army.`:'Classic battle on a 72″ × 48″ battlefield. Deploy your army.');}catch(e){notify(e.message,true);}}
-$('formatSelect').onchange=changeSetup;$('boardSelect').onchange=changeSetup;$('mapSelect').onchange=changeSetup;$('depthInput').onchange=changeSetup;
+$('formatSelect').onchange=changeSetup;$('boardSelect').onchange=changeSetup;$('mapSelect').onchange=changeSetup;$('mirrorInput').onchange=changeSetup;$('depthInput').onchange=changeSetup;
 $('pointsSelect').onchange=()=>{$('boardSelect').value=F.boardFor('battle-march',{points:Number($('pointsSelect').value)}).id;changeSetup();};
 function renderSetup(deploy){
  $('formatSetup').hidden=!deploy;if(!deploy)return;const bm=state.format.id==='battle-march';$('formatSelect').value=state.format.id;
  for(const id of ['pointsPicker','boardPicker','mapPicker','depthPicker','objectivesPicker','optionalRules'])$(id).hidden=!bm;
  // Official maps set their own zone depths; only the custom preset takes one.
  $('depthPicker').hidden=!bm||!F.DEPLOYMENT_MAPS.find(m=>m.id===$('mapSelect').value)?.adjustable;
+ {const m=F.DEPLOYMENT_MAPS.find(m=>m.id===$('mapSelect').value);$('mirrorPicker').hidden=!bm||!!m?.symmetric;if(bm&&state.format.deployment)$('mirrorInput').checked=!!state.format.deployment.mirrored;}
  if(bm){$('objectivesSelect').value=state.format.objectives;for(const key of Object.keys(F.OPTIONAL_RULES))$('opt-'+key).checked=!!state.format.optional[key];}
  if(bm){$('pointsSelect').value=String(state.format.points);$('boardSelect').value=state.board.id;$('mapSelect').value=state.format.deployment.map;$('depthInput').value=String(state.format.deployment.depth);}
  $('opponentSelect').querySelector('[value="orc"]').disabled=bm;$('opponentSelect').querySelector('[value="orc"]').textContent=bm?'Orc Mob · green (no Battle March General yet)':'Orc Mob · green';
@@ -2935,16 +2994,19 @@ $('deployAdjust').querySelectorAll('[data-adj]').forEach(b=>b.onclick=()=>adjust
 // beside the board (drag, nudge, turn), then Next. In Battle March, Next confirms the placement.
 function deployTeams(){if(state.stage!=='deployment')return [];const d=state.deployOrder;if(d?.alternate)return d.first&&!d.complete&&humanSide(d.next)?[d.next]:[];return ['ash','iron'].filter(team=>humanSide(team));}
 function deployPiece(){if(state.stage!=='deployment')return null;const p=rocketSelected?state.rocket:cannonSelected?state.cannons.find(c=>c.id===cannonSelected):G.getUnit(state);return p&&!p.absent&&!p.deployed&&deployTeams().includes(p.team)?p:null;}
-function adjustPiece(){const p=deployPiece(),d=state.deployOrder;return p&&p.x!==null&&(d?.alternate?d.pending===p.id:deployFocus===p.id)?p:null;}
+function adjustPiece(){const p=deployPiece(),d=state.deployOrder;return p&&p.x!==null&&(d?.alternate?!!d.batch?.ids.includes(p.id):deployFocus===p.id)?p:null;}
 function selectPiece(id){const p=G.getUnit(state,id);if(!p)return;rocketSelected=p.id===state.rocket.id;cannonSelected=p.role==='warmachine'&&!rocketSelected?p.id:null;if(p.role!=='warmachine')state.selected=p.id;deployFocus=p.id;ordersOpen=false;$('adjustError').textContent='';}
 function nextReserve(team){const left=G.combatants(state).filter(q=>q.x===null&&!q.absent&&!q.deployed&&deployTeams().includes(q.team));return left.find(q=>q.team===team&&!G.isCharacter(q)&&q.role!=='warmachine')??left.find(q=>q.team===team)??left[0]??null;}
 function renderDeployTray(){
- const tray=$('deployTray'),teams=deployTeams();tray.hidden=!teams.length;if(tray.hidden)return;const chosen=deployPiece(),placing=chosen&&chosen.x===null;
- tray.innerHTML=teams.map(team=>{const pieces=G.combatants(state).filter(p=>p.team===team&&!p.absent),left=pieces.filter(p=>p.x===null).length;
-  return `<div class="panel-kicker"><span>DEPLOY · ${armyName(team).toUpperCase()}</span><span>${left} TO PLACE</span></div><p class="control-help">${chosen?.team===team?(placing?`Click in your zone to place <b>${pieceName(chosen.id)}</b>.`:`Move or turn <b>${pieceName(chosen.id)}</b> on the board, then Confirm.`):'Pick a unit from this list, then click in your zone.'}</p><div class="deploy-chips">${pieces.map(p=>`<button class="deploy-chip${p.id===chosen?.id?' chosen':''}${p.deployed?' done':p.x!==null?' placed':''}" data-piece="${p.id}"${p.deployed?' disabled':''}><b>${pieceName(p.id)}</b><small>${p.deployed?'✓ deployed':p.x!==null?'placed · adjust':p.role==='warmachine'?'war machine':G.isCharacter(p)?(p.role==='wizard'?'wizard':'character'):G.startingModels(p)+' models'}</small></button>`).join('')}</div>`;}).join('');
+ const tray=$('deployTray'),teams=deployTeams();tray.hidden=!teams.length;if(tray.hidden)return;const chosen=deployPiece(),placing=chosen&&chosen.x===null,alt=!!state.deployOrder?.alternate;
+ tray.innerHTML=teams.map(team=>{const pieces=G.combatants(state).filter(p=>p.team===team&&!p.absent),left=pieces.filter(p=>p.x===null).length,waiting=alt&&pieces.some(q=>!q.deployed&&!G.isCharacter(q));
+  const chip=p=>`<button class="deploy-chip${p.id===chosen?.id?' chosen':''}${p.deployed?' done':p.x!==null?' placed':''}" data-piece="${p.id}"${p.deployed||G.isCharacter(p)&&waiting?' disabled':''}><b>${pieceName(p.id)}</b><small>${p.deployed?'✓ deployed':p.x!==null?'placed · move or turn':p.role==='warmachine'?'war machine':G.isCharacter(p)?(p.role==='wizard'?'wizard':'character'):G.startingModels(p)+' models'}</small></button>`;
+  const group=(title,note,list)=>list.length?`<div class="deploy-group"><h4>${title}${note?` <small>${note}</small>`:''}</h4><div class="deploy-chips">${list.map(chip).join('')}</div></div>`:'';
+  return `<div class="panel-kicker"><span>DEPLOY · ${armyName(team).toUpperCase()}</span><span>${left} TO PLACE</span></div><p class="control-help">${chosen?.team===team?(placing?`Click in your zone to place <b>${pieceName(chosen.id)}</b>.`:`Move or turn <b>${pieceName(chosen.id)}</b> on the board, then Confirm.`):'Pick a unit from this list, then click in your zone.'}</p>`
+   +group('Regiments',alt?'one a turn':'',pieces.filter(p=>!G.isCharacter(p)&&p.role!=='warmachine'))+group('War machines',alt?'all together, in one turn':'',pieces.filter(p=>p.role==='warmachine'))+group('Characters',alt?(waiting?'all together, last — after the rest of the army':'all together, now'):'',pieces.filter(p=>G.isCharacter(p)));}).join('');
  scopeTheme(tray,P.themeForTeam(state,teams[0]));tray.querySelectorAll('[data-piece]').forEach(b=>b.onclick=()=>{selectPiece(b.dataset.piece);render();});
 }
-function renderDeployAdjust(){const panel=$('deployAdjust'),p=adjustPiece();panel.hidden=!p;if(!p)return;scopeTheme(panel,P.themeForTeam(state,p.team));$('adjustTitle').textContent=`${pieceName(p.id).toUpperCase()} · FACING ${Math.round(G.heading(p))}°`;panel.querySelector('[data-adj="next"]').textContent=state.deployOrder?.alternate?'Confirm ✓':nextReserve(p.team)?'Confirm · next ▸':'Confirm · done ✓';positionPrompt(panel,p);}
+function renderDeployAdjust(){const panel=$('deployAdjust'),p=adjustPiece();panel.hidden=!p;if(!p)return;scopeTheme(panel,P.themeForTeam(state,p.team));$('adjustTitle').textContent=`${pieceName(p.id).toUpperCase()} · FACING ${Math.round(G.heading(p))}°`;{const b=state.deployOrder?.batch,c=b?batchConfirm(b):null,next=panel.querySelector('[data-adj="next"]');next.textContent=c?c.label:nextReserve(p.team)?'Confirm · next ▸':'Confirm · done ✓';next.disabled=!!c?.disabled;}positionPrompt(panel,p);}
 function adjustAction(act){const p=adjustPiece();if(!p)return;try{
  if(act==='left'||act==='right')G.turnDeployed(state,p.id,G.heading(p)+(act==='left'?-15:15));
  else if(act==='face')G.turnDeployed(state,p.id,G.deploymentFacing(state,p.team));
@@ -2956,7 +3018,7 @@ function adjustBy({dx=0,dy=0,turn=0}){const p=adjustPiece();if(!p)return;try{if(
 // unit in reserve; once every unit is placed, Done hands over (the bot deploys in answer).
 function deployNextPiece(){
  const d=state.deployOrder,p=adjustPiece();
- if(d?.alternate){safely(()=>{if(!d.pending)throw Error('Place a unit first: choose it in the tray, then click in your zone.');deployFocus=null;confirmPlacement();});return;}
+ if(d?.alternate){safely(()=>{if(!d.batch)throw Error('Place a unit first: pick it from the list, then click in your zone.');deployFocus=null;confirmPlacement();});return;}
  const next=nextReserve(p?.team??'ash');
  if(next){selectPiece(next.id);notify(`${p?pieceName(p.id)+' placed. ':''}Next: ${pieceName(next.id)} — click in your zone to place it.`);render();return;}
  deployFocus=null;rocketSelected=false;cannonSelected=null;deployDone=true;notify(aiMode==='ai'?'Your army is placed. The bot deploys in answer: review the field, then Begin battle.':'Both armies are placed. Begin the battle when ready.');render();
