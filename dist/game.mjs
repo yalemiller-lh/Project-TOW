@@ -133,7 +133,8 @@ function claimStandard(s,u,by){if(u&&!u.standardClaimed&&commandAlive(u,'S')){u.
 function destroyUnit(u,reason=null){Object.assign(u,{x:null,y:null,destroyed:true,fleeing:false,engaged:null,raiding:null});if(reason)u.leftBoard=reason;}
 // The prototype keeps 1″ between units. A unit that already stands closer than that to another
 // (friends left shoulder to shoulder after a combat) may move along or away from it, but never into it.
-function closeAtStart(s,u){const start=getUnit(s,u?.id);return v=>!!start&&start.x!==null&&v.id!==start.id&&v.x!==null&&gap(start,v)<1-EPS;}
+// Only friends: an enemy is never reached by an ordinary move, only by a charge.
+function closeAtStart(s,u){const start=getUnit(s,u?.id);return v=>!!start&&start.x!==null&&v.id!==start.id&&v.team===start.team&&v.x!==null&&gap(start,v)<1-EPS;}
 function shrink(poly,d=.03){const c={x:poly.reduce((n,p)=>n+p.x,0)/poly.length,y:poly.reduce((n,p)=>n+p.y,0)/poly.length};return poly.map(p=>{const l=Math.hypot(p.x-c.x,p.y-c.y)||1;return {x:p.x+(c.x-p.x)*d/l,y:p.y+(c.y-p.y)*d/l};});}
 export function checkPosition(state,unit,x,y,deployment=false,{moving=false}={}){
   if(!Number.isFinite(x)||!Number.isFinite(y))return 'Enter valid coordinates.';
@@ -199,7 +200,8 @@ function autoSpot(s,p,{slot=.5,band='front'}={}){
  const a=rad(deploymentFacing(s,p.team)),fw={x:Math.sin(a),y:-Math.cos(a)},lat={x:Math.cos(a),y:Math.sin(a)},zone=zoneOf(s,p.team),{h}=size(p);
  const L=zone.map(q=>q.x*lat.x+q.y*lat.y),D=zone.map(q=>q.x*fw.x+q.y*fw.y),l0=Math.min(...L),l1=Math.max(...L),d0=Math.min(...D),d1=Math.max(...D);
  const front=d1-h/2-.01,back=d0+h/2+.01,middle=(d0+d1)/2,ideal=l0+(l1-l0)*slot,point=(l,d)=>({x:l*lat.x+d*fw.x,y:l*lat.y+d*fw.y});
- const lines=band==='back'?[back,middle,front]:[front,middle,back],along=Array.from({length:Math.ceil((l1-l0)*2)+1},(_,k)=>l0+k/2).sort((m,n)=>Math.abs(m-ideal)-Math.abs(n-ideal));
+ // Lines from the preferred edge inward in ½″ steps, so a unit stands as far back (or forward) as it fits.
+ const depths=Array.from({length:Math.max(1,Math.ceil((front-back)*2)+1)},(_,k)=>Math.min(front,back+k/2)),lines=band==='back'?depths:[...depths].reverse(),along=Array.from({length:Math.ceil((l1-l0)*2)+1},(_,k)=>l0+k/2).sort((m,n)=>Math.abs(m-ideal)-Math.abs(n-ideal));
  for(const d of lines)for(const l of along){const q=point(l,d);try{placePiece(s,p,q.x,q.y);return p;}catch{}}
  // Triangles and quarters: any legal spot in the zone, nearest the intended one first.
  const want=point(ideal,lines[0]),b=zoneBounds(s,p.team),grid=[];for(let x=b.left;x<=b.right+EPS;x+=.5)for(let y=b.top;y<=b.bottom+EPS;y+=.5)grid.push({x,y});
@@ -252,7 +254,7 @@ export function inactionReason(s,u){
  if(u.x===null)return u.offBoardPursuit?'Off the battlefield after pursuing; it returns in its next Movement phase.':'Not on the battlefield.';
  if(u.team!==s.team)return 'Waiting: it is the other army’s turn.';
  const spellNow=u.role==='wizard'&&u.spells.some(key=>BATTLE_MAGIC[key]?.phase===s.stage&&spellTargets(s,u.id,key).some(t=>canCast(s,u.id,key,t.id)));
- if(s.stage==='strategy'){if(u.fleeing&&!u.rallyAttempted||spellNow)return null;if(u.fleeing)return 'Failed to rally this turn and is still fleeing.';return u.role==='wizard'?'No hex or enchantment can be cast now.':'Nothing to do in Strategy: only fleeing units rally and wizards cast here.';}
+ if(s.stage==='strategy'){if(u.fleeing&&!u.rallyAttempted||spellNow||u.role==='wizard'&&canDispelAVortex(s,u))return null;if(u.fleeing)return 'Failed to rally this turn and is still fleeing.';return u.role==='wizard'?'No hex or enchantment can be cast now.':'Nothing to do in Strategy: only fleeing units rally and wizards cast here.';}
  if(s.stage==='movement'){
   if(u.engaged)return 'Engaged in combat: units in combat cannot move.';
   if(u.fleeing)return 'Fleeing: it must rally in its Strategy phase before it can move.';
@@ -370,7 +372,7 @@ export function endOfPlayerTurn(s,team=s.team){
  return true;
 }
 export function finishGame(s,reason){if(s.stage==='finished')return s.result;s.stage='finished';s.pendingCombat=null;s.combatSession=null;s.result={reason,...(formatRules(s)?.endOfGame?.(s)??{})};return s.result;}
-export function nextTurn(s,random=Math.random){if(s.stage!=='combat')throw Error('Finish the Combat phase first.');endOfPlayerTurn(s,s.team);if(s.stage==='finished')return;s.stage='strategy';s.team=s.team==='ash'?'iron':'ash';if(s.team===(s.firstPlayer??'ash'))s.round++;s.units.forEach(u=>{u.moved=false;u.shot=false;u.spent=0;u.movementMode=null;u.marchRequired=null;u.marchTest=null;if(u.pursuitPending&&u.engaged)u.pursuitPending=false;else u.charge=null;u.reaction=null;u.combatFocus=null;u.impetuousTest=null;u.combatResolved=false;u.rallyAttempted=false;u.arcaneUrgency=false;if(u.role==='wizard'){u.castThisTurn=[];u.magicExhausted=false;u.engineerUsed=false;if(u.team===s.team){u.oakenShield=false;u.ashStorm=false;}}if(u.arrowCurseCaster===s.team){u.arrowCurse=false;u.arrowCurseCaster=null;}});s.fatedDispelUsed=false;s.vortexReports=driftVortices(s,random);s.rocket.shot=false;s.rocket.lastShot=null;s.cannons.forEach(c=>{c.shot=false;c.lastShot=null;});s.history=[];s.selected=s.units.find(u=>u.team===s.team).id;formatRules(s)?.startOfTurn?.(s,s.team,random);}
+export function nextTurn(s,random=Math.random){if(s.stage!=='combat')throw Error('Finish the Combat phase first.');endOfPlayerTurn(s,s.team);if(s.stage==='finished')return;s.stage='strategy';s.team=s.team==='ash'?'iron':'ash';if(s.team===(s.firstPlayer??'ash'))s.round++;s.units.forEach(u=>{u.moved=false;u.shot=false;u.pursued=false;u.spent=0;u.movementMode=null;u.marchRequired=null;u.marchTest=null;if(u.pursuitPending&&u.engaged)u.pursuitPending=false;else u.charge=null;u.reaction=null;u.combatFocus=null;u.impetuousTest=null;u.combatResolved=false;u.rallyAttempted=false;u.arcaneUrgency=false;if(u.role==='wizard'){u.castThisTurn=[];u.magicExhausted=false;u.engineerUsed=false;if(u.team===s.team){u.oakenShield=false;u.ashStorm=false;}}if(u.arrowCurseCaster===s.team){u.arrowCurse=false;u.arrowCurseCaster=null;}});s.fatedDispelUsed=false;s.vortexReports=driftVortices(s,random);s.rocket.shot=false;s.rocket.lastShot=null;s.cannons.forEach(c=>{c.shot=false;c.lastShot=null;});s.history=[];s.selected=s.units.find(u=>u.team===s.team).id;formatRules(s)?.startOfTurn?.(s,s.team,random);}
 export function nextPhase(s){if(s.stage==='finished')throw Error('The battle is over.');if(s.pendingSpell)throw Error('Resolve the dispel of the spell just cast first.');if(s.stage==='strategy'&&s.units.some(u=>u.team===s.team&&u.x!==null&&u.fleeing&&!u.rallyAttempted))throw Error('Attempt to rally every fleeing regiment first.');if(s.units.some(u=>u.charge?.status==='declared'))throw Error('Resolve all declared charges first.');if(s.stage==='combat'&&(s.combatSession||s.pendingCombat||combatPairs(s).length))throw Error('Resolve every combat and its outcome first.');const i=PHASES.indexOf(s.stage);if(i<0)throw Error('Begin the battle first.');s.movementReopened=false;s.movementHistory=i===1?s.history:i===2?s.movementHistory:null;if(i===3)nextTurn(s);else{s.stage=PHASES[i+1];s.history=[];if(s.stage==='movement'){s.movementStep='declare';if(!s.units.some(u=>u.team===s.team&&canAct(s,u)&&availableCharges(s,u).length))beginRemaining(s);}s.shootingSkipped=false;if(s.stage==='shooting'&&!phaseHasActions(s)){s.stage='combat';s.shootingSkipped=true;}if(s.stage==='combat')combatants(s).forEach(u=>u.combatResolved=false);}return s.stage;}
 // Movement can be reopened until the active army acts in Shooting (or, when Shooting
 // was skipped, in Combat). Its undo history is kept so the last moves can be taken back.
@@ -381,11 +383,14 @@ export function canReturnToMovement(s){
  return s.stage==='combat'&&!!s.shootingSkipped&&shootingUntouched&&!s.combatSession&&!s.pendingCombat&&!s.units.some(u=>u.combatResolved)&&!castIn(s,'combat');
 }
 export function returnToMovement(s){if(!canReturnToMovement(s))throw Error('Movement can only be reopened before anything happens in Shooting or Combat.');Object.assign(s,{stage:'movement',movementStep:'remaining',history:s.movementHistory??[],movementHistory:null,movementReopened:true,shootingSkipped:false});return s.stage;}
+// An enemy Remains in Play vortex this wizard can still try to dispel in its own Strategy phase:
+// by its own Wizardly dispel when in range, or by the side's unused Fated Dispel.
+function canDispelAVortex(s,u){return (s.vortices??[]).some(v=>canDispelVortex(s,v.caster)&&(vortexDispellers(s,v.caster).some(w=>w.id===u.id)||!s.fatedDispelUsed));}
 export function phaseHasActions(s){
  if(s.stage==='deployment'||s.stage==='finished'||s.pendingSpell)return true;
  const active=s.units.filter(u=>u.team===s.team&&u.x!==null&&aliveCount(u)>0);
  const spells=phase=>active.some(u=>u.role==='wizard'&&u.spells.some(key=>BATTLE_MAGIC[key]?.phase===phase&&spellTargets(s,u.id,key).some(t=>canCast(s,u.id,key,t.id))));
- if(s.stage==='strategy')return active.some(u=>u.fleeing&&!u.rallyAttempted)||spells('strategy')||active.some(u=>canExchangeSignature(s,u));
+ if(s.stage==='strategy')return active.some(u=>u.fleeing&&!u.rallyAttempted)||spells('strategy')||active.some(u=>canExchangeSignature(s,u)||u.role==='wizard'&&canDispelAVortex(s,u));
  if(s.stage==='movement'&&s.movementStep==='reactions')return s.units.some(u=>u.charge?.reaction==='pending');
  if(s.stage==='movement')return s.movementStep==='declare'?active.some(u=>u.charge?.status==='declared'||canAct(s,u)&&availableCharges(s,u).length):s.movementStep==='charges'?active.some(u=>u.charge?.status==='declared'):active.some(u=>canAct(s,u))||spells('movement')||!!s.movementReopened;
  if(s.stage==='shooting')return availableShots(s).length>0||[s.rocket,...s.cannons].some(m=>m&&machineReady(s,m))||spells('shooting');
@@ -432,7 +437,10 @@ function spellVision(u,t){const a=rad(-heading(u)),dx=t.x-u.x,dy=t.y-u.y,lx=dx*M
 export function spellTargets(s,id,key){const u=getUnit(s,id),spell=BATTLE_MAGIC[key];if(!u||!spell)return [];if(['shield','pillar','ashStorm'].includes(key))return [u];return s.units.filter(t=>t.x!==null&&aliveCount(t)>0&&(key==='urgency'?t.team===u.team&&t.moved&&!t.fleeing&&!t.engaged:t.team!==u.team)&&(!spell.range||gap(u,t)<=spell.range+EPS)&&(['hammerhand','hashutFlames'].includes(key)?engagedWith(u,t):key==='hashutCurse'?isCharacter(t)&&spellVision(u,t):!t.engaged&&spellVision(u,t))&&(!['fireball','hashutCurse'].includes(key)||modelCanSee(s,u,t,modelSquares(s,u)[0],spell.range)));
 }
 export function canCast(s,id,key,targetId){const u=getUnit(s,id),spell=BATTLE_MAGIC[key],t=getUnit(s,targetId);if(s.pendingSpell||!u||u.role!=='wizard'||u.raiding&&spell?.range||u.team!==s.team&&!['hammerhand','hashutFlames'].includes(key)||u.x===null||u.fleeing||!spell||s.stage!==spell.phase||key==='urgency'&&s.movementStep!=='remaining'||['fireball','pillar','hashutCurse'].includes(key)&&u.movementMode==='march'||!u.spells.includes(key)||u.castThisTurn.includes(key)||u.castThisTurn.length>=u.level||u.magicExhausted)return false;if(u.engaged&&!['hammerhand','hashutFlames','shield','ashStorm'].includes(key))return false;if(['shield','pillar','ashStorm'].includes(key))return targetId===id;return !!t&&spellTargets(s,id,key).includes(t);}
-function magicDamage(s,target,hits,strength,ap,random,flaming=false,ignoreArmour=false){const dice={wound:[],save:[],ward:[]};let wounds=0,unsaved=0;for(let i=0;i<hits&&aliveCount(target)>0;i++){const wound=rollD6(1,random)[0];dice.wound.push(wound);if(wound<Math.max(2,Math.min(6,4+profile(target).T-strength)))continue;wounds++;if(!ignoreArmour){const armour=rollD6(1,random)[0];dice.save.push(armour);const save=Math.max(2,Math.min(7,profile(target).save+ap));if(armour>=save)continue;}const ward=target.oakenShield?5:target.role==='wizard'&&target.faction==='chaos'&&flaming?5:7;if(ward<=6){const value=rollD6(1,random)[0];dice.ward.push(value);if(value>=ward)continue;}removeCasualties(s,target,1);unsaved++;}return {hits,wounds,unsaved,dice};}
+function magicDamage(s,target,hits,strength,ap,random,flaming=false,ignoreArmour=false){const dice={wound:[],save:[],ward:[]};let wounds=0,unsaved=0;for(let i=0;i<hits&&aliveCount(target)>0;i++){const wound=rollD6(1,random)[0];dice.wound.push(wound);if(wound<Math.max(2,Math.min(6,4+profile(target).T-strength)))continue;wounds++;if(!ignoreArmour){const armour=rollD6(1,random)[0];dice.save.push(armour);const save=Math.max(2,Math.min(7,profile(target).save+ap));if(armour>=save)continue;}const ward=target.oakenShield?5:target.role==='wizard'&&target.faction==='chaos'&&flaming?5:7;if(ward<=6){const value=rollD6(1,random)[0];dice.ward.push(value);if(value>=ward)continue;}removeCasualties(s,target,1);unsaved++;}wipeOut(s,target);return {hits,wounds,unsaved,dice};}
+// A regiment whose last model falls to shooting, Stand & Shoot, a spell or a vortex leaves the
+// battlefield at once (full casualty VP). In a combat being fought, the combat result settles it.
+function wipeOut(s,u){if(!u||u.x===null||aliveCount(u)>0)return;const p=s.pendingCombat;if(s.combatSession?.units?.includes(u.id)||p&&(p.combat??[p.winner,p.loser]).includes(u.id))return;release(s,u);s.vortices=(s.vortices??[]).filter(v=>v.caster!==u.id);destroyUnit(u);}
 function miscast(s,u,random){if(u.faction==='chaos'){const test=rollD6(1,random)[0];if(test>profile(u).T){removeCasualties(s,u,1);u.petrified++;return {kind:'Sorcerer’s Curse',test,wounds:1,toughness:profile(u).T};}}const dice=rollD6(2,random),sum=dice[0]+dice[1];if(sum<=6){const radius=sum<=4?2.5:1.5,strength=sum<=4?10:6,ap=sum<=4?4:2;const affected=s.units.filter(t=>t.x!==null&&Math.hypot(t.x-u.x,t.y-u.y)<=radius+Math.max(size(t).w,size(t).h)/2).map(t=>({id:t.id,...magicDamage(s,t,1,strength,ap,random)}));return {kind:sum<=4?'Dimensional Cascade':'Calamitous Detonation',dice,affected,cast:false};}if(sum===7){const hit=magicDamage(s,u,1,4,1,random);return {kind:'Careless Conjuration',dice,hit,cast:false};}u.magicExhausted=true;return {kind:sum<=9?'Barely Controlled Power':'Power Drain',dice,cast:true,undispellable:sum>=10};}
 function magicPanic(s,caster,target,random){const dice=rollD6(2,random),passed=dice[0]+dice[1]<=leadership(target);if(passed)return {dice,passed};if(target.engaged)return {dice,passed,gaveGround:true};target.fleeing=true;target.moved=true;target.heading=normalize(Math.atan2(target.x-caster.x,-(target.y-caster.y))*180/Math.PI);const flee=rollD6(2,random),move=fleeMove(s,target,flee[0]+flee[1],random);return {dice,passed,flee,fledOffBoard:move.fledOffBoard,move};}
 // Casting and dispelling are two steps. attemptSpell makes the casting roll; a cast spell that
@@ -528,18 +536,25 @@ function fireMissiles(s,u,t,plan,random=Math.random){
  const toWound=Math.max(2,Math.min(6,4+profile(t).T-plan.weapon.strength));dice.wound=shootDice(hits,random);if(plan.weapon.hailshot&&plan.shooters>=10){dice.woundReroll=[];for(const [i,n]of dice.wound.entries())if(n===1){const r=shootDice(1,random)[0];dice.woundReroll.push(r);dice.wound[i]=r;}}
  const wounds=dice.wound.filter(n=>n>=toWound).length;
  const toSave=Math.min(7,Math.max(2,profile(t).save-(hasShield(t)?1:0)+plan.weapon.ap));dice.save=shootDice(wounds,random);
- let unsaved=Math.min(remainingWounds(t),dice.save.filter(n=>n<toSave).length);if(t.oakenShield){dice.ward=shootDice(unsaved,random);unsaved=dice.ward.filter(n=>n<5).length;}removeCasualties(s,t,unsaved);if(aliveCount(t)===0){release(s,t);t.destroyed=true;}
+ let unsaved=Math.min(remainingWounds(t),dice.save.filter(n=>n<toSave).length);if(t.oakenShield){dice.ward=shootDice(unsaved,random);unsaved=dice.ward.filter(n=>n<5).length;}removeCasualties(s,t,unsaved);wipeOut(s,t);
  return {...plan,from:u.id,to:t.id,shots,hits,wounds,unsaved,toWound,toSave,hitTargets,dice};
 }
 export function shoot(s,id,target,random=Math.random){const u=getUnit(s,id),t=getUnit(s,target),plan=shootingPlan(s,u,t);if(plan.error)throw Error(plan.error);const result=fireMissiles(s,u,t,plan,random);u.shot=true;s.lastShooting=result;return result;}
 
 // Charge routes use one measured leading-corner wheel, then a free alignment wheel.
 // Face selection is fixed by the charger's starting position.
+// A unit's front, flank and rear arcs run out from the corners of its base at 45°, so a charger
+// flush against the front of a shallow unit is in its front arc even beyond its centre diagonals.
 export function chargeFace(u,t){
  const a=rad(-heading(t)),c=Math.cos(a),si=Math.sin(a),{w}=size(u),b=w/5,counts={front:0,rear:0,'left flank':0,'right flank':0};
- for(let i=0;i<5;i++){const p=localPoint(u,(i-2)*b,-size(u).h/2),dx=p.x-t.x,dy=p.y-t.y,x=dx*c-dy*si,y=dx*si+dy*c;counts[Math.abs(x)<=Math.abs(y)?y<0?'front':'rear':x<0?'left flank':'right flank']++;}
+ for(let i=0;i<5;i++){const p=localPoint(u,(i-2)*b,-size(u).h/2),dx=p.x-t.x,dy=p.y-t.y,x=dx*c-dy*si,y=dx*si+dy*c;counts[Math.abs(y)-size(t).h/2>=Math.abs(x)-size(t).w/2-1e-6?y<0?'front':'rear':x<0?'left flank':'right flank']++;}
  return Object.entries(counts).sort((a,b)=>b[1]-a[1])[0][0];
 }
+// The front (vision) arc also runs out from the front corners at 45°: a point is in it when it is
+// ahead of the front edge and no further past a front corner sideways than it is ahead. A target
+// is in the arc when any part of it is.
+function inFrontArc(u,p){const a=rad(-heading(u)),dx=p.x-u.x,dy=p.y-u.y,x=dx*Math.cos(a)-dy*Math.sin(a),y=dx*Math.sin(a)+dy*Math.cos(a),{w,h}=size(u),ahead=-y-h/2;return ahead>=-EPS&&Math.abs(x)-w/2<=ahead+EPS;}
+export function inVisionArc(u,t){const poly=corners(t),points=[{x:t.x,y:t.y}];for(let i=0;i<4;i++){const a=poly[i],b=poly[(i+1)%4];for(let k=0;k<10;k++)points.push({x:a.x+(b.x-a.x)*k/10,y:a.y+(b.y-a.y)*k/10});}return points.some(p=>inFrontArc(u,p));}
 function directChargePlan(s,u,t){
  if(!u||!t||u.x===null||t.x===null||u.team===t.team)return {error:'Choose an enemy regiment.'};
  if(u.rallied)return {error:'A regiment that rallied this turn cannot charge.'};
@@ -547,7 +562,7 @@ function directChargePlan(s,u,t){
  if(u.fleeing||aliveCount(u)===0||aliveCount(t)===0)return {error:'Choose an enemy regiment.'};
  if(gap(u,t)>profile(u).M+6+EPS)return {error:`Beyond the maximum ${profile(u).M+6}″ charge range.`};
  const a=rad(-heading(u)),dx=t.x-u.x,dy=t.y-u.y,lx=dx*Math.cos(a)-dy*Math.sin(a),ly=dx*Math.sin(a)+dy*Math.cos(a);
- if(ly>=0||Math.abs(lx)>-ly+EPS)return {error:'Target centre is outside the front arc in this prototype.'};
+ if(!inVisionArc(u,t))return {error:'The target is outside the charger’s front arc.'};
  const face=chargeFace(u,t),offset={'front':0,'rear':180,'left flank':-90,'right flank':90}[face],out=normalize(heading(t)+offset),desired=normalize(out+180),angle=((desired-heading(u)+540)%360)-180;
  if(Math.abs(angle)>90+EPS)return {error:'This charge needs more than a 90° wheel.'};
  const after=Math.abs(angle)>EPS?wheelPose(u,angle):{...u},a2=rad(desired),f={x:Math.sin(a2),y:-Math.cos(a2)},right={x:Math.cos(a2),y:Math.sin(a2)};
@@ -974,7 +989,9 @@ export function compareCombat(s){
  // The dead are removed; a destroyed unit's standard goes to the other side if any of it stands.
  for(const dead of units.filter(u=>aliveCount(u)===0)){const other=dead.team==='ash'?'iron':'ash';if(c.standards?.[dead.id]&&standing(other)&&!dead.standardClaimed){dead.standardClaimed=other;(s.trophies??=[]).push({unit:dead.id,team:other,round:s.round});}release(s,dead);if(!dead.destroyed||dead.x!==null)destroyUnit(dead);}
  if(outcome==='destroyed'){const free=winners.filter(id=>unit(id).role!=='warmachine'&&!opponents(s,unit(id)).length);if(free.length){s.pendingCombat={combat:c.units,winnerSide,loserSide:null,margin,outcome:'overrun',stage:'winner-choice',winners:free,losers:[],results:{},former,winner:free[0],loser:former[free[0]]?.[0]??loser,loserDestroyed:true,retreat:{moved:0,dir:null}};}}
- else if(winnerSide){s.pendingCombat={combat:c.units,winnerSide,loserSide,margin,stage:'break',winners,losers,results:{},former,loser:losers[0]};s.pendingCombat.winner=facingWinner(s,s.pendingCombat,losers[0]);}
+ // Every losing unit still facing an enemy takes a Break test, in a fixed order (not the order the
+ // combat happened to be started from); one left with no enemy in contact does not.
+ else if(winnerSide){const testing=[...losers].sort().filter(id=>{const l=unit(id);return l&&l.x!==null&&aliveCount(l)>0&&opponents(s,l).length;});const p=s.pendingCombat={combat:c.units,winnerSide,loserSide,margin,stage:'break',winners,losers:testing,results:{},former,loser:testing[0]};if(testing.length)p.winner=facingWinner(s,p,testing[0]);else if(!nextWinner(s,p,0))s.pendingCombat=null;}
  for(const id of loserSide?units.filter(u=>u.team===loserSide).map(u=>u.id):[]){const l=unit(id);if(l?.effects)l.effects=l.effects.filter(e=>e.rule!=='frenzy');}
  return result;
 }
@@ -1073,7 +1090,7 @@ function pursuitAdvance(s,winner,distance,dir,ignoredId,originalId){
     if(obstacle.fleeing){claimStandard(s,obstacle,winner.team);destroyUnit(obstacle);}
     else{
      const unfought=obstacle.engaged&&!obstacle.combatResolved;engage(winner,obstacle);
-     if(obstacle.id!==originalId){winner.charge={target:obstacle.id,status:'success',distance:moved,face:chargeFace(winner,obstacle),pursuit:true};winner.pursuitPending=true;if(unfought){winner.combatResolved=false;joined=true;}else winner.combatResolved=obstacle.combatResolved=true;}
+     if(obstacle.id!==originalId){winner.charge={target:obstacle.id,status:'success',distance:moved,face:chargeFace(winner,obstacle),pursuit:true};if(unfought){winner.combatResolved=false;joined=true;winner.pursued=true;}else{winner.pursuitPending=true;winner.combatResolved=obstacle.combatResolved=true;}}
     }
    }else blocked=true;
    break;
@@ -1093,7 +1110,8 @@ function winnerTarget(s,p,id){
 }
 function nextWinner(s,p,from){
  for(let i=from;i<(p.winners?.length??0);i++){
-  const w=getUnit(s,p.winners[i]);if(!w||w.x===null||aliveCount(w)===0||w.role==='warmachine'||opponents(s,w).length)continue;
+  // A unit that pursued into another combat this phase does not pursue again.
+  const w=getUnit(s,p.winners[i]);if(!w||w.x===null||aliveCount(w)===0||w.role==='warmachine'||w.pursued||opponents(s,w).length)continue;
   const t=winnerTarget(s,p,w.id);if(!t)continue;const r=p.results[t.loser]??{};
   Object.assign(p,{stage:'winner-choice',winnerIndex:i,winner:w.id,loser:t.loser,outcome:t.outcome,retreat:r.retreat??{moved:0,dir:null},retreatDice:r.retreatDice??null,fleeDistance:r.fleeDistance??0,loserDestroyed:t.outcome==='overrun'||!!r.loserDestroyed||!!getUnit(s,t.loser)?.destroyed});
   return true;

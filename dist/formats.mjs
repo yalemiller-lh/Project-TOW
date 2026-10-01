@@ -10,12 +10,13 @@ export const rect=(x0,y0,x1,y1)=>[{x:x0,y:y0},{x:x1,y:y0},{x:x1,y:y1},{x:x0,y:y1
 // takes on the asymmetric maps is a mirror choice the measurements leave open, and the triangular
 // zones are read as running corner to corner.
 const arc=(cx,cy,r,from,to,steps=24)=>Array.from({length:steps+1},(_,i)=>{const a=(from+(to-from)*i/steps)*Math.PI/180;return {x:cx+r*Math.cos(a),y:cy+r*Math.sin(a)};});
-// Headings armies deploy facing: 0 faces the top edge.
+// Headings armies deploy facing: 0 faces the top edge. These are defaults (players can turn each
+// unit as they deploy): along the table on the short-edge maps, toward the centre from the quarters.
 const UPRIGHT={ash:0,iron:180},SIDEWAYS={ash:90,iron:270};
 export const DEPLOYMENT_MAPS=[
  {id:'pitched-battle',name:'Pitched Battle',roll:1,summary:'zones along the long edges; each boundary is 7.5″ from the centre line, leaving a 15″ gap.',
   zones:b=>{const d=b.height/2-7.5;return {ash:rect(0,b.height-d,b.width,b.height),iron:rect(0,0,b.width,d)};}},
- {id:'close-encounter',name:'Close Encounter',roll:2,summary:'opposite quarters, excluding a 15″-diameter circle centred on the battlefield.',
+ {id:'close-encounter',name:'Close Encounter',roll:2,facing:{ash:45,iron:225},summary:'opposite quarters, excluding a 15″-diameter circle centred on the battlefield.',
   zones:b=>{const cx=b.width/2,cy=b.height/2,r=7.5;return {ash:[{x:0,y:cy},...arc(cx,cy,r,180,90),{x:cx,y:b.height},{x:0,y:b.height}],iron:[{x:cx,y:0},{x:b.width,y:0},{x:b.width,y:cy},...arc(cx,cy,r,0,-90)]};}},
  {id:'opposed-flanks',name:'Opposed Flanks',roll:3,summary:'opposite triangles along the long edges; their diagonal boundaries leave an 18″ gap along each side edge.',
   zones:b=>{const leg=b.height-18;return {ash:[{x:0,y:b.height},{x:b.width,y:b.height},{x:b.width,y:b.height-leg}],iron:[{x:0,y:0},{x:b.width,y:0},{x:0,y:leg}]};}},
@@ -23,7 +24,7 @@ export const DEPLOYMENT_MAPS=[
   zones:b=>{const d=b.height/2-7.5;return {ash:rect(0,b.height-d,b.width-11,b.height),iron:rect(11,0,b.width,d)};}},
  {id:'mountain-pass',name:'Mountain Pass',roll:5,facing:SIDEWAYS,summary:'zones on the opposite short edges; each boundary is 11″ from the centre line, leaving a 22″ gap.',
   zones:b=>{const d=b.width/2-11;return {ash:rect(0,0,d,b.height),iron:rect(b.width-d,0,b.width,b.height)};}},
- {id:'outflank',name:'Outflank',roll:6,summary:'opposite triangles on the short edges, with a diagonal central strip 22″ wide along the top and bottom edges.',
+ {id:'outflank',name:'Outflank',roll:6,facing:{ash:270,iron:90},summary:'opposite triangles on the short edges, with a diagonal central strip 22″ wide along the top and bottom edges.',
   zones:b=>{const leg=b.width-22;return {ash:[{x:b.width-leg,y:b.height},{x:b.width,y:b.height},{x:b.width,y:0}],iron:[{x:0,y:0},{x:leg,y:0},{x:0,y:b.height}]};}},
 ].map(m=>({official:true,available:true,facing:UPRIGHT,...m}));
 DEPLOYMENT_MAPS.push({id:'custom-long-edges',name:'Custom preset: long-edge zones (not an official map)',official:false,available:true,adjustable:true,facing:UPRIGHT,summary:'long-edge zones of the chosen depth.',
