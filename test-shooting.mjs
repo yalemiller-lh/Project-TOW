@@ -49,7 +49,7 @@ for(const [faction,name,range] of [['empire','State Missile Troops',30],['orc','
  assert.equal(G.canStandShoot(s,d,c),true);
 }
 {
- const s=duel('chaos');s.movementStep='declare';G.getUnit(s,'A4').y=22;G.declareCharge(s,'A4','I4');let i=0;const r=G.chargeReaction(s,'A4','stand-shoot',()=>i++<98?.99:0);assert.equal(r.report.toHit,4);assert.equal(r.report.shots,42);assert.equal(r.stopped,true);assert.equal(G.getUnit(s,'A4').charge.status,'stopped');G.finishDeclarations(s);assert.equal(s.movementStep,'remaining');
+ const s=duel('chaos');s.movementStep='declare';G.getUnit(s,'A4').y=22;{const ch=G.getUnit(s,'A4');ch.deadModels=G.modelSquares(s,ch).map(m=>m.index).slice(10);}G.declareCharge(s,'A4','I4');let i=0;const r=G.chargeReaction(s,'A4','stand-shoot',()=>i++<35?.99:0);assert.equal(r.report.toHit,4);assert.equal(r.report.shots,15,'no Volley Fire when Standing & Shooting: the front rank, D3 each');assert.equal(r.stopped,true);assert.equal(G.getUnit(s,'A4').charge.status,'stopped');G.finishDeclarations(s);assert.equal(s.movementStep,'remaining');
 }
 {
  const s=duel();G.nextPhase(s);const t=G.getUnit(s,'I4');assert.deepEqual(G.availableShots(s).map(u=>u.id),['A4']);t.engaged='A1';

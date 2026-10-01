@@ -33,7 +33,8 @@ function prepare(s,key,phase='strategy',caster='A6'){s.stage=phase;s.team=caster
  const s=battle(),u=prepare(s,'pillar','shooting');const out=G.castSpell(s,u.id,'pillar',u.id,()=>.8,{point:{x:u.x,y:u.y-5}});assert.equal(out.cast,true);assert.equal(s.vortices.length,1);assert.equal(s.vortices[0].radius,1.5);const drift=G.driftVortices(s,()=>.5);assert.equal(drift.length,1);assert.equal(drift[0].distance,4);assert.throws(()=>G.dispelVortex(s,u.id,()=>.99,'fated'),/Strategy/);Object.assign(s,{stage:'strategy',team:u.team==='ash'?'iron':'ash'});assert.equal(G.dispelVortex(s,u.id,()=>.99,'fated').success,true);assert.equal(s.vortices.length,0);
 }
 {
- const s=battle(),u=prepare(s,'coward'),t=G.getUnit(s,'I1');t.x=4;t.y=30;const out=G.castSpell(s,u.id,'coward',t.id,sequence(.8,.8,.99));assert.equal(out.cast,true);assert.equal(out.effect.passed,false);assert.equal(t.fleeing||t.destroyed,true);
+ const s=battle(),u=prepare(s,'coward'),t=G.getUnit(s,'I1');t.x=4;t.y=30;const out=G.castSpell(s,u.id,'coward',t.id,sequence(.8,.8,.99));assert.equal(out.cast,true);assert.equal(out.effect.passed,false);assert.equal(out.effect.outcome,'fall-back','more than half its models: it Falls Back in Good Order');assert.equal(t.fleeing,false);
+ const h=battle(),hu=prepare(h,'coward'),ht=G.getUnit(h,'I1');ht.x=4;ht.y=30;ht.deadModels=G.modelSquares(h,ht).map(m=>m.index).slice(10);const half=G.castSpell(h,hu.id,'coward',ht.id,sequence(.8,.8,.99));assert.equal(half.effect.outcome,'flee');assert.equal(ht.fleeing||ht.destroyed,true);
 }
 {
  const s=battle(),u=prepare(s,'hammerhand','combat'),t=G.getUnit(s,'I1');u.x=20;u.y=20;t.x=20;t.y=18;u.engaged=t.id;t.engaged=u.id;G.beginCombat(s,u.id);while(s.combatSession.initiative[u.id]!==s.combatSession.groups[s.combatSession.step])G.fightCombatStep(s,()=>0);const out=G.castSpell(s,u.id,'hammerhand',t.id,()=>.9);assert.equal(out.cast,true);assert.ok(out.effect.hits>=2);

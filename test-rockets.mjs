@@ -33,10 +33,11 @@ function battle(opponent='empire'){const s=G.createGame(opponent);G.autoDeploy(s
  assert.ok(result.unsaved>0);assert.ok(result.panic?.length>0);assert.equal(result.panic[0].unit,'I1');assert.equal(result.panic[0].passed,false);
 }
 {
- const s=battle(),target=G.getUnit(s,'I1');target.x=8;target.y=20;
- let rolls=0;const result=G.fireRocket(s,'I1','incendiary',{artillery:2,scatter:'hit'},()=>++rolls===3?.2:.6);
+ const s=battle(),target=G.getUnit(s,'I1');target.x=8;target.y=20;for(const u of [...s.units,...s.cannons])if(u.id!=='I1'){u.x=null;u.y=null;}target.deadModels=G.modelSquares(s,target).map(m=>m.index).slice(10);// half strength: it flees
+ // Saves of 5 hold against the rocket (State Troops 5+): only the third roll fails.
+ let rolls=0;const result=G.fireRocket(s,'I1','incendiary',{artillery:2,scatter:'hit'},()=>++rolls===3?.2:.7);
  const panic=result.panic.find(p=>p.unit==='I1');
- assert.equal(panic.passed,false);assert.deepEqual(panic.fleeDice,[4,4]);
+ assert.equal(panic.passed,false);assert.deepEqual(panic.fleeDice,[5,5]);
  assert.equal(panic.fledOffBoard,false);assert.equal(target.fleeing,true);
  assert.equal(target.destroyed,undefined);assert.ok(target.x!==null&&target.y>0);
  assert.ok(G.aliveCount(target)>0);
@@ -45,7 +46,7 @@ function battle(opponent='empire'){const s=G.createGame(opponent);G.autoDeploy(s
 }
 {
  const s=battle(),target=G.getUnit(s,'I1');target.x=8;target.y=6;
- let rolls=0;const result=G.fireRocket(s,'I1','incendiary',{artillery:2,scatter:'hit'},()=>++rolls===3?.2:.6);
+ let rolls=0;const result=G.fireRocket(s,'I1','incendiary',{artillery:2,scatter:'hit'},()=>++rolls===3?.2:.7);
  const panic=result.panic.find(p=>p.unit==='I1');
  assert.equal(panic.passed,false);assert.equal(panic.fledOffBoard,true);
  assert.equal(target.destroyed,true);assert.equal(target.x,null);

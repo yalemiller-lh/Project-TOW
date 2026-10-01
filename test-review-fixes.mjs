@@ -46,3 +46,61 @@ test('an enemy Pillar of Fire in dispel range keeps Strategy open and the wizard
  for(const u of s.units)if(u.team==='ash')u.fleeing=false;
  assert.equal(G.phaseHasActions(s),true);assert.equal(G.inactionReason(s,w),null);assert.equal(G.phaseComplete(s,w),false);
 });
+test('a regiment flush against the front of a narrower unit fights its front: no flank bonus',()=>{
+ const s=G.createGame('empire');G.autoDeploy(s);G.begin(s,()=>0);clearExcept(s,['A6','I1']);const w=G.getUnit(s,'A6'),t=G.getUnit(s,'I1');
+ Object.assign(t,{x:30,y:20,heading:180});Object.assign(w,{x:30,y:20+(G.size(t).h+G.size(w).h)/2,heading:0});w.engaged=['I1'];t.engaged=['A6'];Object.assign(s,{stage:'combat',team:'ash'});
+ assert.equal(G.chargeFace(t,w),'front','five files wide against a 25 mm base');G.resolveCombat(s,'A6',()=>0);assert.equal(s.lastCombat.score.iron.flank,0);
+});
+test('a shield counts once against shooting, artillery and magic; a regiment\'s Parry adds one in close combat, to 3+',()=>{
+ const s=G.createGame('empire',{format:'battle-march',points:500});G.autoDeploy(s);
+ const warriors=s.units.find(u=>u.entry==='warriors'),troops=s.units.find(u=>u.entry==='stateTroops'),dec=s.units.find(u=>u.entry==='decimators');
+ assert.equal(G.armourSave(warriors),4,'heavy armour and shields');assert.equal(G.armourSave(troops),5,'light armour and shields');assert.equal(G.armourSave(dec),G.hasShield(dec)?4:5);
+ assert.equal(G.saveTarget(warriors,troops),3,'Parry');assert.equal(G.saveTarget(troops,warriors),4,'5+ with Parry');
+ assert.equal(G.armourSave({...troops,shields:false}),6,'State Troops without shields');
+});
+test('a missile unit that holds its ground has not moved: no −1 to hit, and Volley Fire still allowed',()=>{
+ const s=G.createGame('empire',{format:'battle-march',points:500});G.autoDeploy(s);G.begin(s,()=>0,{firstPlayer:'ash'});const dec=s.units.find(u=>u.entry==='decimators'),t=s.units.find(u=>u.entry==='stateTroops');clearExcept(s,[dec.id,t.id]);
+ Object.assign(dec,{x:22,y:24,heading:0,moved:false,spent:0,movementMode:null});Object.assign(t,{x:22,y:24-G.size(dec).h/2-6-G.size(t).h/2,heading:180});Object.assign(s,{stage:'movement',movementStep:'remaining',team:'ash'});
+ G.hold(s,dec.id);s.stage='shooting';const held=G.shootingPlan(s,dec,t);assert.equal(held.modifiers.some(m=>m.label==='Moved'),false);const all=held.shooters;
+ const m=G.createGame('empire',{format:'battle-march',points:500});G.autoDeploy(m);G.begin(m,()=>0,{firstPlayer:'ash'});const d2=m.units.find(u=>u.entry==='decimators'),t2=m.units.find(u=>u.entry==='stateTroops');clearExcept(m,[d2.id,t2.id]);
+ Object.assign(d2,{x:22,y:25,heading:0,moved:false,spent:0,movementMode:null});Object.assign(t2,{x:22,y:24-G.size(d2).h/2-6-G.size(t2).h/2,heading:180});Object.assign(m,{stage:'movement',movementStep:'remaining',team:'ash'});
+ G.commitOrder(m,d2.id,{kind:'advance',mode:'advance',distance:1,angle:0});m.stage='shooting';const moved=G.shootingPlan(m,d2,t2);
+ assert.ok(moved.shooters<all,`after moving only the front rank shoots (${moved.shooters} of ${all}): no Volley Fire`);
+});
+test('missile regiments may shoot at war machines, at the machine\'s Toughness 6',()=>{
+ const s=G.createGame('empire');G.autoDeploy(s);G.begin(s,()=>0,{firstPlayer:'iron'});Object.assign(s,{stage:'shooting',team:'iron'});const u=G.getUnit(s,'I4');clearExcept(s,['I4','A5']);
+ Object.assign(u,{x:30,y:10,heading:180,moved:false,shot:false});Object.assign(s.rocket,{x:30,y:25,heading:0});
+ assert.ok(G.shootingTargets(s,u).some(t=>t.unit.id==='A5'&&!t.plan.error));assert.equal(G.shoot(s,'I4','A5',()=>.99).toWound,6);
+});
+test('a lone character beside a friendly regiment can be shot or targeted by a spell only when it is the closest target',()=>{
+ const s=G.createGame('empire');G.autoDeploy(s);G.begin(s,()=>0,{firstPlayer:'iron'});Object.assign(s,{stage:'shooting',team:'iron'});const u=G.getUnit(s,'I4'),w=G.getUnit(s,'A6'),a=G.getUnit(s,'A1'),mage=G.getUnit(s,'I7');clearExcept(s,['I4','A6','A1','I7']);
+ Object.assign(u,{x:30,y:10,heading:180,moved:false,shot:false});Object.assign(a,{x:30,y:30,heading:0});Object.assign(w,{x:30+G.size(a).w/2+2.5,y:30,heading:0});Object.assign(mage,{x:24,y:10,heading:180,spells:['fireball'],castThisTurn:[]});
+ assert.match(G.shootingPlan(s,u,w).error??'',/closest target/);assert.match(G.targetReason(s,'I7','fireball',w)??'',/closest target/);
+ a.x=60;assert.equal(G.shootingPlan(s,u,w).error,undefined,'with the regiment gone it may be shot');
+});
+test('a fleeing unit that fails to rally flees again, 2D6 straight ahead, in Compulsory Moves',()=>{
+ const s=G.createGame('empire');G.autoDeploy(s);G.begin(s,()=>0,{firstPlayer:'ash'});clearExcept(s,['A1','I1']);const a=G.getUnit(s,'A1');Object.assign(a,{x:30,y:30,heading:180,fleeing:true});Object.assign(G.getUnit(s,'I1'),{x:60,y:6});
+ assert.equal(G.rally(s,'A1',()=>.999).success,false);const y=a.y;G.nextPhase(s);assert.equal(s.movementStep,'remaining');
+ assert.equal(s.compulsoryReports.length,1);assert.equal(s.compulsoryReports[0].unit,'A1');assert.ok(a.y>y+1,'it fled toward the way it faces');assert.equal(a.fleeing,true);
+});
+test('Panic: losing more than a quarter of its models to shooting makes a unit test; it Falls Back while more than half remain, and flees otherwise',()=>{
+ // Five crossbows hit and wound; the saves fail; the Panic roll is 12. Sixteen models lose five
+ // (11 of 20 left: Fall Back); twelve lose five (7 left: flee).
+ for(const [dead,outcome] of [[4,'fall-back'],[8,'flee']]){
+  const s=G.createGame('empire');G.autoDeploy(s);G.begin(s,()=>0,{firstPlayer:'iron'});Object.assign(s,{stage:'shooting',team:'iron'});const u=G.getUnit(s,'I4'),t=G.getUnit(s,'A1');clearExcept(s,['I4','A1']);
+  Object.assign(u,{x:30,y:10,heading:180,moved:false,shot:false});Object.assign(t,{x:30,y:24,heading:0});t.deadModels=G.modelSquares(s,t).map(m=>m.index).slice(20-dead).slice(0,dead);
+  // Every shot hits, wounds and goes unsaved, then the Panic test is failed (12).
+  let i=0;const r=G.shoot(s,'I4','A1',()=>i++<10?.99:i<=15?0:.99);assert.ok(r.unsaved>(20-dead)/4,'more than a quarter lost');assert.equal(r.panic?.cause,'Heavy Casualties');assert.equal(r.panic.passed,false);assert.equal(r.panic.outcome,outcome);
+  assert.equal(t.fleeing,outcome==='flee');assert.ok(t.y>24,'it moved away from the crossbows');
+ }
+});
+test('Panic: friendly units within 6″ test when a unit of Unit Strength 5 or more is destroyed',()=>{
+ const s=G.createGame('empire');G.autoDeploy(s);G.begin(s,()=>0,{firstPlayer:'iron'});Object.assign(s,{stage:'shooting',team:'iron'});const u=G.getUnit(s,'I4'),t=G.getUnit(s,'A1'),f=G.getUnit(s,'A2');clearExcept(s,['I4','A1','A2']);
+ Object.assign(u,{x:30,y:10,heading:180,moved:false,shot:false});Object.assign(t,{x:30,y:24,heading:0});Object.assign(f,{x:30+G.size(t).w+3,y:24,heading:0});t.deadModels=G.modelSquares(s,t).map(m=>m.index).slice(5);
+ let i=0;G.shoot(s,'I4','A1',()=>i++<10?.99:i<=15?0:.99);assert.equal(t.destroyed,true);assert.ok((s.panicLog??[]).some(e=>e.unit==='A2'&&e.cause==='Nearby Friend Destroyed'));
+});
+test('Panic: one test a phase for each unit; a Frenzied unit passes',()=>{
+ const s=G.createGame('empire');G.autoDeploy(s);G.begin(s,()=>0);const t=G.getUnit(s,'A1');
+ assert.ok(G.panicTest(s,t,{random:()=>0}));assert.equal(G.panicTest(s,t,{random:()=>0}),null,'No Need for Hysterics');
+ const f=G.getUnit(s,'A2');f.effects=[{rule:'frenzy',source:'test'}];assert.equal(G.panicTest(s,f,{random:()=>.99}).passed,true);
+});
