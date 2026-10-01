@@ -121,7 +121,10 @@ export function deployNext(s,random=null){
 }
 
 export function humanDecision(s){
- if(s.pendingSpell&&G.getUnit(s,s.pendingSpell.caster)?.team==='iron')return {id:s.pendingSpell.caster,kind:'dispel',message:`Choose how to dispel ${G.BATTLE_MAGIC[s.pendingSpell.key].name}.`};
+ if(s.pendingSpell&&G.getUnit(s,s.pendingSpell.caster)?.team==='iron')return {id:s.pendingSpell.caster,kind:'dispel',message:`Choose how to dispel ${G.SPELLS[s.pendingSpell.key].name}.`};
+ // At the player's wizard's Initiative step in a combat: cast an Assailment or fight on.
+ const wizard=G.assailmentWaiting(s,'ash')[0];
+ if(wizard)return {id:wizard.id,kind:'assailment',message:`${wizard.id} fights at Initiative ${s.combatSession.groups[s.combatSession.step]}: cast an Assailment, or fight on without one.`};
  // Charge reactions are chosen once every charge has been declared.
  const charge=s.movementStep==='reactions'?s.units.find(u=>u.team==='iron'&&u.charge?.status==='declared'&&u.charge.reaction==='pending'):null;
  if(charge)return {id:charge.charge.target,kind:'reaction',message:`Choose a reaction for ${charge.charge.target} against ${charge.id}.`};
@@ -156,7 +159,7 @@ export function shouldAct(s){
  if(s.stage==='deployment'||s.stage==='finished')return false;
  if(s.pendingSpell)return G.getUnit(s,s.pendingSpell.caster)?.team==='ash';
  if(s.team==='iron')return !humanDecision(s);
- return s.stage==='movement'&&s.movementStep==='reactions'&&s.units.some(u=>u.team==='ash'&&u.charge?.status==='declared'&&u.charge.reaction==='pending'&&G.getUnit(s,u.charge.target)?.team==='iron')||!!combatDecision(s)||s.stage==='combat'&&s.units.some(u=>u.team==='iron'&&u.role==='wizard'&&u.engaged&&u.spells.some(key=>['hammerhand','hashutFlames'].includes(key)&&G.opponents(s,u).some(t=>G.canCast(s,u.id,key,t.id))));
+ return s.stage==='movement'&&s.movementStep==='reactions'&&s.units.some(u=>u.team==='ash'&&u.charge?.status==='declared'&&u.charge.reaction==='pending'&&G.getUnit(s,u.charge.target)?.team==='iron')||!!combatDecision(s)||G.assailmentWaiting(s,'iron').length>0;
 }
 
 function moveRegiment(s,u,random){
@@ -228,7 +231,7 @@ function describeOrder(o){return o.kind==='pivot'?'reforms':o.kind==='side'?`ste
 
 function aiDispel(s,random){
  const options=G.dispelOptions(s),wizard=[...options.wizards].sort((a,b)=>b.bonus-a.bonus)[0],choice=wizard?.id??(options.fated?'fated':'none');
- const out=G.resolveDispel(s,choice,random),name=G.BATTLE_MAGIC[out.spell].name;
+ const out=G.resolveDispel(s,choice,random),name=G.SPELLS[out.spell].name;
  if(!out.dispel)return {message:`The bot lets ${name} through.`};
  return {message:`${out.dispel.kind==='fated'?'Fated Dispel':out.dispel.by+' tries to dispel'}: ${out.dispel.dice.join('+')} = ${out.dispel.total} vs ${out.casting} · ${out.dispel.success?name+' dispelled':name+' takes effect'}${out.dispel.miscast?' · '+out.dispel.miscast.kind:''}.`,roll:{label:`${out.dispel.by??options.caster} · ${out.dispel.kind==='fated'?'Fated Dispel':'Dispel'}`,dice:out.dispel.dice,team:'iron'},report:out,spell:true,point:G.getUnit(s,out.target)};
 }
@@ -245,6 +248,8 @@ export function takeStep(s,random=Math.random){
   const choice=defender.fleeing?'flee':shooter?'stand-shoot':'hold',at=shooter??charger,point={x:at.x,y:at.y},out=G.chargeReaction(s,at.id,choice,random);
   return {message:`${defender.id} chooses ${choice==='stand-shoot'?'Stand & Shoot':choice}${choice==='stand-shoot'&&chargers.length>1?' at '+at.id:''}.`,report:out.report,point};
  }
+ // The bot's wizard casts its Assailment when it fights, in either player's turn.
+ if(G.assailmentWaiting(s,'iron').length){const cast=aiSpell(s,random);if(cast)return cast;}
  const decision=humanDecision(s);if(decision)return {...decision,wait:true};
  if(s.stage==='strategy'){
   const u=s.units.find(u=>u.team==='iron'&&u.x!==null&&u.fleeing&&!u.rallyAttempted);
@@ -291,4 +296,9 @@ export function takeStep(s,random=Math.random){
  return {message:'Waiting for the player.',wait:true};
 }
 
-function aiSpell(s,random){const wizard=s.units.find(u=>u.team==='iron'&&u.role==='wizard'&&alive(u));if(!wizard)return null;for(const key of wizard.spells){const targets=G.spellTargets(s,wizard.id,key).filter(t=>G.canCast(s,wizard.id,key,t.id));if(!targets.length)continue;const target=key==='shield'?wizard:targets.sort((a,b)=>G.gap(wizard,a)-G.gap(wizard,b))[0],point=key==='pillar'?(()=>{const victim=nearest(s,wizard);if(!victim)return {x:wizard.x,y:wizard.y};const d=distance(wizard,victim),f=Math.min(10,d)/d;return {x:Math.max(1.5,Math.min(s.board.width-1.5,wizard.x+(victim.x-wizard.x)*f)),y:Math.max(1.5,Math.min(s.board.height-1.5,wizard.y+(victim.y-wizard.y)*f))};})():null;const report=G.attemptSpell(s,wizard.id,key,target.id,random,{point});s.selected=wizard.id;return {message:`${wizard.name} casts ${G.BATTLE_MAGIC[key].name}: ${report.dice.join('+')} = ${report.casting} · ${report.pending?'cast — choose a dispel':report.cast?'cast':'failed'}.`,roll:{label:`${wizard.id} · ${G.BATTLE_MAGIC[key].name} casting`,dice:report.dice,team:'iron'},spell:true,report,point:{x:target.x,y:target.y}};}return null;}
+function aiSpell(s,random){const wizard=s.units.find(u=>u.team==='iron'&&u.role==='wizard'&&alive(u));if(!wizard)return null;for(const key of wizard.spells){const spell=G.SPELLS[key];if(G.castBlockReason(s,wizard.id,key))continue;const targets=G.spellTargets(s,wizard.id,key);if(!targets.length)continue;const target=targets.includes(wizard)?wizard:targets.sort((a,b)=>G.gap(wizard,a)-G.gap(wizard,b))[0],point=spell.template?templatePoint(s,wizard,key):null;if(spell.template&&!point)continue;const report=G.attemptSpell(s,wizard.id,key,target.id,random,{point});s.selected=wizard.id;return {message:`${wizard.name} casts ${spell.name}: ${report.dice.join('+')} = ${report.casting} · ${report.pending?'cast — choose a dispel':report.cast?'cast':'failed'}.`,roll:{label:`${wizard.id} · ${spell.name} casting`,dice:report.dice,team:'iron'},spell:true,report,point:point??{x:target.x,y:target.y}};}return null;}
+// A legal centre for a template spell, as near the closest enemy as the rules allow: along the
+// line to it, then a little to either side; null when none is legal.
+function templatePoint(s,wizard,key){const spell=G.SPELLS[key],foe=nearest(s,wizard);if(!foe)return null;const d=distance(wizard,foe);if(!d)return null;const ux=(foe.x-wizard.x)/d,uy=(foe.y-wizard.y)/d;
+ for(let along=Math.min(d,spell.range+.5);along>=spell.template+.6;along-=.5)for(const side of [0,1.5,-1.5,3,-3]){const p={x:wizard.x+ux*along-uy*side,y:wizard.y+uy*along+ux*side};if(!G.templatePlacementError(s,wizard.id,key,p))return p;}
+ return null;}

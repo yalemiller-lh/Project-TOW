@@ -7,11 +7,11 @@ function prepare(s,key,phase='strategy',caster='A6'){s.stage=phase;s.team=caster
 
 {
  const s=battle(),ash=prepare(s,'shield'),iron=G.getUnit(s,'I7');ash.x=8;ash.y=40;iron.x=64;iron.y=8;
- const first=G.castSpell(s,ash.id,'shield',ash.id,()=>.8,{dispel:'fated'});assert.equal(first.dispel.kind,'fated');assert.equal(s.fatedDispelUsed,true);
+ const first=G.castSpell(s,ash.id,'shield',ash.id,()=>.8,{dispel:'fated'});assert.equal(first.dispel.kind,'fated');assert.equal(s.fatedDispelUsed.iron,true,'Blue used its own Fated Dispel');assert.equal(s.fatedDispelUsed.ash,false);
  ash.spells=['shield','arrow'];const target=G.getUnit(s,'I1');target.x=8;target.y=24;
  assert.throws(()=>G.castSpell(s,ash.id,'arrow',target.id,()=>.8,{dispel:'fated'}),/already used this turn/);
- s.stage='combat';G.nextTurn(s);assert.equal(s.fatedDispelUsed,false);
- iron.spells=['shield'];iron.castThisTurn=[];const next=G.castSpell(s,iron.id,'shield',iron.id,()=>.8,{dispel:'fated'});assert.equal(next.dispel.kind,'fated');assert.equal(s.fatedDispelUsed,true);
+ s.stage='combat';G.nextTurn(s);assert.deepEqual(s.fatedDispelUsed,{ash:false,iron:false});
+ iron.spells=['shield'];iron.castThisTurn=[];const next=G.castSpell(s,iron.id,'shield',iron.id,()=>.8,{dispel:'fated'});assert.equal(next.dispel.kind,'fated');assert.equal(s.fatedDispelUsed.ash,true);
 }
 
 {
@@ -36,7 +36,7 @@ function prepare(s,key,phase='strategy',caster='A6'){s.stage=phase;s.team=caster
  const s=battle(),u=prepare(s,'coward'),t=G.getUnit(s,'I1');t.x=4;t.y=30;const out=G.castSpell(s,u.id,'coward',t.id,sequence(.8,.8,.99));assert.equal(out.cast,true);assert.equal(out.effect.passed,false);assert.equal(t.fleeing||t.destroyed,true);
 }
 {
- const s=battle(),u=prepare(s,'hammerhand','combat'),t=G.getUnit(s,'I1');u.x=20;u.y=20;t.x=20;t.y=18;u.engaged=t.id;t.engaged=u.id;const out=G.castSpell(s,u.id,'hammerhand',t.id,()=>.9);assert.equal(out.cast,true);assert.ok(out.effect.hits>=2);
+ const s=battle(),u=prepare(s,'hammerhand','combat'),t=G.getUnit(s,'I1');u.x=20;u.y=20;t.x=20;t.y=18;u.engaged=t.id;t.engaged=u.id;G.beginCombat(s,u.id);while(s.combatSession.initiative[u.id]!==s.combatSession.groups[s.combatSession.step])G.fightCombatStep(s,()=>0);const out=G.castSpell(s,u.id,'hammerhand',t.id,()=>.9);assert.equal(out.cast,true);assert.ok(out.effect.hits>=2);
 }
 {
  const s=battle(),u=prepare(s,'shield');const out=G.castSpell(s,u.id,'shield',u.id,sequence(0,0,.99));assert.equal(out.cast,false);assert.equal(out.miscast.kind,'Sorcerer’s Curse');assert.equal(u.wounds,1);assert.equal(G.profile(u).T,5);
@@ -51,7 +51,7 @@ function prepare(s,key,phase='strategy',caster='A6'){s.stage=phase;s.team=caster
  const s=battle(),u=prepare(s,'hashutCurse','shooting'),t=G.getUnit(s,'I7');u.x=70;u.y=30;t.x=70;t.y=12;const out=G.castSpell(s,u.id,'hashutCurse',t.id,()=>.9);assert.equal(out.cast,true);assert.ok(out.effect.hits>=1);
 }
 {
- const s=battle(),u=prepare(s,'hashutFlames','combat'),t=G.getUnit(s,'I1');u.x=20;u.y=20;t.x=20;t.y=18;u.engaged=t.id;t.engaged=u.id;const out=G.castSpell(s,u.id,'hashutFlames',t.id,()=>.9);assert.equal(out.cast,true);assert.ok(out.effect.hits>=2);
+ const s=battle(),u=prepare(s,'hashutFlames','combat'),t=G.getUnit(s,'I1');u.x=20;u.y=20;t.x=20;t.y=18;u.engaged=t.id;t.engaged=u.id;G.beginCombat(s,u.id);while(s.combatSession.initiative[u.id]!==s.combatSession.groups[s.combatSession.step])G.fightCombatStep(s,()=>0);const out=G.castSpell(s,u.id,'hashutFlames',t.id,()=>.9);assert.equal(out.cast,true);assert.ok(out.effect.hits>=2);
 }
 {
  const s=battle(),u=prepare(s,'fireball','shooting'),t=G.getUnit(s,'I1');t.x=4;t.y=24;u.movementMode='march';assert.equal(G.canCast(s,u.id,'fireball',t.id),false);u.movementMode=null;assert.equal(G.canCast(s,u.id,'fireball',t.id),true);u.fleeing=true;assert.equal(G.canCast(s,u.id,'fireball',t.id),false);

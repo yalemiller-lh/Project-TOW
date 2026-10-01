@@ -30,7 +30,7 @@ function redStep(s,r){
  if(s.pendingCombat){G.finishCombat(s,pick(r,['follow','restrain']),r);return 'finish';}
  const red=s.units.filter(u=>u.team==='ash'&&u.x!==null&&G.aliveCount(u)>0);
  // Red casts now and then, so the bot's dispels are exercised too.
- for(const w of red.filter(u=>u.role==='wizard'))for(const key of w.spells){const t=G.spellTargets(s,w.id,key).filter(t=>G.canCast(s,w.id,key,t.id));if(t.length&&r()<.5){G.attemptSpell(s,w.id,key,pick(r,t).id,r,{point:key==='pillar'?{x:Math.min(s.board.width-1.5,Math.max(1.5,w.x)),y:Math.min(s.board.height-1.5,Math.max(1.5,w.y-4))}:null});return 'cast';}}
+ for(const w of red.filter(u=>u.role==='wizard'))for(const key of w.spells){const t=G.spellTargets(s,w.id,key).filter(t=>G.canCast(s,w.id,key,t.id));if(t.length&&r()<.5){let point=null;if(G.SPELLS[key].template){for(let k=0;k<40&&!point;k++){const p={x:w.x+(r()-.5)*2*G.SPELLS[key].range,y:w.y+(r()-.5)*2*G.SPELLS[key].range};if(!G.templatePlacementError(s,w.id,key,p))point=p;}if(!point)continue;}G.attemptSpell(s,w.id,key,pick(r,t).id,r,{point});return 'cast';}}
  if(s.stage==='strategy'){const f=red.find(u=>u.fleeing&&!u.rallyAttempted);if(f){G.rally(s,f.id,r);return 'rally';}}
  if(s.stage==='movement'&&s.movementStep==='declare'){for(const u of red.filter(u=>G.canAct(s,u)&&!u.charge)){const t=G.availableCharges(s,u);if(t.length&&(G.hasRule(u,'frenzy')||r()<.6)){G.declareCharge(s,u.id,pick(r,t).id);return 'declare';}}G.finishDeclarations(s);return 'finish declarations';}
  if(s.stage==='movement'&&s.movementStep==='charges'){const u=red.find(u=>u.charge?.status==='declared');if(u){G.resolveCharge(s,u.id,G.rollD6(2,r));return 'charge';}G.enterRemaining(s);return 'remaining';}

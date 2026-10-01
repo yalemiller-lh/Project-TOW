@@ -61,6 +61,7 @@ dialog{color:#282e23;background:#f5f0d9;border:5px double #424a36;border-radius:
 .shooting-arc{pointer-events:none;stroke-width:1.6;vector-effect:non-scaling-stroke}
 .zone-area{stroke:#e9e2bf;stroke-opacity:.8;stroke-dasharray:7 8;pointer-events:none}
 .roster-summary{display:grid;gap:8px;margin-top:6px}
+.magic-spell .spell-block{display:block;margin-top:4px;font-size:11px;line-height:1.35;color:#7a705c}
 .spell-text{margin:3px 0 6px;font-size:12px;line-height:1.4;color:#4c4636}
 .spell-reference p{margin:0 0 8px}
 .tooltip-why{margin:-2px -2px 6px;padding:5px 7px;background:#f3dfc9;border-left:4px solid #9b3e2a;color:#4a2217;font-size:12px;line-height:1.35}
@@ -556,7 +557,7 @@ function armyFromRoster(team,roster){
  return {units,cannons,rocket};
 }
 function createGame(opponent='chaos',{format='classic',board=null,points=null,deployment=null,rosters=null,objectives=null,optional=null,random=Math.random}={}){if(!FACTIONS[opponent])throw Error('Unknown army.');const fmt=F.format(format),field=F.boardFor(fmt,{board,points}),setup=deployment??(fmt.deployment?.map?{map:fmt.deployment.map,depth:fmt.deployment.depth}:null);
- if(fmt.id==='battle-march')return createRosterGame(opponent,fmt,field,setup,points,rosters,{objectives,optional,random});const units=Array.from({length:8},(_,i)=>{const faction=i<4?'chaos':opponent,role=i%4===3?'missile':'infantry';return {id:(i<4?'A':'I')+(i%4+1),team:i<4?'ash':'iron',faction,role,name:role==='missile'?MISSILE[faction].name:FACTIONS[faction].name,x:null,y:null,heading:i<4?0:180,moved:false,shot:false,spent:0,movementMode:null,marchRequired:null,marchTest:null,engaged:null,charge:null,impetuousTest:null,combatResolved:false,fleeing:false,rallyAttempted:false,rallied:false,shieldwallUsed:false,deadModels:[]};});units.push(createWizard('ash','chaos'));if(opponent==='empire')units.push(createWizard('iron','empire'));return {stage:'deployment',team:'ash',round:1,selected:'A1',rocket:{id:'A5',name:'Deathshrieker Rocket Launcher',...machineFields('ash','chaos'),x:null,y:null,heading:0,wounds:3,crew:3,shot:false,disabledUntil:0,lastShot:null},cannons:createCannons(opponent),units,history:[],vortices:[],fatedDispelUsed:false,format:{id:fmt.id,name:fmt.name,rulesVersion:fmt.rulesVersion,points:fmt.points?(points??fmt.points.default):null,rounds:fmt.rounds,deployment:setup,resultPolicy:fmt.resultPolicy??null,optional:{...(fmt.optional??{})}},board:field,zones:F.deploymentZones(fmt,field,setup??{}),firstPlayer:'ash',turnLog:[]};}
+ if(fmt.id==='battle-march')return createRosterGame(opponent,fmt,field,setup,points,rosters,{objectives,optional,random});const units=Array.from({length:8},(_,i)=>{const faction=i<4?'chaos':opponent,role=i%4===3?'missile':'infantry';return {id:(i<4?'A':'I')+(i%4+1),team:i<4?'ash':'iron',faction,role,name:role==='missile'?MISSILE[faction].name:FACTIONS[faction].name,x:null,y:null,heading:i<4?0:180,moved:false,shot:false,spent:0,movementMode:null,marchRequired:null,marchTest:null,engaged:null,charge:null,impetuousTest:null,combatResolved:false,fleeing:false,rallyAttempted:false,rallied:false,shieldwallUsed:false,deadModels:[]};});units.push(createWizard('ash','chaos'));if(opponent==='empire')units.push(createWizard('iron','empire'));return {stage:'deployment',team:'ash',round:1,selected:'A1',rocket:{id:'A5',name:'Deathshrieker Rocket Launcher',...machineFields('ash','chaos'),x:null,y:null,heading:0,wounds:3,crew:3,shot:false,disabledUntil:0,lastShot:null},cannons:createCannons(opponent),units,history:[],vortices:[],fatedDispelUsed:{ash:false,iron:false},format:{id:fmt.id,name:fmt.name,rulesVersion:fmt.rulesVersion,points:fmt.points?(points??fmt.points.default):null,rounds:fmt.rounds,deployment:setup,resultPolicy:fmt.resultPolicy??null,optional:{...(fmt.optional??{})}},board:field,zones:F.deploymentZones(fmt,field,setup??{}),firstPlayer:'ash',turnLog:[]};}
 function optionalRules(fmt,chosen){const rules={...fmt.optional};for(const [key,on]of Object.entries(chosen??{})){const rule=F.OPTIONAL_RULES[key];if(!(key in rules)||!rule)throw Error(`Unknown optional rule "${key}".`);if(on&&!rule.available)throw Error(`${rule.name} is not available yet: ${rule.reason}.`);rules[key]=!!on;}return rules;}
 function createRosterGame(opponent,fmt,field,setup,points,rosters,{objectives=null,optional=null,random=Math.random}={}){
  // The deployment map is chosen or rolled on a D6. Red sets up the game, so Red counts as the map
@@ -569,7 +570,7 @@ function createRosterGame(opponent,fmt,field,setup,points,rosters,{objectives=nu
  const red=armyFromRoster('ash',chosen.ash),blue=armyFromRoster('iron',chosen.iron);
  const rocket={id:'A5',name:'Deathshrieker Rocket Launcher',...machineFields('ash','chaos'),x:null,y:null,heading:0,wounds:3,crew:3,shot:false,disabledUntil:0,lastShot:null,...(red.rocket??{absent:true,wounds:0,crew:0})};
  const armies=Object.fromEntries(Object.entries(chosen).map(([team,roster])=>[team,{roster,validation:A.validateRoster(roster,limit),source:A.SOURCES[roster.faction]}]));
- const s={stage:'deployment',team:'ash',round:1,selected:red.units[0]?.id,rocket,cannons:blue.cannons,units:[...red.units,...blue.units],history:[],vortices:[],fatedDispelUsed:false,
+ const s={stage:'deployment',team:'ash',round:1,selected:red.units[0]?.id,rocket,cannons:blue.cannons,units:[...red.units,...blue.units],history:[],vortices:[],fatedDispelUsed:{ash:false,iron:false},
   format:{id:fmt.id,name:fmt.name,rulesVersion:fmt.rulesVersion,points:limit,rounds:fmt.rounds,deployment:setup,resultPolicy:fmt.resultPolicy,optional:optionalRules(fmt,optional),objectives:objectives??fmt.objectives??'roll'},board:field,zones:F.deploymentZones(fmt,field,setup??{}),facing:F.deploymentFacing(fmt,setup??{}),firstPlayer:'ash',turnLog:[],armies,sources:{system:A.SOURCES.system,preferences:A.PREFERENCES},
   deployOrder:fmt.deployment?.order==='alternate'?{alternate:true,rule:fmt.deployment.rollOff??'winner-chooses',zonesChosen:false,rollOff:null,first:null,chosenBy:null,next:null,pending:null,batch:null,log:[],complete:false}:null,firstTurn:null};
  // Each army deploys facing the way its map sets (across the table, or along it in Mountain Pass).
@@ -771,7 +772,7 @@ function inactionReason(s,u){
  if(u.destroyed||aliveCount(u)===0)return 'Destroyed.';
  if(u.x===null)return u.offBoardPursuit?'Off the battlefield after pursuing; it returns in its next Movement phase.':'Not on the battlefield.';
  if(u.team!==s.team)return 'Waiting: it is the other army’s turn.';
- const spellNow=u.role==='wizard'&&u.spells.some(key=>BATTLE_MAGIC[key]?.phase===s.stage&&spellTargets(s,u.id,key).some(t=>canCast(s,u.id,key,t.id)));
+ const spellNow=u.role==='wizard'&&u.spells.some(key=>SPELLS[key]?.phase===s.stage&&spellTargets(s,u.id,key).some(t=>canCast(s,u.id,key,t.id)));
  if(s.stage==='strategy'){if(u.fleeing&&!u.rallyAttempted||spellNow||u.role==='wizard'&&canDispelAVortex(s,u))return null;if(u.fleeing)return 'Failed to rally this turn and is still fleeing.';return u.role==='wizard'?'No hex or enchantment can be cast now.':'Nothing to do in Strategy: only fleeing units rally and wizards cast here.';}
  if(s.stage==='movement'){
   if(u.engaged)return 'Engaged in combat: units in combat cannot move.';
@@ -834,7 +835,7 @@ function planMove(u,order){const kind=order.kind??'advance',mode=order.mode??'ad
   const end=kind==='pivot'?after:kind==='back'?forwardPose(after,-distance):kind==='side'?{...after,...localPoint(after,side*distance,0)}:forwardPose(after,distance);
   return {start:{...u},afterWheel:after,end,cost:cost+(kind==='pivot'?0:['back','side'].includes(kind)?2*distance:distance),wheelCost:kind==='wheel'?cost:0,allowance:mode==='march'?2*profile(u).M:profile(u).M,pivot,kind,mode,angle,distance,side};
 }
-function crossedVortices(s,u,start,end){return (s.vortices??[]).filter(v=>getUnit(s,v.caster)?.team!==u.team&&pointSegment({x:v.x,y:v.y},{x:start.x,y:start.y},{x:end.x,y:end.y})<=1.5+Math.max(size(u).w,size(u).h)/2+EPS);}
+function crossedVortices(s,u,start,end){return (s.vortices??[]).filter(v=>getUnit(s,v.caster)?.x!=null&&getUnit(s,v.caster)?.team!==u.team&&pointSegment({x:v.x,y:v.y},{x:start.x,y:start.y},{x:end.x,y:end.y})<=1.5+Math.max(size(u).w,size(u).h)/2+EPS);}
 function forwardError(s,u,start,end){const swept=hull([...corners(start),...corners(end)]),close=closeAtStart(s,u),inner=shrink(swept),blocks=(v,poly)=>close(v)?polygonGap(inner,poly)<EPS:polygonGap(swept,poly)<1-EPS;if(terrainBlocks(s,swept))return 'Impassable terrain blocks this path. Shorten the move or go around it.';for(const v of s.units){if(v.id===u.id||v.x===null)continue;if(blocks(v,corners(v)))return 'Another regiment blocks this path. Shorten the move.';}if(s.rocket?.x!==null&&s.rocket.id!==u.id&&blocks(s.rocket,corners(s.rocket)))return 'The Deathshrieker blocks this path. Shorten the move.';if(s.cannons.some(c=>c.x!==null&&c.id!==u.id&&blocks(c,corners(c))))return 'A cannon blocks this path. Shorten the move.';return null;}
 function orderError(s,u,order){
   if(!canAct(s,u))return 'Select an unmoved regiment from the active army.';
@@ -890,11 +891,11 @@ function endOfPlayerTurn(s,team=s.team){
  return true;
 }
 function finishGame(s,reason){if(s.stage==='finished')return s.result;s.stage='finished';s.pendingCombat=null;s.combatSession=null;s.result={reason,...(formatRules(s)?.endOfGame?.(s)??{})};return s.result;}
-function nextTurn(s,random=Math.random){if(s.stage!=='combat')throw Error('Finish the Combat phase first.');endOfPlayerTurn(s,s.team);if(s.stage==='finished')return;s.stage='strategy';s.team=s.team==='ash'?'iron':'ash';if(s.team===(s.firstPlayer??'ash'))s.round++;s.units.forEach(u=>{u.moved=false;u.shot=false;u.pursued=false;u.spent=0;u.movementMode=null;u.marchRequired=null;u.marchTest=null;if(u.pursuitPending&&u.engaged)u.pursuitPending=false;else u.charge=null;u.reaction=null;u.combatFocus=null;u.impetuousTest=null;u.combatResolved=false;u.rallyAttempted=false;u.arcaneUrgency=false;if(u.role==='wizard'){u.castThisTurn=[];u.magicExhausted=false;u.engineerUsed=false;if(u.team===s.team){u.oakenShield=false;u.ashStorm=false;}}if(u.arrowCurseCaster===s.team){u.arrowCurse=false;u.arrowCurseCaster=null;}});s.fatedDispelUsed=false;s.vortexReports=driftVortices(s,random);s.rocket.shot=false;s.rocket.lastShot=null;s.cannons.forEach(c=>{c.shot=false;c.lastShot=null;});s.history=[];s.selected=s.units.find(u=>u.team===s.team).id;formatRules(s)?.startOfTurn?.(s,s.team,random);}
+function nextTurn(s,random=Math.random){if(s.stage!=='combat')throw Error('Finish the Combat phase first.');endOfPlayerTurn(s,s.team);if(s.stage==='finished')return;s.stage='strategy';s.team=s.team==='ash'?'iron':'ash';if(s.team===(s.firstPlayer??'ash'))s.round++;s.units.forEach(u=>{u.moved=false;u.shot=false;u.pursued=false;u.spent=0;u.movementMode=null;u.marchRequired=null;u.marchTest=null;if(u.pursuitPending&&u.engaged)u.pursuitPending=false;else u.charge=null;u.reaction=null;u.combatFocus=null;u.impetuousTest=null;u.combatResolved=false;u.rallyAttempted=false;u.arcaneUrgency=false;if(u.role==='wizard'){u.castThisTurn=[];u.magicExhausted=false;u.dispelExhausted=false;u.engineerUsed=false;if(u.team===s.team){u.oakenShield=false;u.ashStorm=false;}}if(u.arrowCurseCaster===s.team){u.arrowCurse=false;u.arrowCurseCaster=null;}});s.fatedDispelUsed={ash:false,iron:false};s.magicLocked={};s.dispelBlocked={};s.vortexReports=driftVortices(s,random);s.rocket.shot=false;s.rocket.lastShot=null;s.cannons.forEach(c=>{c.shot=false;c.lastShot=null;});s.history=[];s.selected=s.units.find(u=>u.team===s.team).id;formatRules(s)?.startOfTurn?.(s,s.team,random);}
 function nextPhase(s){if(s.stage==='finished')throw Error('The battle is over.');if(s.pendingSpell)throw Error('Resolve the dispel of the spell just cast first.');if(s.stage==='strategy'&&s.units.some(u=>u.team===s.team&&u.x!==null&&u.fleeing&&!u.rallyAttempted))throw Error('Attempt to rally every fleeing regiment first.');if(s.units.some(u=>u.charge?.status==='declared'))throw Error('Resolve all declared charges first.');if(s.stage==='combat'&&(s.combatSession||s.pendingCombat||combatPairs(s).length))throw Error('Resolve every combat and its outcome first.');const i=PHASES.indexOf(s.stage);if(i<0)throw Error('Begin the battle first.');s.movementReopened=false;s.movementHistory=i===1?s.history:i===2?s.movementHistory:null;if(i===3)nextTurn(s);else{s.stage=PHASES[i+1];s.history=[];if(s.stage==='movement'){s.movementStep='declare';if(!s.units.some(u=>u.team===s.team&&canAct(s,u)&&availableCharges(s,u).length))beginRemaining(s);}s.shootingSkipped=false;if(s.stage==='shooting'&&!phaseHasActions(s)){s.stage='combat';s.shootingSkipped=true;}if(s.stage==='combat')combatants(s).forEach(u=>u.combatResolved=false);}return s.stage;}
 // Movement can be reopened until the active army acts in Shooting (or, when Shooting
 // was skipped, in Combat). Its undo history is kept so the last moves can be taken back.
-function castIn(s,phase){return s.units.some(u=>u.team===s.team&&u.role==='wizard'&&u.castThisTurn.some(key=>BATTLE_MAGIC[key]?.phase===phase));}
+function castIn(s,phase){return s.units.some(u=>u.team===s.team&&u.role==='wizard'&&u.castThisTurn.some(key=>SPELLS[key]?.phase===phase));}
 function canReturnToMovement(s){
  const shootingUntouched=!s.units.some(u=>u.team===s.team&&u.shot)&&!(s.team==='ash'&&s.rocket.shot)&&!(s.team==='iron'&&s.cannons.some(c=>c.shot))&&!castIn(s,'shooting');
  if(s.stage==='shooting')return shootingUntouched;
@@ -903,11 +904,11 @@ function canReturnToMovement(s){
 function returnToMovement(s){if(!canReturnToMovement(s))throw Error('Movement can only be reopened before anything happens in Shooting or Combat.');Object.assign(s,{stage:'movement',movementStep:'remaining',history:s.movementHistory??[],movementHistory:null,movementReopened:true,shootingSkipped:false});return s.stage;}
 // An enemy Remains in Play vortex this wizard can still try to dispel in its own Strategy phase:
 // by its own Wizardly dispel when in range, or by the side's unused Fated Dispel.
-function canDispelAVortex(s,u){return (s.vortices??[]).some(v=>canDispelVortex(s,v.caster)&&(vortexDispellers(s,v.caster).some(w=>w.id===u.id)||!s.fatedDispelUsed));}
+function canDispelAVortex(s,u){return (s.vortices??[]).some(v=>canDispelVortex(s,v.id??v.caster)&&(vortexDispellers(s,v.id??v.caster).some(w=>w.id===u.id)||fatedDispelAvailable(s,s.team)));}
 function phaseHasActions(s){
  if(s.stage==='deployment'||s.stage==='finished'||s.pendingSpell)return true;
  const active=s.units.filter(u=>u.team===s.team&&u.x!==null&&aliveCount(u)>0);
- const spells=phase=>active.some(u=>u.role==='wizard'&&u.spells.some(key=>BATTLE_MAGIC[key]?.phase===phase&&spellTargets(s,u.id,key).some(t=>canCast(s,u.id,key,t.id))));
+ const spells=phase=>active.some(u=>u.role==='wizard'&&u.spells.some(key=>SPELLS[key]?.phase===phase&&spellTargets(s,u.id,key).some(t=>canCast(s,u.id,key,t.id))));
  if(s.stage==='strategy')return active.some(u=>u.fleeing&&!u.rallyAttempted)||spells('strategy')||active.some(u=>canExchangeSignature(s,u)||u.role==='wizard'&&canDispelAVortex(s,u));
  if(s.stage==='movement'&&s.movementStep==='reactions')return s.units.some(u=>u.charge?.reaction==='pending');
  if(s.stage==='movement')return s.movementStep==='declare'?active.some(u=>u.charge?.status==='declared'||canAct(s,u)&&availableCharges(s,u).length):s.movementStep==='charges'?active.some(u=>u.charge?.status==='declared'):active.some(u=>canAct(s,u))||spells('movement')||!!s.movementReopened;
@@ -929,7 +930,26 @@ function skipEmptySteps(s){
 function rally(s,id,random=Math.random){const u=getUnit(s,id);if(s.stage!=='strategy'||u?.team!==s.team||u.x===null||!u.fleeing||u.rallyAttempted)throw Error('Select a fleeing regiment in its own Strategy phase.');const dice=rollD6(2,random),success=dice[0]+dice[1]<=leadership(u,'rally');u.rallyAttempted=true;u.rallied=success;if(success)u.fleeing=false;return {id,dice,success};}
 function rollD6(count,random=Math.random){if(!Number.isInteger(count)||count<1||count>20)throw Error('Choose 1 to 20 dice.');return Array.from({length:count},()=>1+Math.floor(random()*6));}
 
-const BATTLE_MAGIC={hammerhand:{name:'Hammerhand',type:'assailment',phase:'combat',cast:7,range:0},fireball:{name:'Fireball',type:'magic missile',phase:'shooting',cast:8,range:24},arrow:{name:'Curse of Arrow Attraction',type:'hex',phase:'strategy',cast:7,range:21},pillar:{name:'Pillar of Fire',type:'magical vortex',phase:'shooting',cast:9,range:12},urgency:{name:'Arcane Urgency',type:'conveyance',phase:'movement',cast:9,range:15},shield:{name:'Oaken Shield',type:'enchantment',phase:'strategy',cast:7,range:0},coward:{name:'Curse of Cowardly Flight',type:'hex',phase:'strategy',cast:8,range:15},hashutCurse:{name:'Curse of Hashut',type:'magic missile',phase:'shooting',cast:9,range:18},ashStorm:{name:'Storm of Ash',type:'hex',phase:'strategy',cast:10,range:0},hashutFlames:{name:'Flames of Hashut',type:'assailment',phase:'combat',cast:9,range:0}};
+// ---- Magic ----------------------------------------------------------------------------------
+// Each spell is data: its type, the phase (and sub-phase) it is cast in, casting value and range.
+// range 0 is Self (reach 'self': cast on the wizard) or Combat (reach 'combat': an enemy it fights).
+// los: needs line of sight. targetsEngaged: may target a unit in combat. friendly: targets a
+// friendly unit. characters: targets only characters. template: the radius of a template placed
+// instead of choosing a target. remainsInPlay: stays until dispelled, ended or its caster is gone.
+const BATTLE_MAGIC={
+ hammerhand:{name:'Hammerhand',type:'assailment',phase:'combat',cast:7,range:0,reach:'combat'},
+ fireball:{name:'Fireball',type:'magic missile',phase:'shooting',cast:8,range:24,los:true},
+ arrow:{name:'Curse of Arrow Attraction',type:'hex',phase:'strategy',cast:7,range:21},
+ pillar:{name:'Pillar of Fire',type:'magical vortex',phase:'shooting',cast:9,range:12,template:1.5,remainsInPlay:true},
+ urgency:{name:'Arcane Urgency',type:'conveyance',phase:'movement',step:'remaining',cast:9,range:15,friendly:true},
+ shield:{name:'Oaken Shield',type:'enchantment',phase:'strategy',cast:7,range:0,reach:'self'},
+ coward:{name:'Curse of Cowardly Flight',type:'hex',phase:'strategy',cast:8,range:15},
+ hashutCurse:{name:'Curse of Hashut',type:'magic missile',phase:'shooting',cast:9,range:18,los:true,targetsEngaged:true,characters:true},
+ ashStorm:{name:'Storm of Ash',type:'hex',phase:'strategy',cast:10,range:0,reach:'self'},
+ hashutFlames:{name:'Flames of Hashut',type:'assailment',phase:'combat',cast:9,range:0,reach:'combat'},
+};
+// Every spell the engine knows, by key.
+const SPELLS=BATTLE_MAGIC;
 const SPELL_TEXT={
  fireball:'The target enemy unit suffers 2D6 Strength 4 hits (AP –) with Flaming Attacks. Needs line of sight; cannot target a unit in combat.',
  arrow:'Until your next Start of Turn, you may re-roll natural 1s To Hit when shooting at the target enemy unit.',
@@ -948,71 +968,210 @@ const SIGNATURE_SPELLS=['hammerhand','hashutCurse','ashStorm','hashutFlames'];
 function canExchangeSignature(s,u){return s.stage==='strategy'&&s.round===1&&u?.role==='wizard'&&u.team===s.team&&!u.castThisTurn.length&&u.spells.some(key=>SPELL_ROLL.includes(key))&&!u.spells.some(key=>SIGNATURE_SPELLS.includes(key));}
 // Spells now affecting a unit, for its label: a hex on it or an enchantment it carries.
 const SPELL_TAGS={arrowCurse:['arrow','Arrow Attraction'],oakenShield:['shield','Oaken Shield'],ashStorm:['ashStorm','Storm of Ash'],arcaneUrgency:['urgency','Arcane Urgency']};
-function activeSpells(u){return Object.entries(SPELL_TAGS).filter(([field])=>u?.[field]).map(([,[key,short]])=>({key,short,name:BATTLE_MAGIC[key].name}));}
+function activeSpells(u){return Object.entries(SPELL_TAGS).filter(([field])=>u?.[field]).map(([,[key,short]])=>({key,short,name:SPELLS[key].name}));}
 function generateSpells(random=Math.random){const pool=[...SPELL_ROLL],out=[];for(let i=0;i<2;i++)out.push(pool.splice(Math.min(pool.length-1,Math.floor(random()*pool.length)),1)[0]);return out;}
 function exchangeSignature(s,id,spell,replacement='hammerhand'){const u=getUnit(s,id),choices=u?.faction==='chaos'?['hammerhand','hashutCurse','ashStorm','hashutFlames']:['hammerhand'];if(s.stage!=='strategy'||s.round!==1||u?.role!=='wizard'||u.castThisTurn.length||!SPELL_ROLL.includes(spell)||!u.spells.includes(spell)||!choices.includes(replacement)||u.spells.some(k=>choices.includes(k)))throw Error('Exchange one generated spell for a permitted signature before casting.');u.spells.splice(u.spells.indexOf(spell),1,replacement);return u.spells;}
 function spellVision(u,t){const a=rad(-heading(u)),dx=t.x-u.x,dy=t.y-u.y,lx=dx*Math.cos(a)-dy*Math.sin(a),ly=dx*Math.sin(a)+dy*Math.cos(a);return ly<0&&Math.abs(lx)<=-ly+Math.max(size(t).w,size(t).h)/2+EPS;}
-function spellTargets(s,id,key){const u=getUnit(s,id),spell=BATTLE_MAGIC[key];if(!u||!spell)return [];if(['shield','pillar','ashStorm'].includes(key))return [u];return s.units.filter(t=>t.x!==null&&aliveCount(t)>0&&(key==='urgency'?t.team===u.team&&t.moved&&!t.fleeing&&!t.engaged:t.team!==u.team)&&(!spell.range||gap(u,t)<=spell.range+EPS)&&(['hammerhand','hashutFlames'].includes(key)?engagedWith(u,t):key==='hashutCurse'?isCharacter(t)&&spellVision(u,t):!t.engaged&&spellVision(u,t))&&(!['fireball','hashutCurse'].includes(key)||modelCanSee(s,u,t,modelSquares(s,u)[0],spell.range)));
+const targetless=spell=>spell?.reach==='self'||!!spell?.template;
+// A spell's range as players read it: inches, Self or Combat.
+function spellRangeLabel(key){const spell=SPELLS[key];return !spell?'':spell.range?spell.range+'″':spell.reach==='combat'?'Combat':'Self';}
+// Why this wizard cannot attempt this spell now (null when it can), before any target is chosen.
+// The checks run in a fixed order, so the reason shown is the first that applies.
+function castBlockReason(s,id,key){
+ const u=getUnit(s,id),spell=SPELLS[key];
+ if(s.pendingSpell)return 'Resolve the dispel of the spell just cast first.';
+ if(!u||u.role!=='wizard'||!spell||!u.spells?.includes(key))return 'This wizard does not know that spell.';
+ if(u.x===null||aliveCount(u)===0)return 'The wizard is not on the battlefield.';
+ if(u.fleeing)return 'Fleeing wizards cannot cast.';
+ const assailment=spell.type==='assailment';
+ if(u.team!==s.team&&!assailment)return 'Only an Assailment can be cast in the enemy’s turn.';
+ if(s.stage!==spell.phase)return `Cast in the ${spell.phase[0].toUpperCase()+spell.phase.slice(1)} phase.`;
+ if(spell.step&&s.movementStep!==spell.step)return 'Cast in the Remaining Moves sub-phase.';
+ if(u.castThisTurn.includes(key))return 'Already attempted this turn.';
+ if(u.castThisTurn.length>=u.level)return `No casting attempts left: a Level ${u.level} wizard has ${u.level} per turn.`;
+ if(u.magicExhausted)return 'Its magic is spent this turn (miscast).';
+ if(s.magicLocked?.[u.team])return 'This side cannot cast again this turn (Power Drain).';
+ if(u.raiding&&spell.range)return 'Raiding: only Self and Combat spells can be cast.';
+ if(['magic missile','magical vortex'].includes(spell.type)){if(u.movementMode==='march')return 'Marched this turn: no Magic Missiles or Magical Vortexes.';if(u.charge)return 'Charged this turn: no Magic Missiles or Magical Vortexes.';}
+ if(u.engaged&&!assailment&&spell.reach!=='self')return 'Engaged in combat: only Assailments and Self spells can be cast.';
+ // An Assailment is cast when the wizard fights: in a combat being fought, at its Initiative step.
+ if(assailment){const c=s.combatSession;if(!c||c.phase!=='attacks'||!c.units.includes(u.id))return 'Cast when the wizard fights, at its Initiative step.';if(c.initiative[u.id]!==c.groups[c.step])return `Cast at the wizard’s Initiative step (${c.initiative[u.id]}).`;}
+ return null;
 }
-function canCast(s,id,key,targetId){const u=getUnit(s,id),spell=BATTLE_MAGIC[key],t=getUnit(s,targetId);if(s.pendingSpell||!u||u.role!=='wizard'||u.raiding&&spell?.range||u.team!==s.team&&!['hammerhand','hashutFlames'].includes(key)||u.x===null||u.fleeing||!spell||s.stage!==spell.phase||key==='urgency'&&s.movementStep!=='remaining'||['fireball','pillar','hashutCurse'].includes(key)&&u.movementMode==='march'||!u.spells.includes(key)||u.castThisTurn.includes(key)||u.castThisTurn.length>=u.level||u.magicExhausted)return false;if(u.engaged&&!['hammerhand','hashutFlames','shield','ashStorm'].includes(key))return false;if(['shield','pillar','ashStorm'].includes(key))return targetId===id;return !!t&&spellTargets(s,id,key).includes(t);}
-function magicDamage(s,target,hits,strength,ap,random,flaming=false,ignoreArmour=false){const dice={wound:[],save:[],ward:[]};let wounds=0,unsaved=0;for(let i=0;i<hits&&aliveCount(target)>0;i++){const wound=rollD6(1,random)[0];dice.wound.push(wound);if(wound<Math.max(2,Math.min(6,4+profile(target).T-strength)))continue;wounds++;if(!ignoreArmour){const armour=rollD6(1,random)[0];dice.save.push(armour);const save=Math.max(2,Math.min(7,profile(target).save+ap));if(armour>=save)continue;}const ward=target.oakenShield?5:target.role==='wizard'&&target.faction==='chaos'&&flaming?5:7;if(ward<=6){const value=rollD6(1,random)[0];dice.ward.push(value);if(value>=ward)continue;}removeCasualties(s,target,1);unsaved++;}wipeOut(s,target);return {hits,wounds,unsaved,dice};}
+// Why this unit is not a legal target for the spell (null when it is). The caster's own
+// restrictions are castBlockReason's: a target that is allowed does not lift them.
+function targetReason(s,id,key,t){
+ const u=getUnit(s,id),spell=SPELLS[key];if(!u||!spell)return 'Unknown spell.';
+ if(!t||t.x===null||aliveCount(t)===0)return 'Not on the battlefield.';
+ if(targetless(spell))return t.id===u.id?null:spell.template?'Place the template instead of choosing a target.':'A Self spell is cast on the wizard.';
+ if(spell.friendly?t.team!==u.team:t.team===u.team)return spell.friendly?'Choose a friendly unit.':'Choose an enemy unit.';
+ if(spell.reach==='combat')return engagedWith(u,t)?null:'Not fighting the wizard.';
+ if(spell.characters&&!isCharacter(t))return 'Only a character can be targeted.';
+ if(key==='urgency'){if(!t.moved)return 'It has not moved yet this phase.';if(t.fleeing)return 'Fleeing.';}
+ if(t.engaged&&!spell.targetsEngaged)return 'Engaged in combat.';
+ if(spell.range&&gap(u,t)>spell.range+EPS)return `Out of range (${spell.range}″).`;
+ if(t.id!==u.id&&!spellVision(u,t))return 'Outside the wizard’s vision arc.';
+ if(spell.los&&!modelCanSee(s,u,t,modelSquares(s,u)[0],spell.range))return 'No line of sight.';
+ return null;
+}
+// Every unit and war machine on the battlefield with the reason it cannot be targeted (null when it can).
+function spellTargetOptions(s,id,key){const u=getUnit(s,id),spell=SPELLS[key];if(!u||!spell)return [];if(targetless(spell))return [{unit:u,reason:targetReason(s,id,key,u)}];return combatants(s).filter(t=>t.x!==null&&aliveCount(t)>0).map(t=>({unit:t,reason:targetReason(s,id,key,t)}));}
+function spellTargets(s,id,key){return spellTargetOptions(s,id,key).filter(o=>!o.reason).map(o=>o.unit);}
+function canCast(s,id,key,targetId){return !castBlockReason(s,id,key)&&!targetReason(s,id,key,getUnit(s,targetId));}
+// Where a template spell may go: its centre within range of the wizard (measured from its base),
+// the whole template on the battlefield, and touching no model's base.
+function templatePlacementError(s,id,key,point){
+ const u=getUnit(s,id),spell=SPELLS[key];if(!spell?.template)return null;
+ if(!point||!Number.isFinite(point.x)||!Number.isFinite(point.y))return `Place the ${spell.name} template.`;
+ const r=spell.template,b=boardOf(s);
+ if(circleGap(corners(u),{x:point.x,y:point.y,r:0})>spell.range+EPS)return `Its centre must be within ${spell.range}″ of the wizard.`;
+ if(point.x<r-EPS||point.x>b.width-r+EPS||point.y<r-EPS||point.y>b.height-r+EPS)return 'The whole template must be on the battlefield.';
+ if(combatants(s).some(v=>v.x!==null&&aliveCount(v)>0&&circleGap(corners(v),{x:point.x,y:point.y,r})<EPS))return 'The template cannot touch any model’s base.';
+ return null;
+}
+// A unit's Ward save against these wounds (7: none). Oaken Shield gives 5+; a Daemonsmith's
+// Blackshard armour gives 5+ against Flaming Attacks.
+function wardSave(u,{flaming=false}={}){return u?.oakenShield?5:u?.role==='wizard'&&u?.faction==='chaos'&&flaming?5:7;}
+// Magical hits: no roll To Hit; To Wound against the target's Toughness (6 for a war machine);
+// armour saves (with any shield) unless the spell allows none; then any Ward save. With defer the
+// wounds are counted but the casualties wait for the end of the Initiative step (an Assailment).
+function magicDamage(s,target,hits,strength,ap,random,{flaming=false,ignoreArmour=false,defer=false,cap=null}={}){
+ const dice={wound:[],save:[],ward:[]},limit=cap??remainingWounds(target),toWound=Math.max(2,Math.min(6,4+shotToughness(target)-strength)),toSave=Math.max(2,Math.min(7,profileOfSave(target)+ap)),ward=wardSave(target,{flaming});let wounds=0,unsaved=0;
+ for(let i=0;i<hits&&unsaved<limit;i++){const wound=rollD6(1,random)[0];dice.wound.push(wound);if(wound<toWound)continue;wounds++;if(!ignoreArmour){const armour=rollD6(1,random)[0];dice.save.push(armour);if(armour>=toSave)continue;}if(ward<=6){const value=rollD6(1,random)[0];dice.ward.push(value);if(value>=ward)continue;}unsaved++;}
+ if(!defer){removeCasualties(s,target,unsaved);wipeOut(s,target);}
+ return {hits,wounds,unsaved,dice,toWound,toSave:ignoreArmour?null:toSave};}
+// A blast template centred on a point, model by model as the Deathshrieker's: a model wholly under
+// it, or under its centre, is hit; any other model it touches is hit on a 4+. Each hit wounds,
+// saves and Wards on its own.
+function templateHits(s,point,radius,strength,ap,random){
+ const out={hits:0,cells:[],affected:[]},per={};
+ for(const cell of blastCells(s,point,radius)){const u=cell.unit,hitRoll=cell.fully||cell.centre?null:rollD6(1,random)[0];if(hitRoll!==null&&hitRoll<4)continue;out.hits++;
+  const toWound=Math.max(2,Math.min(6,4+shotToughness(u)-strength)),toSave=Math.max(2,Math.min(7,profileOfSave(u)+ap)),woundRoll=rollD6(1,random)[0],saveRoll=woundRoll>=toWound?rollD6(1,random)[0]:null,ward=wardSave(u);
+  let slain=saveRoll!==null&&saveRoll<toSave&&aliveCount(u)>0;const wardRoll=slain&&ward<=6?rollD6(1,random)[0]:null;if(wardRoll!==null&&wardRoll>=ward)slain=false;
+  out.cells.push({unit:u.id,model:cell.model,hitRoll,woundRoll,saveRoll,ward:wardRoll,slain});const e=per[u.id]??={id:u.id,hits:0,wounds:0,unsaved:0};e.hits++;if(woundRoll>=toWound)e.wounds++;if(slain){e.unsaved++;removeCasualties(s,u,1);}}
+ out.affected=Object.values(per);for(const e of out.affected)wipeOut(s,getUnit(s,e.id));return out;}
 // A regiment whose last model falls to shooting, Stand & Shoot, a spell or a vortex leaves the
 // battlefield at once (full casualty VP). In a combat being fought, the combat result settles it.
 function wipeOut(s,u){if(!u||u.x===null||aliveCount(u)>0)return;const p=s.pendingCombat;if(s.combatSession?.units?.includes(u.id)||p&&(p.combat??[p.winner,p.loser]).includes(u.id))return;release(s,u);destroyUnit(s,u,'COMBAT_CASUALTIES');}
-function miscast(s,u,random){if(u.faction==='chaos'){const test=rollD6(1,random)[0];if(test>profile(u).T){removeCasualties(s,u,1);u.petrified++;return {kind:'Sorcerer’s Curse',test,wounds:1,toughness:profile(u).T};}}const dice=rollD6(2,random),sum=dice[0]+dice[1];if(sum<=6){const radius=sum<=4?2.5:1.5,strength=sum<=4?10:6,ap=sum<=4?4:2;const affected=s.units.filter(t=>t.x!==null&&Math.hypot(t.x-u.x,t.y-u.y)<=radius+Math.max(size(t).w,size(t).h)/2).map(t=>({id:t.id,...magicDamage(s,t,1,strength,ap,random)}));return {kind:sum<=4?'Dimensional Cascade':'Calamitous Detonation',dice,affected,cast:false};}if(sum===7){const hit=magicDamage(s,u,1,4,1,random);return {kind:'Careless Conjuration',dice,hit,cast:false};}u.magicExhausted=true;return {kind:sum<=9?'Barely Controlled Power':'Power Drain',dice,cast:true,undispellable:sum>=10};}
+// A miscast (a natural double 1 when casting) or Outclassed in the Art (a natural double 1 on a
+// Wizardly Dispel, which reads the table with dispelling in place of casting).
+// The Sorcerer's Curse comes first for a Daemonsmith: a Toughness test (a 6 always fails, a 1
+// always passes); failing costs a Wound and adds +1 Toughness instead of the Miscast table.
+// 2-4: a 5″ template on the wizard, S10 AP-4. 5-6: a 3″ template, S6 AP-2. 7: one S4 AP-1 hit.
+// 8-9: cast at its casting value (dispelled, for a dispel); this wizard is done for the turn.
+// 10-12: cast with a Perfect Invocation (dispelled); this side is done for the turn.
+function miscast(s,u,random,{dispel=false}={}){
+ if(u.faction==='chaos'&&u.role==='wizard'){const test=rollD6(1,random)[0],toughness=profile(u).T;if(test===6||test!==1&&test>toughness){removeCasualties(s,u,1);u.petrified++;return {kind:'Sorcerer’s Curse',test,wounds:1,toughness};}}
+ const dice=rollD6(2,random),sum=dice[0]+dice[1];
+ if(sum<=6){const big=sum<=4,blast=templateHits(s,{x:u.x,y:u.y},big?2.5:1.5,big?10:6,big?4:2,random);return {kind:big?'Dimensional Cascade':'Calamitous Detonation',dice,hits:blast.hits,cells:blast.cells,affected:blast.affected,cast:false};}
+ if(sum===7){const hit=magicDamage(s,u,1,4,1,random);return {kind:'Careless Conjuration',dice,hit,cast:false};}
+ if(dispel){if(sum<=9)u.dispelExhausted=true;else (s.dispelBlocked??={})[u.team]=true;return {kind:sum<=9?'Barely Controlled Power':'Power Drain',dice,dispelled:true};}
+ u.magicExhausted=true;if(sum>=10)(s.magicLocked??={})[u.team]=true;return {kind:sum<=9?'Barely Controlled Power':'Power Drain',dice,cast:true,undispellable:sum>=10};}
 function magicPanic(s,caster,target,random){const dice=rollD6(2,random),passed=hasRule(target,'frenzy')||dice[0]+dice[1]<=leadership(target);if(passed)return {dice,passed};if(target.engaged)return {dice,passed,gaveGround:true};target.fleeing=true;target.moved=true;target.heading=normalize(Math.atan2(target.x-caster.x,-(target.y-caster.y))*180/Math.PI);const flee=rollD6(2,random),move=fleeMove(s,target,flee[0]+flee[1],random);return {dice,passed,flee,fledOffBoard:move.fledOffBoard,move};}
 // Casting and dispelling are two steps. attemptSpell makes the casting roll; a cast spell that
 // can still be dispelled waits in s.pendingSpell until the defending player picks a Wizardly
 // Dispel (one eligible Wizard), the Fated Dispel, or no dispel with resolveDispel.
 // castSpell does both at once for the AI and tests.
-function wizardDispellers(s,caster,targetId){return s.units.filter(v=>v.role==='wizard'&&v.team!==caster.team&&v.x!==null&&aliveCount(v)>0&&!v.fleeing&&gap(v,caster)<=(v.level>=3?24:18)+EPS&&(!v.engaged||v.id===targetId));}
-function dispelOptions(s){const p=s.pendingSpell;if(!p)return null;const caster=getUnit(s,p.caster);return {caster:p.caster,spell:p.key,team:caster.team==='ash'?'iron':'ash',casting:p.report.casting,wizards:wizardDispellers(s,caster,p.target).map(v=>({id:v.id,bonus:Math.ceil(v.level/2),distance:gap(v,caster)})),fated:!s.fatedDispelUsed};}
+// The Fated Dispel is once per player turn for each side.
+const fatedUsed=(s,team)=>s.fatedDispelUsed&&typeof s.fatedDispelUsed==='object'?!!s.fatedDispelUsed[team]:!!s.fatedDispelUsed;
+function useFated(s,team){if(!s.fatedDispelUsed||typeof s.fatedDispelUsed!=='object')s.fatedDispelUsed={ash:!!s.fatedDispelUsed,iron:!!s.fatedDispelUsed};s.fatedDispelUsed[team]=true;}
+function fatedDispelAvailable(s,team){return !fatedUsed(s,team)&&!s.dispelBlocked?.[team];}
+function wizardDispellers(s,caster,targetId){return s.units.filter(v=>v.role==='wizard'&&v.team!==caster.team&&v.x!==null&&aliveCount(v)>0&&!v.fleeing&&!v.dispelExhausted&&!s.dispelBlocked?.[v.team]&&gap(v,caster)<=(v.level>=3?24:18)+EPS&&(!v.engaged||v.id===targetId));}
+function dispelOptions(s){const p=s.pendingSpell;if(!p)return null;const caster=getUnit(s,p.caster),team=caster.team==='ash'?'iron':'ash';return {caster:p.caster,spell:p.key,team,casting:p.report.casting,wizards:wizardDispellers(s,caster,p.target).map(v=>({id:v.id,bonus:Math.ceil(v.level/2),distance:gap(v,caster)})),fated:fatedDispelAvailable(s,team)};}
 function castSpell(s,id,key,targetId,random=Math.random,{dispel='none',dispeller=null,point=null}={}){
  if(!['none','wizard','fated'].includes(dispel))throw Error('Choose a legal dispel.');const u=getUnit(s,id);
  if(u&&dispel==='wizard'&&!wizardDispellers(s,u,targetId).some(v=>!dispeller||v.id===dispeller))throw Error('No opposing wizard is in dispel range.');
- if(dispel==='fated'&&s.fatedDispelUsed)throw Error('The Fated Dispel was already used this turn.');
+ if(u&&dispel==='fated'&&!fatedDispelAvailable(s,u.team==='ash'?'iron':'ash'))throw Error('The Fated Dispel was already used this turn.');
  const report=attemptSpell(s,id,key,targetId,random,{point});if(!report.pending)return report;
  return resolveDispel(s,dispel==='wizard'?dispeller??dispelOptions(s).wizards[0].id:dispel,random);
 }
-function attemptSpell(s,id,key,targetId,random=Math.random,{point=null}={}){if(!canCast(s,id,key,targetId))throw Error('This spell cannot be cast on that target now.');const u=getUnit(s,id),t=getUnit(s,targetId),spell=BATTLE_MAGIC[key];if(key==='pillar'&&point&&(!Number.isFinite(point.x)||!Number.isFinite(point.y)||Math.hypot(point.x-u.x,point.y-u.y)>12+EPS||point.x<1.5||point.x>boardOf(s).width-1.5||point.y<1.5||point.y>boardOf(s).height-1.5))throw Error('Place the 3″ Pillar within 12″ of the caster and on the battlefield.');const dice=rollD6(2,random),casting=dice[0]+dice[1]+Math.ceil(u.level/2)-(t.id!==id?magicResistance(t):0),report={caster:id,spell:key,target:targetId,dice,casting,cast:false,dispel:null,effect:null};u.castThisTurn.push(key);if(key==='pillar')s.vortices=s.vortices.filter(v=>v.caster!==id);if(dice[0]===1&&dice[1]===1){report.miscast=miscast(s,u,random);if(!report.miscast.cast)return report;report.casting=spell.cast;}else if(casting<spell.cast&&!(dice[0]===6&&dice[1]===6))return report;report.cast=true;
+// The casting roll: 2D6 plus half the wizard's level (rounded up), less the Magic Resistance of an
+// enemy target; it must equal or beat the casting value. The natural dice and every modifier are
+// kept apart in the report. A natural double 6 always succeeds and cannot be dispelled at once;
+// a natural double 1 miscasts.
+function attemptSpell(s,id,key,targetId,random=Math.random,{point=null}={}){
+ const spell=SPELLS[key],block=castBlockReason(s,id,key);if(block)throw Error(block);
+ if(targetless(spell))targetId??=id;
+ const u=getUnit(s,id),t=getUnit(s,targetId),why=targetReason(s,id,key,t);if(why)throw Error(why);
+ if(spell.template){const bad=templatePlacementError(s,id,key,point);if(bad)throw Error(bad);}
+ const dice=rollD6(2,random),modifiers=[{label:'Level '+u.level,value:Math.ceil(u.level/2)}],resistance=t.team!==u.team?magicResistance(t):0;
+ if(resistance)modifiers.push({label:'Magic Resistance',value:-resistance});
+ const casting=dice[0]+dice[1]+modifiers.reduce((n,m)=>n+m.value,0),report={caster:id,spell:key,target:targetId,dice,modifiers,casting,cast:false,dispel:null,effect:null};u.castThisTurn.push(key);
+ // Attempting a Remains in Play spell again ends the caster's earlier one at once, whatever the result.
+ if(spell.remainsInPlay){const old=s.vortices.filter(v=>v.caster===id&&(v.spell??'pillar')===key);if(old.length){s.vortices=s.vortices.filter(v=>!old.includes(v));report.ended=old.map(v=>v.id??v.caster);}}
+ if(dice[0]===1&&dice[1]===1){report.miscast=miscast(s,u,random);if(!report.miscast.cast)return report;report.casting=spell.cast;}else if(casting<spell.cast&&!(dice[0]===6&&dice[1]===6))return report;report.cast=true;
  report.perfect=dice[0]===6&&dice[1]===6||!!report.miscast?.undispellable;
  s.pendingSpell={caster:id,key,target:targetId,point,report};const options=dispelOptions(s);
  if(!report.perfect&&(options.wizards.length||options.fated)){report.pending=true;return report;}
  s.pendingSpell=null;applySpell(s,{caster:id,key,target:targetId,point,report},random);return report;}
-// Wizardly Dispel: 2D6 + half the level (rounded up); Fated Dispel: unmodified 2D6, once per turn,
-// no range. Either must beat the casting result (ties fail); a natural double 6 always dispels.
-// A natural double 1 always fails, and on a Wizardly Dispel the Wizard miscasts (Outclassed in the Art).
+// Wizardly Dispel: 2D6 + half the level (rounded up); Fated Dispel: unmodified 2D6, once per turn
+// for each side, no range. Either must beat the casting result (ties fail); a natural double 6
+// always dispels. A natural double 1 fails, except that on a Wizardly Dispel the Wizard is
+// Outclassed in the Art: the Miscast table, where 8-12 dispel the spell.
 function resolveDispel(s,choice='none',random=Math.random){
  const p=s.pendingSpell;if(!p)throw Error('No spell is waiting for a dispel.');const options=dispelOptions(s),report=p.report;
  if(choice!=='none'){
   const wizard=choice==='fated'?null:options.wizards.find(w=>w.id===choice);
   if(choice==='fated'&&!options.fated)throw Error('The Fated Dispel was already used this turn.');
   if(choice!=='fated'&&!wizard)throw Error('Choose a Wizard in dispel range, the Fated Dispel, or no dispel.');
-  if(!wizard)s.fatedDispelUsed=true;
+  if(!wizard)useFated(s,options.team);
   const dice=rollD6(2,random),double1=dice[0]===1&&dice[1]===1,total=dice[0]+dice[1]+(wizard?wizard.bonus:0);
   report.dispel={kind:wizard?'wizard':'fated',by:wizard?.id??null,dice,total,success:!double1&&(dice[0]===6&&dice[1]===6||total>report.casting)};
-  if(double1&&wizard)report.dispel.miscast=miscast(s,getUnit(s,wizard.id),random);
+  if(double1&&wizard){report.dispel.miscast=miscast(s,getUnit(s,wizard.id),random,{dispel:true});if(report.dispel.miscast.dispelled)report.dispel.success=true;}
  }
  s.pendingSpell=null;report.pending=false;
  if(report.dispel?.success){report.cast=false;return report;}
  applySpell(s,p,random);return report;
 }
-function applySpell(s,{caster:id,key,target:targetId,point,report},random){const u=getUnit(s,id),t=getUnit(s,targetId);
- if(key==='fireball')report.effect=magicDamage(s,t,rollD6(2,random).reduce((a,b)=>a+b,0),4,0,random,true);
- else if(key==='hammerhand')report.effect=magicDamage(s,t,rollD6(2,random).reduce((a,b)=>a+Math.ceil(b/2),0),4,2,random);
- else if(key==='hashutFlames')report.effect=magicDamage(s,t,Math.ceil(rollD6(1,random)[0]/2)+1,4,1,random,true);
- else if(key==='hashutCurse'){const test=rollD6(1,random)[0],passed=test<=profile(t).T;report.effect={test,passed,...magicDamage(s,t,passed?Math.ceil(rollD6(1,random)[0]/2):Math.ceil(rollD6(1,random)[0]/2)+2,passed?2:5,0,random,false,!passed)};}
+// Wizards in the combat being fought who may still cast an Assailment at this Initiative step,
+// and have not chosen to fight on without it.
+function assailmentWaiting(s,team=null){const c=s.combatSession;if(s.stage!=='combat'||!c||c.phase!=='attacks'||s.pendingSpell)return [];return c.units.map(id=>getUnit(s,id)).filter(u=>u?.role==='wizard'&&(!team||u.team===team)&&c.passed?.[u.id]!==c.step&&u.spells.some(key=>SPELLS[key]?.type==='assailment'&&!castBlockReason(s,u.id,key)&&spellTargets(s,u.id,key).length));}
+function passAssailment(s,id){const c=s.combatSession;if(!c||c.phase!=='attacks')throw Error('No combat is being fought.');(c.passed??={})[id]=c.step;return c.step;}
+// An Assailment's hits join the wizard's Initiative step: its casualties are removed with the
+// step's attacks and its wounds count towards the combat result. Outside a combat being fought
+// (tests that call it directly) they are removed at once.
+function assail(s,u,t,key,hits,strength,ap,random,options={}){
+ const c=s.combatSession;if(!c||!c.units.includes(u.id)||c.phase!=='attacks')return magicDamage(s,t,hits,strength,ap,random,options);
+ const queued=(c.spellStages??[]).filter(st=>st.to===t.id).reduce((n,st)=>n+st.unsaved,0),out=magicDamage(s,t,hits,strength,ap,random,{...options,defer:true,cap:Math.max(0,remainingWounds(t)-queued)});
+ (c.spellStages??=[]).push({from:u.id,to:t.id,spell:key,initiative:c.groups[c.step],attacks:hits,hits,wounds:out.wounds,unsaved:out.unsaved,saved:out.wounds-out.unsaved,toHit:null,toWound:out.toWound,toSave:out.toSave,dice:out.dice});
+ return out;}
+function applySpell(s,{caster:id,key,target:targetId,point,report},random){const u=getUnit(s,id),t=getUnit(s,targetId),spell=SPELLS[key];
+ if(key==='fireball')report.effect=magicDamage(s,t,rollD6(2,random).reduce((a,b)=>a+b,0),4,0,random,{flaming:true});
+ else if(key==='hammerhand')report.effect=assail(s,u,t,key,rollD6(2,random).reduce((a,b)=>a+Math.ceil(b/2),0),4,2,random);
+ else if(key==='hashutFlames')report.effect=assail(s,u,t,key,Math.ceil(rollD6(1,random)[0]/2)+1,4,1,random,{flaming:true});
+ else if(key==='hashutCurse'){const test=rollD6(1,random)[0],passed=test<=profile(t).T;report.effect={test,passed,...magicDamage(s,t,passed?Math.ceil(rollD6(1,random)[0]/2):Math.ceil(rollD6(1,random)[0]/2)+2,passed?2:5,0,random,{ignoreArmour:!passed})};}
  else if(key==='ashStorm'){u.ashStorm=true;report.effect={radius:9};}
  else if(key==='arrow'){t.arrowCurse=true;t.arrowCurseCaster=u.team;report.effect={rerollOnes:true};}
  else if(key==='shield'){u.oakenShield=true;report.effect={ward:5};}
  else if(key==='coward')report.effect=magicPanic(s,u,t,random);
  else if(key==='urgency'){t.moved=false;t.spent=0;t.movementMode=null;t.charge=null;t.arcaneUrgency=true;report.effect={moveAgain:true};}
- else if(key==='pillar'){const p=point??{x:t.x,y:t.y};s.vortices=s.vortices.filter(v=>v.caster!==id);s.vortices.push({caster:id,x:p.x,y:p.y,radius:1.5});report.effect={point:p};}
+ else if(spell.template){s.vortices=s.vortices.filter(v=>!(v.caster===id&&(v.spell??'pillar')===key));s.vortexSeq=(s.vortexSeq??0)+1;const v={id:'V'+s.vortexSeq,spell:key,caster:id,team:u.team,x:point.x,y:point.y,radius:spell.template,cast:report.casting};s.vortices.push(v);report.effect={point:{x:point.x,y:point.y},vortex:v.id};}
  return report;}
-function driftVortices(s,random=Math.random){const reports=[];for(const v of s.vortices){const angle=Math.floor(random()*8)*Math.PI/4,distance=rollD6(1,random)[0],from={x:v.x,y:v.y};v.x+=Math.sin(angle)*distance;v.y-=Math.cos(angle)*distance;const affected=[];for(const u of s.units.filter(u=>u.x!==null&&u.team!==getUnit(s,v.caster)?.team)){const a={x:from.x,y:from.y},b={x:v.x,y:v.y},dx=b.x-a.x,dy=b.y-a.y,q=dx*dx+dy*dy,p=q?Math.max(0,Math.min(1,((u.x-a.x)*dx+(u.y-a.y)*dy)/q)):0;if(Math.hypot(u.x-a.x-p*dx,u.y-a.y-p*dy)<=1.5+Math.max(size(u).w,size(u).h)/2)affected.push({id:u.id,...magicDamage(s,u,Math.ceil(rollD6(1,random)[0]/2)+3,3,2,random,true)});}reports.push({caster:v.caster,from,to:{x:v.x,y:v.y},distance,affected});}s.vortices=s.vortices.filter(v=>v.x>=-1.5&&v.x<=boardOf(s).width+1.5&&v.y>=-1.5&&v.y<=boardOf(s).height+1.5&&getUnit(s,v.caster)?.x!==null);return reports;}
-function vortexDispellers(s,casterId){const vortex=s.vortices.find(v=>v.caster===casterId);if(!vortex)return [];return s.units.filter(u=>u.role==='wizard'&&u.team!==getUnit(s,casterId)?.team&&u.x!==null&&aliveCount(u)>0&&!u.fleeing&&!u.engaged&&Math.hypot(u.x-vortex.x,u.y-vortex.y)<=(u.level>=3?24:18)+EPS);}
-function canDispelVortex(s,casterId){return s.stage==='strategy'&&!s.pendingSpell&&s.vortices.some(v=>v.caster===casterId)&&getUnit(s,casterId)?.team!==s.team;}
-function dispelVortex(s,casterId,random=Math.random,mode='wizard',dispellerId=null){const vortex=s.vortices.find(v=>v.caster===casterId);if(!vortex)throw Error('No Pillar of Fire remains in play.');if(!canDispelVortex(s,casterId))throw Error('Dispel a Remains in Play spell in your own Strategy phase (Conjuration).');if(!['wizard','fated'].includes(mode))throw Error('Choose a dispel method.');const wizard=mode==='wizard'?vortexDispellers(s,casterId).find(u=>!dispellerId||u.id===dispellerId):null;if(mode==='wizard'&&!wizard)throw Error('No opposing wizard is in dispel range.');if(mode==='fated'&&s.fatedDispelUsed)throw Error('Fated Dispel already used.');const dice=rollD6(2,random),double1=dice[0]===1&&dice[1]===1,total=dice[0]+dice[1]+(wizard?Math.ceil(wizard.level/2):0),success=!double1&&(dice[0]===6&&dice[1]===6||total>BATTLE_MAGIC.pillar.cast);if(mode==='fated')s.fatedDispelUsed=true;const result={mode,by:wizard?.id??null,dice,total,success};if(double1&&wizard)result.miscast=miscast(s,wizard,random);if(success)s.vortices=s.vortices.filter(v=>v!==vortex);return result;}
+function driftVortices(s,random=Math.random){const reports=[];for(const v of s.vortices){const angle=Math.floor(random()*8)*Math.PI/4,distance=rollD6(1,random)[0],from={x:v.x,y:v.y};v.x+=Math.sin(angle)*distance;v.y-=Math.cos(angle)*distance;const affected=[];for(const u of s.units.filter(u=>u.x!==null&&u.team!==getUnit(s,v.caster)?.team)){const a={x:from.x,y:from.y},b={x:v.x,y:v.y},dx=b.x-a.x,dy=b.y-a.y,q=dx*dx+dy*dy,p=q?Math.max(0,Math.min(1,((u.x-a.x)*dx+(u.y-a.y)*dy)/q)):0;if(Math.hypot(u.x-a.x-p*dx,u.y-a.y-p*dy)<=1.5+Math.max(size(u).w,size(u).h)/2)affected.push({id:u.id,...magicDamage(s,u,Math.ceil(rollD6(1,random)[0]/2)+3,3,2,random,{flaming:true})});}reports.push({caster:v.caster,from,to:{x:v.x,y:v.y},distance,affected});}s.vortices=s.vortices.filter(v=>v.x>=-1.5&&v.x<=boardOf(s).width+1.5&&v.y>=-1.5&&v.y<=boardOf(s).height+1.5&&getUnit(s,v.caster)?.x!==null);return reports;}
+// ---- Remains in Play: dispelling a vortex later ----
+// A vortex record: {id,spell,caster,team,x,y,radius,cast,dispelTried}. Older records without an
+// id or spell are a Pillar of Fire, found by their caster.
+function findVortex(s,ref){return (s.vortices??[]).find(v=>v.id===ref)??(s.vortices??[]).find(v=>v.caster===ref);}
+const vortexTeam=(s,v)=>v.team??getUnit(s,v.caster)?.team;
+const turnKey=s=>`${s.round}:${s.team}`;
+// Wizards who may dispel an enemy vortex: in range (18″, 24″ at Level 3 or more) of its caster or
+// of the template, not fleeing, not in combat.
+function vortexDispellers(s,ref){const v=findVortex(s,ref);if(!v)return [];const caster=getUnit(s,v.caster),team=vortexTeam(s,v);return s.units.filter(u=>u.role==='wizard'&&u.team!==team&&u.x!==null&&aliveCount(u)>0&&!u.fleeing&&!u.engaged&&!u.dispelExhausted&&!s.dispelBlocked?.[u.team]&&Math.min(caster?.x!=null?gap(u,caster):Infinity,circleGap(corners(u),{x:v.x,y:v.y,r:v.radius??1.5}))<=(u.level>=3?24:18)+EPS);}
+// The opposing side may try once to dispel each vortex in its own Strategy phase (Conjuration).
+function canDispelVortex(s,ref){const v=findVortex(s,ref);return !!v&&s.stage==='strategy'&&!s.pendingSpell&&vortexTeam(s,v)!==s.team&&v.dispelTried!==turnKey(s);}
+// The dispel must beat the spell's printed casting value, not the roll it was cast with, even
+// after a Perfect Invocation.
+function dispelVortex(s,ref,random=Math.random,mode='wizard',dispellerId=null){
+ const v=findVortex(s,ref);if(!v)throw Error('No such spell remains in play.');const spell=SPELLS[v.spell??'pillar'];
+ if(!canDispelVortex(s,ref))throw Error(v.dispelTried===turnKey(s)?`${spell.name} has already faced a dispel this turn.`:'Dispel a Remains in Play spell in your own Strategy phase (Conjuration).');
+ if(!['wizard','fated'].includes(mode))throw Error('Choose a dispel method.');
+ const wizard=mode==='wizard'?vortexDispellers(s,ref).find(u=>!dispellerId||u.id===dispellerId):null;if(mode==='wizard'&&!wizard)throw Error('No opposing wizard is in dispel range.');
+ if(mode==='fated'&&!fatedDispelAvailable(s,s.team))throw Error('Fated Dispel already used.');
+ v.dispelTried=turnKey(s);if(mode==='fated')useFated(s,s.team);
+ const dice=rollD6(2,random),double1=dice[0]===1&&dice[1]===1,total=dice[0]+dice[1]+(wizard?Math.ceil(wizard.level/2):0);
+ const result={mode,by:wizard?.id??null,vortex:v.id??v.caster,spell:v.spell??'pillar',dice,total,beat:spell.cast,success:!double1&&(dice[0]===6&&dice[1]===6||total>spell.cast)};
+ if(double1&&wizard){result.miscast=miscast(s,wizard,random,{dispel:true});if(result.miscast.dispelled)result.success=true;}
+ if(result.success)s.vortices=s.vortices.filter(x=>x!==v);return result;}
 function canEngineerReroll(s){const u=getUnit(s,'A6'),r=s.rocket;return !!u&&u.x!==null&&!u.fleeing&&!u.engaged&&!u.engineerUsed&&r.x!==null&&Math.hypot(u.x-r.x,u.y-r.y)<=profile(u).Ld+EPS;}
 function engineerReroll(s,dice,which,random=Math.random){if(!canEngineerReroll(s))throw Error('The Daemonsmith cannot assist the Deathshrieker now.');if(!['artillery','scatter'].includes(which))throw Error('Choose one Artillery or Scatter die.');const next={...dice},fresh=rollRocketDice(random);next[which]=fresh[which];if(which==='scatter')next.hitArrow=fresh.hitArrow;getUnit(s,'A6').engineerUsed=true;return next;}
 
@@ -1474,13 +1633,14 @@ function beginCombat(s,id){
  if(units.length<2||!units.some(u=>!u.combatResolved))throw Error('Select an unresolved engaged regiment.');
  const ids=units.map(u=>u.id),initiative=Object.fromEntries(units.map(u=>[u.id,combatInitiative(u,opponents(s,u))]));
  return s.combatSession={units:ids,sides:{ash:ids.filter(i=>getUnit(s,i).team==='ash'),iron:ids.filter(i=>getUnit(s,i).team==='iron')},a:first.id,b:opponents(s,first)[0]?.id??null,
-  standards:Object.fromEntries(units.map(u=>[u.id,commandAlive(u,'S')])),initiative,groups:[...new Set(Object.values(initiative))].sort((x,y)=>y-x),step:0,phase:'attacks',stages:[],damage:Object.fromEntries(ids.map(i=>[i,0]))};
+  standards:Object.fromEntries(units.map(u=>[u.id,commandAlive(u,'S')])),initiative,groups:[...new Set(Object.values(initiative))].sort((x,y)=>y-x),step:0,phase:'attacks',stages:[],spellStages:[],passed:{},damage:Object.fromEntries(ids.map(i=>[i,0]))};
 }
 // One Initiative step: every unit at this Initiative attacks, its models split between the enemy
 // units they can reach (see attackAllocation); casualties are removed after the whole step.
 function fightCombatStep(s,random=Math.random){
- const c=s.combatSession;if(s.stage!=='combat'||c?.phase!=='attacks')throw Error('Show Initiative before rolling attacks.');
- const initiative=c.groups[c.step],stages=[],claimed={};
+ const c=s.combatSession;if(s.stage!=='combat'||c?.phase!=='attacks')throw Error('Show Initiative before rolling attacks.');if(s.pendingSpell)throw Error('Resolve the dispel of the spell just cast first.');
+ // Assailments cast at this step join it: their wounds are claimed before the attacks are rolled.
+ const initiative=c.groups[c.step],stages=[...(c.spellStages??[])],claimed={};c.spellStages=[];for(const st of stages)claimed[st.to]=(claimed[st.to]??0)+st.unsaved;
  for(const id of c.units){
   const u=getUnit(s,id);if(c.initiative[id]!==initiative||!u||u.x===null||aliveCount(u)===0)continue;
   for(const [target,models]of attackAllocation(s,u,c.damage[id])){
@@ -1800,7 +1960,7 @@ function finishCombat(s,choice='follow',random=Math.random,reformHeading=null){
  return out??s.lastCombat?.aftermath;
 }
 
-return {BATTLE_MAGIC,BOARD,CANNON_BASE,CHARACTERS,COMMAND_SLOTS,FACTIONS,MISSILE,PHASES,PROFILE,ROCKET_BASE,ROCKET_PROFILES,SIGNATURE_SPELLS,SIZE,SPELL_ROLL,SPELL_TEXT,TROOP_TYPES,WAR_MACHINE_CREW,WAR_MACHINE_STATS,WIZARDS,activeSpells,aliveCount,armyName,attackAllocation,attemptSpell,autoDeploy,availableCharges,availableShots,baseSize,begin,beginCombat,boardOf,canAct,canCast,canDispelVortex,canEngineerReroll,canExchangeSignature,canFireCannon,canFireRocket,canReturnToMovement,canShoot,canStandShoot,cancelCharge,cannonFootprint,cannonPlan,cannonTargets,castSpell,championProfile,chargeFace,chargePlan,chargeReaction,checkPosition,chooseDeploymentOrder,chooseDeploymentZone,chooseFirstTurn,chooseLoserAction,circleGap,combatGroup,combatPairs,combatants,combats,commandAlive,commandSlots,commitOrder,compareCombat,confirmDeployment,corners,createCannons,createGame,createWizard,declareCharge,declarePursuit,deployError,deploymentBatch,deploymentComplete,deploymentFacing,deploymentPieces,deploymentRollOff,deploymentTurn,deploymentZoneChooser,dispelOptions,dispelVortex,driftVortices,endOfPlayerTurn,engagedWith,engineerReroll,enterRemaining,equipment,exchangeSignature,fightCombatStep,filesOf,finishCombat,finishDeclarations,finishGame,finishReactions,finishShooting,fireCannon,fireRocket,firstTurnRollOff,forwardPose,gap,generateSpells,getUnit,hasRule,hasShield,heading,hitTarget,hold,impetuousTest,inVisionArc,inZone,inactionReason,insideZone,isCharacter,leadership,localPoint,machineReady,magicResistance,marchTest,maxWheel,missileWeapon,modelSquares,move,moveCombatLoser,movementError,movementRemaining,needsMarchTest,nextPhase,nextTurn,normalize,opponentIds,opponents,orderError,overlaps,phaseComplete,phaseHasActions,place,placeAt,placeCannon,placeRocket,planMove,polygonGap,profile,pursuitTargets,rally,ranksOf,rectangle,registerFormatRules,remainingWounds,removeCasualties,resolveCharge,resolveCombat,resolveDispel,returnToMovement,rocketFootprint,rocketPlan,rocketTargets,rollCannonDice,rollCombatBreak,rollD6,rollRocketDice,saveTarget,setOpponent,shoot,shootingPlan,shootingTargets,shotToughness,size,skipEmptySteps,spellTargets,standShootTooClose,startingModels,startingUnitStrength,startingWounds,terrainBlocks,troopType,turnDeployed,undo,unitStrength,unplace,vortexDispellers,wheelCost,wheelPose,winnerCombat,woundTarget,zoneBounds,zoneOf};})();
+return {BATTLE_MAGIC,BOARD,CANNON_BASE,CHARACTERS,COMMAND_SLOTS,FACTIONS,MISSILE,PHASES,PROFILE,ROCKET_BASE,ROCKET_PROFILES,SIGNATURE_SPELLS,SIZE,SPELLS,SPELL_ROLL,SPELL_TEXT,TROOP_TYPES,WAR_MACHINE_CREW,WAR_MACHINE_STATS,WIZARDS,activeSpells,aliveCount,armyName,assailmentWaiting,attackAllocation,attemptSpell,autoDeploy,availableCharges,availableShots,baseSize,begin,beginCombat,boardOf,canAct,canCast,canDispelVortex,canEngineerReroll,canExchangeSignature,canFireCannon,canFireRocket,canReturnToMovement,canShoot,canStandShoot,cancelCharge,cannonFootprint,cannonPlan,cannonTargets,castBlockReason,castSpell,championProfile,chargeFace,chargePlan,chargeReaction,checkPosition,chooseDeploymentOrder,chooseDeploymentZone,chooseFirstTurn,chooseLoserAction,circleGap,combatGroup,combatPairs,combatants,combats,commandAlive,commandSlots,commitOrder,compareCombat,confirmDeployment,corners,createCannons,createGame,createWizard,declareCharge,declarePursuit,deployError,deploymentBatch,deploymentComplete,deploymentFacing,deploymentPieces,deploymentRollOff,deploymentTurn,deploymentZoneChooser,dispelOptions,dispelVortex,driftVortices,endOfPlayerTurn,engagedWith,engineerReroll,enterRemaining,equipment,exchangeSignature,fatedDispelAvailable,fightCombatStep,filesOf,finishCombat,finishDeclarations,finishGame,finishReactions,finishShooting,fireCannon,fireRocket,firstTurnRollOff,forwardPose,gap,generateSpells,getUnit,hasRule,hasShield,heading,hitTarget,hold,impetuousTest,inVisionArc,inZone,inactionReason,insideZone,isCharacter,leadership,localPoint,machineReady,magicResistance,marchTest,maxWheel,missileWeapon,modelSquares,move,moveCombatLoser,movementError,movementRemaining,needsMarchTest,nextPhase,nextTurn,normalize,opponentIds,opponents,orderError,overlaps,passAssailment,phaseComplete,phaseHasActions,place,placeAt,placeCannon,placeRocket,planMove,polygonGap,profile,pursuitTargets,rally,ranksOf,rectangle,registerFormatRules,remainingWounds,removeCasualties,resolveCharge,resolveCombat,resolveDispel,returnToMovement,rocketFootprint,rocketPlan,rocketTargets,rollCannonDice,rollCombatBreak,rollD6,rollRocketDice,saveTarget,setOpponent,shoot,shootingPlan,shootingTargets,shotToughness,size,skipEmptySteps,spellRangeLabel,spellTargetOptions,spellTargets,standShootTooClose,startingModels,startingUnitStrength,startingWounds,targetReason,templatePlacementError,terrainBlocks,troopType,turnDeployed,undo,unitStrength,unplace,vortexDispellers,wardSave,wheelCost,wheelPose,winnerCombat,woundTarget,zoneBounds,zoneOf};})();
 const BM=(()=>{// Battle March rules layered on the core engine: objectives, objective control, scoring and the
 // end of the game. The engine calls these hooks through registerFormatRules; the UI and the bot
 // call the same functions.
@@ -2141,7 +2301,10 @@ function deployNext(s,random=null){
 }
 
 function humanDecision(s){
- if(s.pendingSpell&&G.getUnit(s,s.pendingSpell.caster)?.team==='iron')return {id:s.pendingSpell.caster,kind:'dispel',message:`Choose how to dispel ${G.BATTLE_MAGIC[s.pendingSpell.key].name}.`};
+ if(s.pendingSpell&&G.getUnit(s,s.pendingSpell.caster)?.team==='iron')return {id:s.pendingSpell.caster,kind:'dispel',message:`Choose how to dispel ${G.SPELLS[s.pendingSpell.key].name}.`};
+ // At the player's wizard's Initiative step in a combat: cast an Assailment or fight on.
+ const wizard=G.assailmentWaiting(s,'ash')[0];
+ if(wizard)return {id:wizard.id,kind:'assailment',message:`${wizard.id} fights at Initiative ${s.combatSession.groups[s.combatSession.step]}: cast an Assailment, or fight on without one.`};
  // Charge reactions are chosen once every charge has been declared.
  const charge=s.movementStep==='reactions'?s.units.find(u=>u.team==='iron'&&u.charge?.status==='declared'&&u.charge.reaction==='pending'):null;
  if(charge)return {id:charge.charge.target,kind:'reaction',message:`Choose a reaction for ${charge.charge.target} against ${charge.id}.`};
@@ -2176,7 +2339,7 @@ function shouldAct(s){
  if(s.stage==='deployment'||s.stage==='finished')return false;
  if(s.pendingSpell)return G.getUnit(s,s.pendingSpell.caster)?.team==='ash';
  if(s.team==='iron')return !humanDecision(s);
- return s.stage==='movement'&&s.movementStep==='reactions'&&s.units.some(u=>u.team==='ash'&&u.charge?.status==='declared'&&u.charge.reaction==='pending'&&G.getUnit(s,u.charge.target)?.team==='iron')||!!combatDecision(s)||s.stage==='combat'&&s.units.some(u=>u.team==='iron'&&u.role==='wizard'&&u.engaged&&u.spells.some(key=>['hammerhand','hashutFlames'].includes(key)&&G.opponents(s,u).some(t=>G.canCast(s,u.id,key,t.id))));
+ return s.stage==='movement'&&s.movementStep==='reactions'&&s.units.some(u=>u.team==='ash'&&u.charge?.status==='declared'&&u.charge.reaction==='pending'&&G.getUnit(s,u.charge.target)?.team==='iron')||!!combatDecision(s)||G.assailmentWaiting(s,'iron').length>0;
 }
 
 function moveRegiment(s,u,random){
@@ -2248,7 +2411,7 @@ function describeOrder(o){return o.kind==='pivot'?'reforms':o.kind==='side'?`ste
 
 function aiDispel(s,random){
  const options=G.dispelOptions(s),wizard=[...options.wizards].sort((a,b)=>b.bonus-a.bonus)[0],choice=wizard?.id??(options.fated?'fated':'none');
- const out=G.resolveDispel(s,choice,random),name=G.BATTLE_MAGIC[out.spell].name;
+ const out=G.resolveDispel(s,choice,random),name=G.SPELLS[out.spell].name;
  if(!out.dispel)return {message:`The bot lets ${name} through.`};
  return {message:`${out.dispel.kind==='fated'?'Fated Dispel':out.dispel.by+' tries to dispel'}: ${out.dispel.dice.join('+')} = ${out.dispel.total} vs ${out.casting} · ${out.dispel.success?name+' dispelled':name+' takes effect'}${out.dispel.miscast?' · '+out.dispel.miscast.kind:''}.`,roll:{label:`${out.dispel.by??options.caster} · ${out.dispel.kind==='fated'?'Fated Dispel':'Dispel'}`,dice:out.dispel.dice,team:'iron'},report:out,spell:true,point:G.getUnit(s,out.target)};
 }
@@ -2265,6 +2428,8 @@ function takeStep(s,random=Math.random){
   const choice=defender.fleeing?'flee':shooter?'stand-shoot':'hold',at=shooter??charger,point={x:at.x,y:at.y},out=G.chargeReaction(s,at.id,choice,random);
   return {message:`${defender.id} chooses ${choice==='stand-shoot'?'Stand & Shoot':choice}${choice==='stand-shoot'&&chargers.length>1?' at '+at.id:''}.`,report:out.report,point};
  }
+ // The bot's wizard casts its Assailment when it fights, in either player's turn.
+ if(G.assailmentWaiting(s,'iron').length){const cast=aiSpell(s,random);if(cast)return cast;}
  const decision=humanDecision(s);if(decision)return {...decision,wait:true};
  if(s.stage==='strategy'){
   const u=s.units.find(u=>u.team==='iron'&&u.x!==null&&u.fleeing&&!u.rallyAttempted);
@@ -2311,7 +2476,12 @@ function takeStep(s,random=Math.random){
  return {message:'Waiting for the player.',wait:true};
 }
 
-function aiSpell(s,random){const wizard=s.units.find(u=>u.team==='iron'&&u.role==='wizard'&&alive(u));if(!wizard)return null;for(const key of wizard.spells){const targets=G.spellTargets(s,wizard.id,key).filter(t=>G.canCast(s,wizard.id,key,t.id));if(!targets.length)continue;const target=key==='shield'?wizard:targets.sort((a,b)=>G.gap(wizard,a)-G.gap(wizard,b))[0],point=key==='pillar'?(()=>{const victim=nearest(s,wizard);if(!victim)return {x:wizard.x,y:wizard.y};const d=distance(wizard,victim),f=Math.min(10,d)/d;return {x:Math.max(1.5,Math.min(s.board.width-1.5,wizard.x+(victim.x-wizard.x)*f)),y:Math.max(1.5,Math.min(s.board.height-1.5,wizard.y+(victim.y-wizard.y)*f))};})():null;const report=G.attemptSpell(s,wizard.id,key,target.id,random,{point});s.selected=wizard.id;return {message:`${wizard.name} casts ${G.BATTLE_MAGIC[key].name}: ${report.dice.join('+')} = ${report.casting} · ${report.pending?'cast — choose a dispel':report.cast?'cast':'failed'}.`,roll:{label:`${wizard.id} · ${G.BATTLE_MAGIC[key].name} casting`,dice:report.dice,team:'iron'},spell:true,report,point:{x:target.x,y:target.y}};}return null;}
+function aiSpell(s,random){const wizard=s.units.find(u=>u.team==='iron'&&u.role==='wizard'&&alive(u));if(!wizard)return null;for(const key of wizard.spells){const spell=G.SPELLS[key];if(G.castBlockReason(s,wizard.id,key))continue;const targets=G.spellTargets(s,wizard.id,key);if(!targets.length)continue;const target=targets.includes(wizard)?wizard:targets.sort((a,b)=>G.gap(wizard,a)-G.gap(wizard,b))[0],point=spell.template?templatePoint(s,wizard,key):null;if(spell.template&&!point)continue;const report=G.attemptSpell(s,wizard.id,key,target.id,random,{point});s.selected=wizard.id;return {message:`${wizard.name} casts ${spell.name}: ${report.dice.join('+')} = ${report.casting} · ${report.pending?'cast — choose a dispel':report.cast?'cast':'failed'}.`,roll:{label:`${wizard.id} · ${spell.name} casting`,dice:report.dice,team:'iron'},spell:true,report,point:point??{x:target.x,y:target.y}};}return null;}
+// A legal centre for a template spell, as near the closest enemy as the rules allow: along the
+// line to it, then a little to either side; null when none is legal.
+function templatePoint(s,wizard,key){const spell=G.SPELLS[key],foe=nearest(s,wizard);if(!foe)return null;const d=distance(wizard,foe);if(!d)return null;const ux=(foe.x-wizard.x)/d,uy=(foe.y-wizard.y)/d;
+ for(let along=Math.min(d,spell.range+.5);along>=spell.template+.6;along-=.5)for(const side of [0,1.5,-1.5,3,-3]){const p={x:wizard.x+ux*along-uy*side,y:wizard.y+uy*along+ux*side};if(!G.templatePlacementError(s,wizard.id,key,p))return p;}
+ return null;}
 
 return {combatDecision,deployNext,deployOpponent,deploymentChoice,humanDecision,readyToDeploy,shouldAct,takeDeploymentStep,takeStep};})();
 const $=id=>document.getElementById(id),S=15,NS='http://www.w3.org/2000/svg';
@@ -2448,7 +2618,7 @@ function select(id,open=true){const current=G.getUnit(state),target=G.getUnit(st
 function pendingCharger(u){return state.units.find(v=>v.charge?.status==='declared'&&v.charge.target===u.id&&v.charge.reaction==='pending');}
 function doneLabel(u){if(u.destroyed)return 'DESTROYED';if(u.offBoardPursuit)return 'PURSUING OFF BOARD';if(pendingCharger(u))return state.movementStep==='reactions'?'CHOOSE REACTION':'CHARGED';if(u.fleeing)return 'FLEEING';if(u.engaged)return u.combatResolved&&state.stage==='combat'?'✓ FOUGHT':'⚔ ENGAGED';if(u.charge?.status==='declared')return 'CHARGE DECLARED';if(u.charge?.status==='failed')return 'CHARGE FAILED';if(state.stage==='deployment')return u.role==='wizard'?'LEVEL 2 WIZARD':u.role==='character'?(u.general?'GENERAL':'CHARACTER'):G.startingModels(u)+' MODELS';if(u.team!==state.team)return 'WAITING';if(state.stage==='movement'&&state.movementStep==='declare')return chargeEligibleIds.has(u.id)?'CAN CHARGE':'NO CHARGE';if(state.stage!=='movement'&&u.role==='wizard')return wizardLabel(u);if(state.stage==='shooting')return u.role==='missile'?(u.shot?'✓ FIRED':shotLabel(u)):'NO MISSILES';if(state.stage!=='movement')return 'NO ACTIONS';return u.moved?'✓ DONE':(u.spent??0)>0?fmt(G.movementRemaining(u))+'″ LEFT':'READY';}
 function shotLabel(u){const why=G.inactionReason(state,u);return why===null?'READY TO FIRE':/^No target/.test(why)?'NO TARGET':'CANNOT SHOOT';}
-function wizardLabel(u){if(G.inactionReason(state,u)===null)return 'READY TO CAST';if(G.canExchangeSignature(state,u))return 'MAY EXCHANGE';return u.spells.some(k=>G.BATTLE_MAGIC[k].phase===state.stage&&u.castThisTurn.includes(k))?'✓ CAST':'NO SPELL NOW';}
+function wizardLabel(u){if(G.inactionReason(state,u)===null)return 'READY TO CAST';if(G.canExchangeSignature(state,u))return 'MAY EXCHANGE';return u.spells.some(k=>G.SPELLS[k]?.phase===state.stage&&u.castThisTurn.includes(k))?'✓ CAST':'NO SPELL NOW';}
 function drawUnit(u,layer,ghost=false){
   const w=G.size(u).w*S,h=G.size(u).h*S;
   if(ghost){const g=svg('g',{transform:`translate(${u.x*S} ${u.y*S}) rotate(${G.heading(u)})`,class:'ghost-unit'},layer);svg('rect',{x:-w/2,y:-h/2,width:w,height:h,class:'ghost'},g);svg('path',{d:`M${-w/2} ${-h/2}h${w}`,class:'preview-heading'},g);return g;}
@@ -2475,7 +2645,7 @@ function drawUnit(u,layer,ghost=false){
 }
 function draw(){
   hideUnitTooltip();const layer=$('unitsLayer'),measure=$('measureLayer'),rocketLayer=$('rocketLayer');layer.replaceChildren();measure.replaceChildren();rocketLayer.replaceChildren();drawObjectives();
-  state.units.filter(u=>u.x!==null).forEach(u=>drawUnit(u,layer));drawRocket(layer);drawCannons(layer);drawRocketTemplate(rocketLayer);drawCannonTrace(rocketLayer);for(const v of state.vortices){svg('circle',{cx:v.x*S,cy:v.y*S,r:1.5*S,class:'rocket-template impact pillar-template'},rocketLayer);svg('text',{x:v.x*S,y:(v.y-2)*S,'text-anchor':'middle',class:'measure-label'},rocketLayer,'PILLAR OF FIRE');}drawDeclaredCharges(measure);drawRangeOverlays(measure);const u=G.getUnit(state);
+  state.units.filter(u=>u.x!==null).forEach(u=>drawUnit(u,layer));drawRocket(layer);drawCannons(layer);drawRocketTemplate(rocketLayer);drawCannonTrace(rocketLayer);for(const v of state.vortices){svg('circle',{cx:v.x*S,cy:v.y*S,r:(v.radius??1.5)*S,class:'rocket-template impact pillar-template'},rocketLayer);svg('text',{x:v.x*S,y:(v.y-(v.radius??1.5)-.5)*S,'text-anchor':'middle',class:'measure-label'},rocketLayer,(G.SPELLS[v.spell??'pillar']?.name??'Vortex').toUpperCase());}drawDeclaredCharges(measure);drawRangeOverlays(measure);const u=G.getUnit(state);
   if(state.stage==='combat'&&u.engaged)for(const id of G.opponentIds(u))$('unitsLayer').querySelector('[data-unit="'+id+'"]')?.classList.add('combat-target');if(ordersOpen&&state.stage==='shooting'&&G.canShoot(state,u)){drawShootingArc(u,measure);return;}if(ordersOpen&&state.stage==='movement'&&state.movementStep!=='remaining'){if(u.team===state.team)drawCharge(u,measure);return;}if(!ordersOpen||!G.canAct(state,u))return;
   const order=currentOrder(),p=G.planMove(u,order),err=G.orderError(state,u,order);
   if(kind==='wheel'&&distance>0)drawUnit(p.afterWheel,measure,true).setAttribute('opacity','.4');
@@ -2843,7 +3013,7 @@ $('board').addEventListener('pointerleave',()=>{if(!drag)clearDeployGhost();});
 function endDrag(e,cancel=false){if(!drag)return;const d=drag;drag=null;$('ghostLayer').replaceChildren();if($('board').hasPointerCapture(d.pointerId))$('board').releasePointerCapture(d.pointerId);if(cancel)return;if(d.objective){if(d.moving)safely(()=>{BM.placeObjective(state,d.objective,d.x,d.y);notify(`${d.objective} moved. Troves stay 3″ clear of terrain and on the battlefield.`);});return;}if(d.moving)safely(()=>{G.placeAt(state,d.id,d.x,d.y);deployFocus=d.id;notify(`${pieceName(d.id)} moved. Turn it or drag again, then Confirm.`);});else if(state.stage!=='deployment'){ordersOpen=true;renderOrders();}}
 $('board').addEventListener('pointerup',e=>endDrag(e));$('board').addEventListener('pointercancel',e=>endDrag(e,true));
 $('rulesButton').onclick=()=>$('rulesDialog').showModal();$('closeRules').onclick=()=>$('rulesDialog').close();$('resetButton').onclick=()=>$('resetDialog').showModal();$('cancelReset').onclick=()=>$('resetDialog').close();
-{const ref=$('spellReference');for(const [key,spell]of Object.entries(G.BATTLE_MAGIC)){const p=document.createElement('p');p.innerHTML=`<b>${spell.name}</b> · ${title(spell.type)} · ${spell.cast}+ · ${spell.range?spell.range+'″':['hammerhand','hashutFlames'].includes(key)?'Combat':'Self'}${['hashutCurse','ashStorm','hashutFlames'].includes(key)?' · Lore of Hashut (Daemonsmith signature)':''}<br>`;p.append(G.SPELL_TEXT[key]??'');ref.append(p);}}
+{const ref=$('spellReference');for(const [key,spell]of Object.entries(G.SPELLS)){const p=document.createElement('p');p.innerHTML=`<b>${spell.name}</b> · ${title(spell.type)} · ${spell.cast}+ · ${G.spellRangeLabel(key)}${['hashutCurse','ashStorm','hashutFlames'].includes(key)?' · Lore of Hashut (Daemonsmith signature)':''}<br>`;p.append(G.SPELL_TEXT[key]??'');ref.append(p);}}
 // The chosen deployment map in one line for the setup panel.
 const MIRRORED_MAPS=['close-encounter','opposed-flanks','meeting-engagement','outflank'];
 function mapNote(){const setup=state.format.deployment,m=F.DEPLOYMENT_MAPS.find(m=>m.id===setup?.map);if(!m)return '';const b=state.board,mir=!!setup.mirrored&&!m.symmetric;
@@ -2921,12 +3091,12 @@ function renderCombatControls(u){
  const cards=$('combatStages');cards.replaceChildren();
  {const versus=document.createElement('div');versus.className='combat-versus';versus.innerHTML=['ash','iron'].map(team=>`<div class="${side(team)[0]?.faction??''}">${side(team).map(v=>`<b>${P.shortName(v)}</b><small>${P.strengthLabel(v,G)}</small>`).join('')}<small>${armyName(team)}</small></div>`).join('<strong>VS</strong>');cards.append(versus);}
  if(source){
-  for(const [index,stage]of source.stages.entries()){const block=document.createElement('div');block.className='strike-block '+G.getUnit(state,stage.from).faction;block.innerHTML=`<header><span>${index+1} · ${P.shortName(G.getUnit(state,stage.from))} strikes ${P.shortName(G.getUnit(state,stage.to))}</span><small>Initiative ${stage.initiative} · resolved</small></header><div class="strike-numbers">${[['Attacks',stage.attacks,'I'+stage.initiative],['Hits',stage.hits,stage.toHit+'+ to hit'],['Wounds',stage.wounds,stage.toWound+'+ to wound'],['Damage',stage.unsaved,stage.toSave+'+ save']].map(([label,value,caption])=>`<div><b>${value}</b><span>${label}</span><small>${caption}</small></div>`).join('')}</div>`;cards.append(block);}
+  for(const [index,stage]of source.stages.entries()){const block=document.createElement('div');block.className='strike-block '+G.getUnit(state,stage.from).faction;block.innerHTML=stage.spell?spellStageCard(index,stage):`<header><span>${index+1} · ${P.shortName(G.getUnit(state,stage.from))} strikes ${P.shortName(G.getUnit(state,stage.to))}</span><small>Initiative ${stage.initiative} · resolved</small></header><div class="strike-numbers">${[['Attacks',stage.attacks,'I'+stage.initiative],['Hits',stage.hits,stage.toHit+'+ to hit'],['Wounds',stage.wounds,stage.toWound+'+ to wound'],['Damage',stage.unsaved,stage.toSave+'+ save']].map(([label,value,caption])=>`<div><b>${value}</b><span>${label}</span><small>${caption}</small></div>`).join('')}</div>`;cards.append(block);}
   if(source.score?.ash){const result=document.createElement('div');result.className='combat-result';result.innerHTML=`<header>${source.stages.length+1} · COMBAT RESULT <small>${source.winnerSide?armyName(source.winnerSide).split(' · ')[0]+' win':'Draw'}</small></header><div class="result-columns">${['ash','iron'].map(team=>{const score=source.score[team];return `<div class="${team===source.winnerSide?'winner':'loser'}"><b>${side(team).map(v=>P.shortName(v)).join(' + ')||armyName(team)}</b><strong>${score.total}</strong><small>Wounds ${score.wounds} · Ranks ${score.ranks}<br>Standard ${score.standard} · Close Order ${score.closeOrder}<br>Flank ${score.flank} · Massed ${score.massed} · Musician ${score.musician}</small></div>`;}).join('<span>VS</span>')}</div>`;cards.append(result);}
  }
  if(source&&ids.includes(u.id)){
   const lines=[];if(source.initiative){const sorted=Object.entries(source.initiative).sort((a,b)=>b[1]-a[1]);lines.push('INITIATIVE · '+sorted.map(([id,i])=>id+' I'+i).join(' → '));}
-  lines.push(...source.stages.map(v=>v.from+' → '+v.to+' (I'+v.initiative+'): '+(v.lostBefore?v.fighters+' fighting after '+v.lostBefore+' fell · ':'')+v.attacks+' attacks · hit '+v.toHit+'+ ('+v.hits+') · wound '+v.toWound+'+ ('+v.wounds+') · save '+v.toSave+'+ ('+v.saved+') · '+v.unsaved+' slain'+(v.dice.reroll?.length?' · '+v.dice.reroll.length+' Choppa rerolls':'')));
+  lines.push(...source.stages.map(v=>v.spell?`${v.from} → ${v.to} (I${v.initiative}): ${G.SPELLS[v.spell].name} · ${v.hits} magical hits · wound ${v.toWound}+ (${v.wounds})${v.toSave?' · save '+v.toSave+'+':' · no armour save'} · ${v.unsaved} slain`:v.from+' → '+v.to+' (I'+v.initiative+'): '+(v.lostBefore?v.fighters+' fighting after '+v.lostBefore+' fell · ':'')+v.attacks+' attacks · hit '+v.toHit+'+ ('+v.hits+') · wound '+v.toWound+'+ ('+v.wounds+') · save '+v.toSave+'+ ('+v.saved+') · '+v.unsaved+' slain'+(v.dice.reroll?.length?' · '+v.dice.reroll.length+' Choppa rerolls':'')));
   if(source.score?.ash)lines.push(...['ash','iron'].map(team=>{const sc=source.score[team];return `${armyName(team)} result ${sc.total} = ${sc.wounds} wounds + ${sc.ranks} ranks + ${sc.closeOrder} Close Order + ${sc.flank} flank/rear + ${sc.massed} Massed Infantry + ${sc.standard} Standard + ${sc.musician} Musician`;}),source.winnerSide?`${armyName(source.winnerSide)} wins by ${source.margin}`:'Draw — both hold');
   for(const [id,b]of Object.entries(source.breaks??{}))lines.push(`Break test ${b.dice.join(' + ')} · ${P.shortName(G.getUnit(state,id))}: ${P.OUTCOME_LABEL[b.outcome]??b.outcome}${b.outnumbered?' (outnumbered more than two to one)':''}${b.stubborn?' (Stubborn)':''}`);
   for(const [id,m]of Object.entries(source.loserMoves??{}))lines.push(`${id} moves back ${fmt(m.distance)}″`);
@@ -2936,6 +3106,8 @@ function renderCombatControls(u){
  }
  $('combatSummary').textContent=aiStep&&inPending?'The bot resolves its units’ Break tests, retreats and pursuits.':inSession?session.phase==='attacks'?'Higher Initiative fights first. Roll this tier, then continue.':'All attacks made. Compare the combat results.':inPending?pending.stage==='break'?`${pending.loser} must take a Break test.`:pending.stage==='loser-choice'?`${pending.loser} may use Shieldwall or Fall Back in Good Order.`:pending.stage==='declare'?`${P.shortName(G.getUnit(state,pending.winner))} declares pursuit or restraint, and which loser, before any loser moves.`:pending.stage==='retreat'?`${P.shortName(G.getUnit(state,pending.loser))} moves: ${P.OUTCOME_LABEL[pending.outcome]??''}.`:pending.outcome==='overrun'?`Enemy destroyed. ${pending.winner} overruns straight ahead or attempts to restrain and reform.`:`${pending.winner} chooses follow up / pursuit or restraint.`:active?`${u.id} has ${G.modelSquares(state,u).filter(m=>m.fighting).length} fighting models${foes.length>1?' against '+foes.length+' enemy units':''} · ${G.aliveCount(u)} surviving.`:combat?.aftermath?'Combat resolved.':u.combatResolved?'Fight complete.':'';
 }
+// An Assailment cast at an Initiative step, shown among that step's attacks.
+function spellStageCard(index,stage){return `<header><span>${index+1} · ${P.shortName(G.getUnit(state,stage.from))} casts ${G.SPELLS[stage.spell].name} at ${P.shortName(G.getUnit(state,stage.to))}</span><small>Initiative ${stage.initiative} · magical hits</small></header><div class="strike-numbers">${[['Hits',stage.hits,'automatic'],['Wounds',stage.wounds,stage.toWound+'+ to wound'],['Damage',stage.unsaved,stage.toSave?stage.toSave+'+ save':'no armour save']].map(([label,value,caption])=>`<div><b>${value}</b><span>${label}</span><small>${caption}</small></div>`).join('')}</div>`;}
 function loserAction(choice){try{const r=G.chooseLoserAction(state,choice);render();notify(r.choice==='shieldwall'?'Shieldwall: loser Gives Ground.':'Loser Falls Back in Good Order.');continueCombat();}catch(e){notify(e.message,true);}}
 $('combatShieldwall').onclick=()=>loserAction('shieldwall');$('combatFallBack').onclick=()=>loserAction('fall-back');
 async function combatAfter(choice){if(rolling)return;try{
@@ -2946,7 +3118,8 @@ $('combatFollow').onclick=()=>combatAfter('follow');$('combatRestrain').onclick=
 // and carries on in the same way once that choice is made.
 let resumeCombat=null;
 // A choice still to make: Shieldwall, a pursuit declaration, an overrun; or a step the bot takes.
-const combatWaits=()=>{const p=state.pendingCombat,auto=p?.stage==='winner-choice'&&!!p.declarations?.[p.winner];return !!p&&(['loser-choice','declare'].includes(p.stage)||p.stage==='winner-choice'&&!auto)||aiMode==='ai'&&!auto&&!!AI.combatDecision(state);};
+// Also a wizard at its Initiative step who may cast an Assailment, and a spell waiting for a dispel.
+const combatWaits=()=>{const p=state.pendingCombat,auto=p?.stage==='winner-choice'&&!!p.declarations?.[p.winner];return !!p&&(['loser-choice','declare'].includes(p.stage)||p.stage==='winner-choice'&&!auto)||aiMode==='ai'&&!auto&&!!AI.combatDecision(state)||!!state.pendingSpell||G.assailmentWaiting(state).length>0;};
 function continueCombat(){if(resumeCombat===null||autoResolving||rolling)return;const p=state.pendingCombat;if(!p&&!state.combatSession){resumeCombat=null;return;}if(combatWaits())return;const mode=resumeCombat;resumeCombat=null;autoCombat(mode);}
 async function autoCombat(animated){if(autoResolving||rolling)return;autoResolving=true;resumeCombat=null;try{for(let step=0;step<24;step++){
  const p=state.pendingCombat;if(combatWaits()){resumeCombat=animated;break;}
@@ -2958,7 +3131,8 @@ async function autoCombat(animated){if(autoResolving||rolling)return;autoResolvi
  else if(state.combatSession?.phase==='compare')G.compareCombat(state);
  else G.beginCombat(state,state.selected);
  render();
- }const p=state.pendingCombat,bot=aiMode==='ai'&&AI.combatDecision(state)&&!(p?.stage==='winner-choice'&&p.declarations?.[p.winner]);notify(bot?'The bot decides for its unit…':p?.stage==='declare'?`${P.shortName(G.getUnit(state,p.winner))} won: declare pursuit or restraint before the losers move.`:p?.stage==='winner-choice'?`${P.shortName(G.getUnit(state,p.winner))} wiped out its enemy: overrun or restrain.`:p?.stage==='loser-choice'?`${P.shortName(G.getUnit(state,p.loser))} lost: choose Shieldwall or Fall Back.`:'Combat resolved.');}
+ }const p=state.pendingCombat,bot=aiMode==='ai'&&AI.combatDecision(state)&&!(p?.stage==='winner-choice'&&p.declarations?.[p.winner]),caster=G.assailmentWaiting(state)[0];
+ if(caster&&humanSide(caster.team)){state.selected=caster.id;ordersOpen=true;notify(`${P.shortName(caster)} fights at Initiative ${state.combatSession.groups[state.combatSession.step]}: cast an Assailment, or fight on without one.`);}else notify(caster?'The bot’s wizard is casting…':bot?'The bot decides for its unit…':p?.stage==='declare'?`${P.shortName(G.getUnit(state,p.winner))} won: declare pursuit or restraint before the losers move.`:p?.stage==='winner-choice'?`${P.shortName(G.getUnit(state,p.winner))} wiped out its enemy: overrun or restrain.`:p?.stage==='loser-choice'?`${P.shortName(G.getUnit(state,p.loser))} lost: choose Shieldwall or Fall Back.`:'Combat resolved.');}
  catch(e){notify(e.message,true);}finally{autoResolving=false;render();}}
 $('fightButton').onclick=()=>autoCombat(true);$('combatInstantButton').onclick=()=>autoCombat(false);
 $('rallyButton').onclick=async()=>{if(rolling)return;try{const id=state.selected,ld=G.leadership(G.getUnit(state,id),'rally'),result=G.rally(state,id);await animatedRoll(2,'Rally · Leadership '+ld,result.dice);showDice(result.dice,'Rally '+result.id);render();notify(result.id+(result.success?' rallies and can act normally this turn, except charging.':' fails to rally and continues fleeing.'));}catch(e){notify(e.message,true);}};
@@ -2982,7 +3156,7 @@ function fireArc(m,targetId,bands,layer){
 function drawRangeOverlays(layer){
  const options=G.dispelOptions(state);if(options){const caster=G.getUnit(state,options.caster),color=P.themeForTeam(state,options.team).primary;for(const w of options.wizards){const v=G.getUnit(state,w.id);svg('path',{d:`M${caster.x*S} ${caster.y*S}L${v.x*S} ${v.y*S}`,class:'dispel-line',style:`stroke:${color}`},layer);svg('text',{x:(caster.x+v.x)/2*S,y:(caster.y+v.y)/2*S-6,'text-anchor':'middle',class:'measure-label arc-label'},layer,`DISPEL · 2D6+${w.bonus}`);$('unitsLayer').querySelector(`[data-unit="${w.id}"]`)?.classList.add('dispel-candidate');}}
  const u=G.getUnit(state);
- if(ordersOpen&&u?.role==='wizard'&&u.team===state.team&&u.x!==null)for(const key of u.spells){const spell=G.BATTLE_MAGIC[key];if(!spell?.range||spell.phase!==state.stage)continue;const ready=G.spellTargets(state,u.id,key).some(t=>G.canCast(state,u.id,key,t.id));rangeEnvelope(u,spell.range,layer,'spell'+(ready?'':' idle'),`${spell.name} · ${spell.range}″`);}
+ if(ordersOpen&&u?.role==='wizard'&&u.team===state.team&&u.x!==null)for(const key of u.spells){const spell=G.SPELLS[key];if(!spell?.range||spell.phase!==state.stage)continue;const ready=G.spellTargets(state,u.id,key).some(t=>G.canCast(state,u.id,key,t.id));rangeEnvelope(u,spell.range,layer,'spell'+(ready?'':' idle'),`${spell.name} · ${spell.range}″`);}
  const r=state.rocket;if(rocketSelected&&state.stage==='shooting'&&state.team==='ash'&&r.x!==null){if(rocketIndirect){rangeEnvelope(r,48,layer,'far','Indirect Fire · 48″ max');rangeEnvelope(r,12,layer,'min','12″ minimum');}else fireArc(r,rocketTarget,[[12,48,'far','Direct fire · 12–48″']],layer);}
  const c=state.cannons.find(c=>c.id===cannonSelected);if(c&&state.stage==='shooting'&&state.team==='iron'&&c.x!==null)fireArc(c,cannonTarget,[[0,60,'far'+(cannonMode==='ball'?' chosen':' idle'),'Cannonball · 60″'],[0,12,'close'+(cannonMode==='grape'?' chosen':' idle'),'Grapeshot · 12″']],layer);
 }
@@ -3008,37 +3182,50 @@ function renderShootingControls(u){
 function foldUnavailable(list){const off=[...list.querySelectorAll(':scope > button:disabled')];if(!off.length)return;const box=document.createElement('details');box.className='other-targets';box.innerHTML=`<summary>${off.length} other ${off.length===1?'enemy':'enemies'} out of reach · why?</summary>`;for(const b of off){const line=document.createElement('p');line.textContent=b.textContent;box.append(line);b.remove();}list.append(box);}
 function renderMagicControls(u){
  const panel=$('magicControls');panel.hidden=u.role!=='wizard'||state.stage==='deployment';if(panel.hidden)return;
- $('magicIntro').textContent=u.fleeing?'Fleeing wizards cannot cast.':`Level ${u.level} · ${u.wounds}/2 wounds · up to two casting attempts per turn, one per spell. Fated Dispel: once per turn.`;
+ $('magicIntro').textContent=u.fleeing?'Fleeing wizards cannot cast.':`Level ${u.level} · ${u.wounds}/${G.profile(u).W} wounds · ${u.level} casting attempt${u.level===1?'':'s'} per turn, one per spell (${Math.max(0,u.level-u.castThisTurn.length)} left). Each side has one Fated Dispel per turn.`;
  // Only the spells that can be cast in this phase are shown. Round 1 Strategy also offers the exchange.
  const exchangeTime=G.canExchangeSignature(state,u);
- const root=$('magicSpells');root.replaceChildren();for(const key of u.spells){if(G.BATTLE_MAGIC[key].phase!==state.stage)continue;const spell=G.BATTLE_MAGIC[key],card=document.createElement('div');card.className='magic-spell';const heading=document.createElement('strong');heading.textContent=`${spell.name} · ${spell.cast}+ · ${title(spell.type)}${spell.range?' · '+spell.range+'″':' · '+(['hammerhand','hashutFlames'].includes(key)?'Combat':'Self')}`;card.append(heading);const about=document.createElement('p');about.className='spell-text';about.textContent=G.SPELL_TEXT[key]??'';card.append(about);const targets=G.spellTargets(state,u.id,key),picker=document.createElement('select');picker.setAttribute('aria-label',spell.name+' target');for(const t of targets){const o=document.createElement('option');o.value=t.id;o.textContent=P.unitName(t);picker.append(o);}if(key!=='pillar'&&targets.length&&spell.phase===state.stage)card.append(picker);let px=null,py=null;if(key==='pillar'){const inputs=document.createElement('div');inputs.className='coordinate-inputs';inputs.innerHTML=`<label>Centre X<input type="number" min="1.5" max="${state.board.width-1.5}" step="0.5" value="${Math.min(state.board.width-1.5,Math.max(1.5,u.x))}"></label><label>Centre Y<input type="number" min="1.5" max="${state.board.height-1.5}" step="0.5" value="${Math.min(state.board.height-1.5,Math.max(1.5,u.y+(u.team==='iron'?6:-6)))}"></label>`;[px,py]=inputs.querySelectorAll('input');card.append(inputs);}const cast=document.createElement('button');cast.disabled=!targets.some(t=>G.canCast(state,u.id,key,t.id));cast.className=cast.disabled?'secondary':'primary';cast.textContent=u.castThisTurn.includes(key)?'Attempted':spell.phase!==state.stage?`Cast in ${title(spell.phase)}`:`Cast ${spell.name}`;cast.onclick=async()=>{if(rolling)return;const target=picker.value,point=key==='pillar'?{x:Number(px.value),y:Number(py.value)}:null,where=G.getUnit(state,target),before=where&&{x:where.x,y:where.y};try{const report=G.attemptSpell(state,u.id,key,target,Math.random,{point});await animatedRoll(2,`${u.id} · ${spell.name} · casting ${spell.cast}+`,report.dice);render();showDice(report.dice,`${u.name} · ${spell.name}`);announceSpell(report,before);afterSpell(u.id);}catch(e){notify(e.message,true);}};card.append(cast);root.append(card);}
+ const root=$('magicSpells');root.replaceChildren();for(const key of u.spells){const spell=G.SPELLS[key];if(spell?.phase!==state.stage)continue;const card=document.createElement('div');card.className='magic-spell';const heading=document.createElement('strong');heading.textContent=`${spell.name} · ${spell.cast}+ · ${title(spell.type)} · ${G.spellRangeLabel(key)}`;card.append(heading);const about=document.createElement('p');about.className='spell-text';about.textContent=G.SPELL_TEXT[key]??'';card.append(about);
+  // Every possible target is listed, legal ones first; one that cannot be chosen says why.
+  const self=!!spell.template||spell.reach==='self',block=G.castBlockReason(state,u.id,key),options=self?[]:G.spellTargetOptions(state,u.id,key).filter(o=>spell.friendly?o.unit.team===u.team:o.unit.team!==u.team).sort((a,b)=>!!a.reason-!!b.reason),picker=document.createElement('select');picker.setAttribute('aria-label',spell.name+' target');
+  for(const o of options){const opt=new Option(P.unitName(o.unit)+(o.reason?' · '+o.reason:''),o.unit.id);opt.disabled=!!o.reason;picker.append(opt);}const first=options.find(o=>!o.reason);if(first)picker.value=first.unit.id;if(options.length)card.append(picker);
+  let px=null,py=null;if(spell.template){const r=spell.template,inputs=document.createElement('div');inputs.className='coordinate-inputs';inputs.innerHTML=`<label>Centre X<input type="number" min="${r}" max="${state.board.width-r}" step="0.5" value="${Math.min(state.board.width-r,Math.max(r,u.x))}"></label><label>Centre Y<input type="number" min="${r}" max="${state.board.height-r}" step="0.5" value="${Math.min(state.board.height-r,Math.max(r,u.y+(u.team==='iron'?6:-6)))}"></label>`;[px,py]=inputs.querySelectorAll('input');card.append(inputs);}
+  const legal=self?!G.targetReason(state,u.id,key,u):!!first,cast=document.createElement('button');cast.disabled=!!block||!legal;cast.className=cast.disabled?'secondary':'primary';cast.title=block??(legal?'':options.length?'No legal target.':'No target.');cast.textContent=u.castThisTurn.includes(key)?'Attempted':`Cast ${spell.name}`;
+  cast.onclick=async()=>{if(rolling)return;const target=self?u.id:picker.value,point=spell.template?{x:Number(px.value),y:Number(py.value)}:null,where=G.getUnit(state,target),before=where&&{x:where.x,y:where.y};try{const report=G.attemptSpell(state,u.id,key,target,Math.random,{point});await animatedRoll(2,`${u.id} · ${spell.name} · casting ${spell.cast}+`,report.dice);render();showDice(report.dice,`${u.name} · ${spell.name}`);announceSpell(report,before);afterSpell(u.id);}catch(e){notify(e.message,true);}};card.append(cast);
+  if(block&&!u.castThisTurn.includes(key)){const why=document.createElement('small');why.className='spell-block';why.textContent=block;card.append(why);}
+  root.append(card);}
+ // At the wizard's Initiative step in a combat: cast an Assailment, or fight on without one.
+ if(humanSide(u.team)&&G.assailmentWaiting(state).some(w=>w.id===u.id)){const b=document.createElement('button');b.className='quiet wide';b.textContent='Fight on without casting';b.onclick=()=>safely(()=>{G.passAssailment(state,u.id);notify(P.shortName(u)+' fights on without casting.');continueCombat();});root.append(b);}
  if(!root.children.length&&!u.fleeing){const line=document.createElement('p');line.className='spell-later';line.textContent=`No spell to cast in ${title(state.stage)}.`;root.append(line);}
  // Round 1 Strategy, before any casting: one rolled spell may be swapped for a signature spell.
- if(exchangeTime){const choice=document.createElement('select');choice.className='exchange-choice';choice.setAttribute('aria-label','Exchange a spell for a signature spell');choice.add(new Option('Exchange a spell for a signature spell…',''));for(const key of u.spells.filter(k=>G.SPELL_ROLL.includes(k)))for(const replacement of u.faction==='chaos'?G.SIGNATURE_SPELLS:['hammerhand'])choice.add(new Option(`${G.BATTLE_MAGIC[key].name} → ${G.BATTLE_MAGIC[replacement].name}`,key+'>'+replacement));choice.onchange=()=>{const [key,replacement]=choice.value.split('>');if(replacement)safely(()=>{G.exchangeSignature(state,u.id,key,replacement);notify(G.BATTLE_MAGIC[replacement].name+' replaces '+G.BATTLE_MAGIC[key].name+'.');});};root.append(choice);}
- // Remains in Play: an enemy Pillar of Fire can be dispelled in this army's Strategy phase.
- for(const vortex of state.vortices.filter(v=>u.team===state.team&&G.canDispelVortex(state,v.caster))){const able=G.vortexDispellers(state,vortex.caster).some(w=>w.id===u.id);for(const mode of [able&&'wizard',!state.fatedDispelUsed&&'fated'].filter(Boolean)){const b=document.createElement('button');b.className='quiet wide';b.textContent=mode==='wizard'?`Dispel enemy Pillar of Fire · 2D6+${Math.ceil(u.level/2)} · beat 9`:'Fated Dispel enemy Pillar · 2D6 · beat 9';b.onclick=async()=>{if(rolling)return;try{const result=G.dispelVortex(state,vortex.caster,Math.random,mode,u.id);await animatedRoll(2,`${mode==='wizard'?u.id:vortex.caster} · Dispel Pillar · beat 9`,result.dice);render();notify(`${mode==='wizard'?P.shortName(u):'Fated Dispel'}: ${result.dice.join('+')} = ${result.total} vs 9 · ${result.success?'Pillar of Fire dispelled':'the Pillar remains in play'}${result.miscast?' · Outclassed in the Art: '+result.miscast.kind:''}.`);}catch(e){notify(e.message,true);}};root.append(b);}}
+ if(exchangeTime){const choice=document.createElement('select');choice.className='exchange-choice';choice.setAttribute('aria-label','Exchange a spell for a signature spell');choice.add(new Option('Exchange a spell for a signature spell…',''));for(const key of u.spells.filter(k=>G.SPELL_ROLL.includes(k)))for(const replacement of u.faction==='chaos'?G.SIGNATURE_SPELLS:['hammerhand'])choice.add(new Option(`${G.SPELLS[key].name} → ${G.SPELLS[replacement].name}`,key+'>'+replacement));choice.onchange=()=>{const [key,replacement]=choice.value.split('>');if(replacement)safely(()=>{G.exchangeSignature(state,u.id,key,replacement);notify(G.SPELLS[replacement].name+' replaces '+G.SPELLS[key].name+'.');});};root.append(choice);}
+ // Remains in Play: an enemy vortex can be dispelled once in this army's Strategy phase, by
+ // beating its printed casting value.
+ for(const vortex of state.vortices.filter(v=>u.team===state.team&&G.canDispelVortex(state,v.id??v.caster))){const ref=vortex.id??vortex.caster,spell=G.SPELLS[vortex.spell??'pillar'],able=G.vortexDispellers(state,ref).some(w=>w.id===u.id);for(const mode of [able&&'wizard',G.fatedDispelAvailable(state,state.team)&&'fated'].filter(Boolean)){const b=document.createElement('button');b.className='quiet wide';b.textContent=mode==='wizard'?`Dispel enemy ${spell.name} · 2D6+${Math.ceil(u.level/2)} · beat ${spell.cast}`:`Fated Dispel enemy ${spell.name} · 2D6 · beat ${spell.cast}`;b.onclick=async()=>{if(rolling)return;try{const result=G.dispelVortex(state,ref,Math.random,mode,u.id);await animatedRoll(2,`${mode==='wizard'?u.id:'Fated Dispel'} · Dispel ${spell.name} · beat ${spell.cast}`,result.dice);render();notify(`${mode==='wizard'?P.shortName(u):'Fated Dispel'}: ${result.dice.join('+')} = ${result.total} vs ${spell.cast} · ${result.success?spell.name+' dispelled':spell.name+' remains in play'}${result.miscast?' · Outclassed in the Art: '+result.miscast.kind:''}.`);}catch(e){notify(e.message,true);}};root.append(b);}}
 }
 // One line for a spell's casting roll, any dispel, and its effect.
 function announceSpell(report,before){
- const caster=G.getUnit(state,report.caster),spell=G.BATTLE_MAGIC[report.spell],d=report.dispel;
+ const caster=G.getUnit(state,report.caster),spell=G.SPELLS[report.spell],d=report.dispel;
  const outcome=report.miscast?' · '+report.miscast.kind:report.pending?` · cast — ${armyName(G.dispelOptions(state).team)} may dispel`:d?'':report.perfect?' · Perfect Invocation':report.cast?' · cast':' · failed';
  const dispel=d?` · ${d.kind==='fated'?'Fated Dispel':P.shortName(G.getUnit(state,d.by))+' dispels'} ${d.dice.join('+')}${d.kind==='wizard'?' +'+(d.total-d.dice[0]-d.dice[1]):''} = ${d.total} · ${d.success?'dispelled':'fails'}${d.miscast?' — Outclassed in the Art: '+d.miscast.kind:''}${d.success?'':' · takes effect'}`:'';
  const detail=report.effect?.unsaved?` · ${report.effect.unsaved} wounds`:report.effect?.passed===false?report.effect.fledOffBoard?' · target fled off board':' · target flees.'+P.fleeSummary(report.effect.move):'';
- const message=`${spell.name}: ${report.dice.join('+')} +${Math.ceil(caster.level/2)} = ${report.casting}${outcome}${dispel}${detail}.`;$('magicReport').textContent=message;notify(message);if(report.effect?.hits&&before)impactEffect(before,'volley',report.effect.unsaved);spellCard(report,before);
+ // The natural dice, then each modifier by name, then the total.
+ const modifiers=(report.modifiers??[]).map(m=>` ${m.value<0?'−':'+'}${Math.abs(m.value)} ${m.label}`).join(''),ended=report.ended?.length?` · the earlier ${spell.name} ends`:'';
+ const message=`${spell.name}: ${report.dice.join('+')}${modifiers} = ${report.casting}${outcome}${dispel}${detail}${ended}.`;$('magicReport').textContent=message;notify(message);if(report.effect?.hits&&before)impactEffect(before,'volley',report.effect.unsaved);spellCard(report,before);
 }
 // Once a spell is resolved, move on when the caster has nothing more to cast in this phase.
-function afterSpell(id){const u=G.getUnit(state,id);if(state.pendingSpell||!u||u.team!==state.team||!humanSide(u.team))return;if(G.inactionReason(state,u)!==null&&!G.canExchangeSignature(state,u)){advanceSelection(id);render();}}
+function afterSpell(id){const u=G.getUnit(state,id);if(state.stage==='combat'&&!state.pendingSpell)continueCombat();if(state.pendingSpell||!u||u.team!==state.team||!humanSide(u.team))return;if(G.inactionReason(state,u)!==null&&!G.canExchangeSignature(state,u)){advanceSelection(id);render();}}
 // A card on the battlefield names the spell being cast and reads what it does, then shows the
 // outcome: a burst of magic where it takes effect, a shattered ring where it is dispelled.
 let spellCardTimer=null;
 function spellCard(report,at=null){
- const spell=G.BATTLE_MAGIC[report?.spell],caster=G.getUnit(state,report?.caster),card=$('spellCard');if(!spell||!caster||!card)return;
+ const spell=G.SPELLS[report?.spell],caster=G.getUnit(state,report?.caster),card=$('spellCard');if(!spell||!caster||!card)return;
  const target=G.getUnit(state,report.target),self=report.target===report.caster;
  const where=report.effect?.point??state.pendingSpell?.point??(self?caster:at&&Number.isFinite(at.x)?at:target?.x!=null?target:caster);
  const outcome=report.pending?'pending':report.dispel?.success?'dispelled':report.cast?'cast':report.miscast?'miscast':'failed';
  const d=report.dispel,dispeller=d?.kind==='fated'?'Fated Dispel':d?P.shortName(G.getUnit(state,d.by)):'';
  const status={pending:`Cast on ${report.casting} · ${armyName(caster.team==='ash'?'iron':'ash')} may dispel`,cast:`${report.perfect?'Perfect Invocation · ':''}${d?dispeller+' fails · ':''}It takes effect`,dispelled:`Dispelled · ${dispeller} ${d?.total} beats ${report.casting}`,failed:`Fails · ${report.casting} rolled, ${spell.cast}+ needed`,miscast:`Miscast · ${report.miscast?.kind??''}`}[outcome];
- const range=spell.range?spell.range+'″':['hammerhand','hashutFlames'].includes(report.spell)?'Combat':'Self';
+ const range=G.spellRangeLabel(report.spell);
  card.className=`spell-card ${outcome} army-${caster.team}`;card.hidden=false;
  card.innerHTML=`<span class="spell-kicker">${P.shortName(caster)} casts${self||!target?'':' at '+P.shortName(target)}</span><strong>${spell.name}</strong><small>${title(spell.type)} · ${spell.cast}+ · ${range}</small><p>${G.SPELL_TEXT[report.spell]??''}</p><b class="spell-outcome">${status}</b>`;
  const x=where.x/state.board.width*100,y=where.y/state.board.height*100;card.style.left=Math.max(18,Math.min(82,x))+'%';card.style.top=y+'%';card.classList.toggle('below',y<48);
@@ -3060,7 +3247,7 @@ function vpFloat(at,e){const el=document.createElement('div');el.className='vp-f
 // The defending player's dispel choice, shown in that army's colours in the caster's popup.
 function renderDispelControls(u){
  const panel=$('dispelControls'),options=G.dispelOptions(state),mine=options?.caster===u.id;panel.hidden=!mine;if(!mine)return;scopeTheme(panel,P.themeForTeam(state,options.team));
- const p=state.pendingSpell,spell=G.BATTLE_MAGIC[p.key],computer=aiMode==='ai'&&options.team==='iron';
+ const p=state.pendingSpell,spell=G.SPELLS[p.key],computer=aiMode==='ai'&&options.team==='iron';
  $('dispelHelp').textContent=`${P.shortName(u)} cast ${spell.name} with ${p.report.casting}. ${G.SPELL_TEXT[p.key]??''} ${armyName(options.team)}: ${computer?'the bot is choosing a dispel…':`pick a Wizard on a dispel line, the Fated Dispel, or no dispel. A dispel must beat ${p.report.casting}; double 6 always dispels.`}`;
  const root=$('dispelChoices');root.replaceChildren();if(computer)return;
  for(const w of options.wizards){const b=document.createElement('button');b.className='primary';b.textContent=`${P.shortName(G.getUnit(state,w.id))} · 2D6+${w.bonus}`;b.onclick=()=>dispelWith(w.id);root.append(b);}

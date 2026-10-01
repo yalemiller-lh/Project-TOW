@@ -66,7 +66,7 @@ function armyFromRoster(team,roster){
  return {units,cannons,rocket};
 }
 export function createGame(opponent='chaos',{format='classic',board=null,points=null,deployment=null,rosters=null,objectives=null,optional=null,random=Math.random}={}){if(!FACTIONS[opponent])throw Error('Unknown army.');const fmt=F.format(format),field=F.boardFor(fmt,{board,points}),setup=deployment??(fmt.deployment?.map?{map:fmt.deployment.map,depth:fmt.deployment.depth}:null);
- if(fmt.id==='battle-march')return createRosterGame(opponent,fmt,field,setup,points,rosters,{objectives,optional,random});const units=Array.from({length:8},(_,i)=>{const faction=i<4?'chaos':opponent,role=i%4===3?'missile':'infantry';return {id:(i<4?'A':'I')+(i%4+1),team:i<4?'ash':'iron',faction,role,name:role==='missile'?MISSILE[faction].name:FACTIONS[faction].name,x:null,y:null,heading:i<4?0:180,moved:false,shot:false,spent:0,movementMode:null,marchRequired:null,marchTest:null,engaged:null,charge:null,impetuousTest:null,combatResolved:false,fleeing:false,rallyAttempted:false,rallied:false,shieldwallUsed:false,deadModels:[]};});units.push(createWizard('ash','chaos'));if(opponent==='empire')units.push(createWizard('iron','empire'));return {stage:'deployment',team:'ash',round:1,selected:'A1',rocket:{id:'A5',name:'Deathshrieker Rocket Launcher',...machineFields('ash','chaos'),x:null,y:null,heading:0,wounds:3,crew:3,shot:false,disabledUntil:0,lastShot:null},cannons:createCannons(opponent),units,history:[],vortices:[],fatedDispelUsed:false,format:{id:fmt.id,name:fmt.name,rulesVersion:fmt.rulesVersion,points:fmt.points?(points??fmt.points.default):null,rounds:fmt.rounds,deployment:setup,resultPolicy:fmt.resultPolicy??null,optional:{...(fmt.optional??{})}},board:field,zones:F.deploymentZones(fmt,field,setup??{}),firstPlayer:'ash',turnLog:[]};}
+ if(fmt.id==='battle-march')return createRosterGame(opponent,fmt,field,setup,points,rosters,{objectives,optional,random});const units=Array.from({length:8},(_,i)=>{const faction=i<4?'chaos':opponent,role=i%4===3?'missile':'infantry';return {id:(i<4?'A':'I')+(i%4+1),team:i<4?'ash':'iron',faction,role,name:role==='missile'?MISSILE[faction].name:FACTIONS[faction].name,x:null,y:null,heading:i<4?0:180,moved:false,shot:false,spent:0,movementMode:null,marchRequired:null,marchTest:null,engaged:null,charge:null,impetuousTest:null,combatResolved:false,fleeing:false,rallyAttempted:false,rallied:false,shieldwallUsed:false,deadModels:[]};});units.push(createWizard('ash','chaos'));if(opponent==='empire')units.push(createWizard('iron','empire'));return {stage:'deployment',team:'ash',round:1,selected:'A1',rocket:{id:'A5',name:'Deathshrieker Rocket Launcher',...machineFields('ash','chaos'),x:null,y:null,heading:0,wounds:3,crew:3,shot:false,disabledUntil:0,lastShot:null},cannons:createCannons(opponent),units,history:[],vortices:[],fatedDispelUsed:{ash:false,iron:false},format:{id:fmt.id,name:fmt.name,rulesVersion:fmt.rulesVersion,points:fmt.points?(points??fmt.points.default):null,rounds:fmt.rounds,deployment:setup,resultPolicy:fmt.resultPolicy??null,optional:{...(fmt.optional??{})}},board:field,zones:F.deploymentZones(fmt,field,setup??{}),firstPlayer:'ash',turnLog:[]};}
 function optionalRules(fmt,chosen){const rules={...fmt.optional};for(const [key,on]of Object.entries(chosen??{})){const rule=F.OPTIONAL_RULES[key];if(!(key in rules)||!rule)throw Error(`Unknown optional rule "${key}".`);if(on&&!rule.available)throw Error(`${rule.name} is not available yet: ${rule.reason}.`);rules[key]=!!on;}return rules;}
 function createRosterGame(opponent,fmt,field,setup,points,rosters,{objectives=null,optional=null,random=Math.random}={}){
  // The deployment map is chosen or rolled on a D6. Red sets up the game, so Red counts as the map
@@ -79,7 +79,7 @@ function createRosterGame(opponent,fmt,field,setup,points,rosters,{objectives=nu
  const red=armyFromRoster('ash',chosen.ash),blue=armyFromRoster('iron',chosen.iron);
  const rocket={id:'A5',name:'Deathshrieker Rocket Launcher',...machineFields('ash','chaos'),x:null,y:null,heading:0,wounds:3,crew:3,shot:false,disabledUntil:0,lastShot:null,...(red.rocket??{absent:true,wounds:0,crew:0})};
  const armies=Object.fromEntries(Object.entries(chosen).map(([team,roster])=>[team,{roster,validation:A.validateRoster(roster,limit),source:A.SOURCES[roster.faction]}]));
- const s={stage:'deployment',team:'ash',round:1,selected:red.units[0]?.id,rocket,cannons:blue.cannons,units:[...red.units,...blue.units],history:[],vortices:[],fatedDispelUsed:false,
+ const s={stage:'deployment',team:'ash',round:1,selected:red.units[0]?.id,rocket,cannons:blue.cannons,units:[...red.units,...blue.units],history:[],vortices:[],fatedDispelUsed:{ash:false,iron:false},
   format:{id:fmt.id,name:fmt.name,rulesVersion:fmt.rulesVersion,points:limit,rounds:fmt.rounds,deployment:setup,resultPolicy:fmt.resultPolicy,optional:optionalRules(fmt,optional),objectives:objectives??fmt.objectives??'roll'},board:field,zones:F.deploymentZones(fmt,field,setup??{}),facing:F.deploymentFacing(fmt,setup??{}),firstPlayer:'ash',turnLog:[],armies,sources:{system:A.SOURCES.system,preferences:A.PREFERENCES},
   deployOrder:fmt.deployment?.order==='alternate'?{alternate:true,rule:fmt.deployment.rollOff??'winner-chooses',zonesChosen:false,rollOff:null,first:null,chosenBy:null,next:null,pending:null,batch:null,log:[],complete:false}:null,firstTurn:null};
  // Each army deploys facing the way its map sets (across the table, or along it in Mountain Pass).
@@ -281,7 +281,7 @@ export function inactionReason(s,u){
  if(u.destroyed||aliveCount(u)===0)return 'Destroyed.';
  if(u.x===null)return u.offBoardPursuit?'Off the battlefield after pursuing; it returns in its next Movement phase.':'Not on the battlefield.';
  if(u.team!==s.team)return 'Waiting: it is the other army’s turn.';
- const spellNow=u.role==='wizard'&&u.spells.some(key=>BATTLE_MAGIC[key]?.phase===s.stage&&spellTargets(s,u.id,key).some(t=>canCast(s,u.id,key,t.id)));
+ const spellNow=u.role==='wizard'&&u.spells.some(key=>SPELLS[key]?.phase===s.stage&&spellTargets(s,u.id,key).some(t=>canCast(s,u.id,key,t.id)));
  if(s.stage==='strategy'){if(u.fleeing&&!u.rallyAttempted||spellNow||u.role==='wizard'&&canDispelAVortex(s,u))return null;if(u.fleeing)return 'Failed to rally this turn and is still fleeing.';return u.role==='wizard'?'No hex or enchantment can be cast now.':'Nothing to do in Strategy: only fleeing units rally and wizards cast here.';}
  if(s.stage==='movement'){
   if(u.engaged)return 'Engaged in combat: units in combat cannot move.';
@@ -344,7 +344,7 @@ export function planMove(u,order){const kind=order.kind??'advance',mode=order.mo
   const end=kind==='pivot'?after:kind==='back'?forwardPose(after,-distance):kind==='side'?{...after,...localPoint(after,side*distance,0)}:forwardPose(after,distance);
   return {start:{...u},afterWheel:after,end,cost:cost+(kind==='pivot'?0:['back','side'].includes(kind)?2*distance:distance),wheelCost:kind==='wheel'?cost:0,allowance:mode==='march'?2*profile(u).M:profile(u).M,pivot,kind,mode,angle,distance,side};
 }
-function crossedVortices(s,u,start,end){return (s.vortices??[]).filter(v=>getUnit(s,v.caster)?.team!==u.team&&pointSegment({x:v.x,y:v.y},{x:start.x,y:start.y},{x:end.x,y:end.y})<=1.5+Math.max(size(u).w,size(u).h)/2+EPS);}
+function crossedVortices(s,u,start,end){return (s.vortices??[]).filter(v=>getUnit(s,v.caster)?.x!=null&&getUnit(s,v.caster)?.team!==u.team&&pointSegment({x:v.x,y:v.y},{x:start.x,y:start.y},{x:end.x,y:end.y})<=1.5+Math.max(size(u).w,size(u).h)/2+EPS);}
 function forwardError(s,u,start,end){const swept=hull([...corners(start),...corners(end)]),close=closeAtStart(s,u),inner=shrink(swept),blocks=(v,poly)=>close(v)?polygonGap(inner,poly)<EPS:polygonGap(swept,poly)<1-EPS;if(terrainBlocks(s,swept))return 'Impassable terrain blocks this path. Shorten the move or go around it.';for(const v of s.units){if(v.id===u.id||v.x===null)continue;if(blocks(v,corners(v)))return 'Another regiment blocks this path. Shorten the move.';}if(s.rocket?.x!==null&&s.rocket.id!==u.id&&blocks(s.rocket,corners(s.rocket)))return 'The Deathshrieker blocks this path. Shorten the move.';if(s.cannons.some(c=>c.x!==null&&c.id!==u.id&&blocks(c,corners(c))))return 'A cannon blocks this path. Shorten the move.';return null;}
 export function orderError(s,u,order){
   if(!canAct(s,u))return 'Select an unmoved regiment from the active army.';
@@ -400,11 +400,11 @@ export function endOfPlayerTurn(s,team=s.team){
  return true;
 }
 export function finishGame(s,reason){if(s.stage==='finished')return s.result;s.stage='finished';s.pendingCombat=null;s.combatSession=null;s.result={reason,...(formatRules(s)?.endOfGame?.(s)??{})};return s.result;}
-export function nextTurn(s,random=Math.random){if(s.stage!=='combat')throw Error('Finish the Combat phase first.');endOfPlayerTurn(s,s.team);if(s.stage==='finished')return;s.stage='strategy';s.team=s.team==='ash'?'iron':'ash';if(s.team===(s.firstPlayer??'ash'))s.round++;s.units.forEach(u=>{u.moved=false;u.shot=false;u.pursued=false;u.spent=0;u.movementMode=null;u.marchRequired=null;u.marchTest=null;if(u.pursuitPending&&u.engaged)u.pursuitPending=false;else u.charge=null;u.reaction=null;u.combatFocus=null;u.impetuousTest=null;u.combatResolved=false;u.rallyAttempted=false;u.arcaneUrgency=false;if(u.role==='wizard'){u.castThisTurn=[];u.magicExhausted=false;u.engineerUsed=false;if(u.team===s.team){u.oakenShield=false;u.ashStorm=false;}}if(u.arrowCurseCaster===s.team){u.arrowCurse=false;u.arrowCurseCaster=null;}});s.fatedDispelUsed=false;s.vortexReports=driftVortices(s,random);s.rocket.shot=false;s.rocket.lastShot=null;s.cannons.forEach(c=>{c.shot=false;c.lastShot=null;});s.history=[];s.selected=s.units.find(u=>u.team===s.team).id;formatRules(s)?.startOfTurn?.(s,s.team,random);}
+export function nextTurn(s,random=Math.random){if(s.stage!=='combat')throw Error('Finish the Combat phase first.');endOfPlayerTurn(s,s.team);if(s.stage==='finished')return;s.stage='strategy';s.team=s.team==='ash'?'iron':'ash';if(s.team===(s.firstPlayer??'ash'))s.round++;s.units.forEach(u=>{u.moved=false;u.shot=false;u.pursued=false;u.spent=0;u.movementMode=null;u.marchRequired=null;u.marchTest=null;if(u.pursuitPending&&u.engaged)u.pursuitPending=false;else u.charge=null;u.reaction=null;u.combatFocus=null;u.impetuousTest=null;u.combatResolved=false;u.rallyAttempted=false;u.arcaneUrgency=false;if(u.role==='wizard'){u.castThisTurn=[];u.magicExhausted=false;u.dispelExhausted=false;u.engineerUsed=false;if(u.team===s.team){u.oakenShield=false;u.ashStorm=false;}}if(u.arrowCurseCaster===s.team){u.arrowCurse=false;u.arrowCurseCaster=null;}});s.fatedDispelUsed={ash:false,iron:false};s.magicLocked={};s.dispelBlocked={};s.vortexReports=driftVortices(s,random);s.rocket.shot=false;s.rocket.lastShot=null;s.cannons.forEach(c=>{c.shot=false;c.lastShot=null;});s.history=[];s.selected=s.units.find(u=>u.team===s.team).id;formatRules(s)?.startOfTurn?.(s,s.team,random);}
 export function nextPhase(s){if(s.stage==='finished')throw Error('The battle is over.');if(s.pendingSpell)throw Error('Resolve the dispel of the spell just cast first.');if(s.stage==='strategy'&&s.units.some(u=>u.team===s.team&&u.x!==null&&u.fleeing&&!u.rallyAttempted))throw Error('Attempt to rally every fleeing regiment first.');if(s.units.some(u=>u.charge?.status==='declared'))throw Error('Resolve all declared charges first.');if(s.stage==='combat'&&(s.combatSession||s.pendingCombat||combatPairs(s).length))throw Error('Resolve every combat and its outcome first.');const i=PHASES.indexOf(s.stage);if(i<0)throw Error('Begin the battle first.');s.movementReopened=false;s.movementHistory=i===1?s.history:i===2?s.movementHistory:null;if(i===3)nextTurn(s);else{s.stage=PHASES[i+1];s.history=[];if(s.stage==='movement'){s.movementStep='declare';if(!s.units.some(u=>u.team===s.team&&canAct(s,u)&&availableCharges(s,u).length))beginRemaining(s);}s.shootingSkipped=false;if(s.stage==='shooting'&&!phaseHasActions(s)){s.stage='combat';s.shootingSkipped=true;}if(s.stage==='combat')combatants(s).forEach(u=>u.combatResolved=false);}return s.stage;}
 // Movement can be reopened until the active army acts in Shooting (or, when Shooting
 // was skipped, in Combat). Its undo history is kept so the last moves can be taken back.
-function castIn(s,phase){return s.units.some(u=>u.team===s.team&&u.role==='wizard'&&u.castThisTurn.some(key=>BATTLE_MAGIC[key]?.phase===phase));}
+function castIn(s,phase){return s.units.some(u=>u.team===s.team&&u.role==='wizard'&&u.castThisTurn.some(key=>SPELLS[key]?.phase===phase));}
 export function canReturnToMovement(s){
  const shootingUntouched=!s.units.some(u=>u.team===s.team&&u.shot)&&!(s.team==='ash'&&s.rocket.shot)&&!(s.team==='iron'&&s.cannons.some(c=>c.shot))&&!castIn(s,'shooting');
  if(s.stage==='shooting')return shootingUntouched;
@@ -413,11 +413,11 @@ export function canReturnToMovement(s){
 export function returnToMovement(s){if(!canReturnToMovement(s))throw Error('Movement can only be reopened before anything happens in Shooting or Combat.');Object.assign(s,{stage:'movement',movementStep:'remaining',history:s.movementHistory??[],movementHistory:null,movementReopened:true,shootingSkipped:false});return s.stage;}
 // An enemy Remains in Play vortex this wizard can still try to dispel in its own Strategy phase:
 // by its own Wizardly dispel when in range, or by the side's unused Fated Dispel.
-function canDispelAVortex(s,u){return (s.vortices??[]).some(v=>canDispelVortex(s,v.caster)&&(vortexDispellers(s,v.caster).some(w=>w.id===u.id)||!s.fatedDispelUsed));}
+function canDispelAVortex(s,u){return (s.vortices??[]).some(v=>canDispelVortex(s,v.id??v.caster)&&(vortexDispellers(s,v.id??v.caster).some(w=>w.id===u.id)||fatedDispelAvailable(s,s.team)));}
 export function phaseHasActions(s){
  if(s.stage==='deployment'||s.stage==='finished'||s.pendingSpell)return true;
  const active=s.units.filter(u=>u.team===s.team&&u.x!==null&&aliveCount(u)>0);
- const spells=phase=>active.some(u=>u.role==='wizard'&&u.spells.some(key=>BATTLE_MAGIC[key]?.phase===phase&&spellTargets(s,u.id,key).some(t=>canCast(s,u.id,key,t.id))));
+ const spells=phase=>active.some(u=>u.role==='wizard'&&u.spells.some(key=>SPELLS[key]?.phase===phase&&spellTargets(s,u.id,key).some(t=>canCast(s,u.id,key,t.id))));
  if(s.stage==='strategy')return active.some(u=>u.fleeing&&!u.rallyAttempted)||spells('strategy')||active.some(u=>canExchangeSignature(s,u)||u.role==='wizard'&&canDispelAVortex(s,u));
  if(s.stage==='movement'&&s.movementStep==='reactions')return s.units.some(u=>u.charge?.reaction==='pending');
  if(s.stage==='movement')return s.movementStep==='declare'?active.some(u=>u.charge?.status==='declared'||canAct(s,u)&&availableCharges(s,u).length):s.movementStep==='charges'?active.some(u=>u.charge?.status==='declared'):active.some(u=>canAct(s,u))||spells('movement')||!!s.movementReopened;
@@ -439,7 +439,26 @@ export function skipEmptySteps(s){
 export function rally(s,id,random=Math.random){const u=getUnit(s,id);if(s.stage!=='strategy'||u?.team!==s.team||u.x===null||!u.fleeing||u.rallyAttempted)throw Error('Select a fleeing regiment in its own Strategy phase.');const dice=rollD6(2,random),success=dice[0]+dice[1]<=leadership(u,'rally');u.rallyAttempted=true;u.rallied=success;if(success)u.fleeing=false;return {id,dice,success};}
 export function rollD6(count,random=Math.random){if(!Number.isInteger(count)||count<1||count>20)throw Error('Choose 1 to 20 dice.');return Array.from({length:count},()=>1+Math.floor(random()*6));}
 
-export const BATTLE_MAGIC={hammerhand:{name:'Hammerhand',type:'assailment',phase:'combat',cast:7,range:0},fireball:{name:'Fireball',type:'magic missile',phase:'shooting',cast:8,range:24},arrow:{name:'Curse of Arrow Attraction',type:'hex',phase:'strategy',cast:7,range:21},pillar:{name:'Pillar of Fire',type:'magical vortex',phase:'shooting',cast:9,range:12},urgency:{name:'Arcane Urgency',type:'conveyance',phase:'movement',cast:9,range:15},shield:{name:'Oaken Shield',type:'enchantment',phase:'strategy',cast:7,range:0},coward:{name:'Curse of Cowardly Flight',type:'hex',phase:'strategy',cast:8,range:15},hashutCurse:{name:'Curse of Hashut',type:'magic missile',phase:'shooting',cast:9,range:18},ashStorm:{name:'Storm of Ash',type:'hex',phase:'strategy',cast:10,range:0},hashutFlames:{name:'Flames of Hashut',type:'assailment',phase:'combat',cast:9,range:0}};
+// ---- Magic ----------------------------------------------------------------------------------
+// Each spell is data: its type, the phase (and sub-phase) it is cast in, casting value and range.
+// range 0 is Self (reach 'self': cast on the wizard) or Combat (reach 'combat': an enemy it fights).
+// los: needs line of sight. targetsEngaged: may target a unit in combat. friendly: targets a
+// friendly unit. characters: targets only characters. template: the radius of a template placed
+// instead of choosing a target. remainsInPlay: stays until dispelled, ended or its caster is gone.
+export const BATTLE_MAGIC={
+ hammerhand:{name:'Hammerhand',type:'assailment',phase:'combat',cast:7,range:0,reach:'combat'},
+ fireball:{name:'Fireball',type:'magic missile',phase:'shooting',cast:8,range:24,los:true},
+ arrow:{name:'Curse of Arrow Attraction',type:'hex',phase:'strategy',cast:7,range:21},
+ pillar:{name:'Pillar of Fire',type:'magical vortex',phase:'shooting',cast:9,range:12,template:1.5,remainsInPlay:true},
+ urgency:{name:'Arcane Urgency',type:'conveyance',phase:'movement',step:'remaining',cast:9,range:15,friendly:true},
+ shield:{name:'Oaken Shield',type:'enchantment',phase:'strategy',cast:7,range:0,reach:'self'},
+ coward:{name:'Curse of Cowardly Flight',type:'hex',phase:'strategy',cast:8,range:15},
+ hashutCurse:{name:'Curse of Hashut',type:'magic missile',phase:'shooting',cast:9,range:18,los:true,targetsEngaged:true,characters:true},
+ ashStorm:{name:'Storm of Ash',type:'hex',phase:'strategy',cast:10,range:0,reach:'self'},
+ hashutFlames:{name:'Flames of Hashut',type:'assailment',phase:'combat',cast:9,range:0,reach:'combat'},
+};
+// Every spell the engine knows, by key.
+export const SPELLS=BATTLE_MAGIC;
 export const SPELL_TEXT={
  fireball:'The target enemy unit suffers 2D6 Strength 4 hits (AP –) with Flaming Attacks. Needs line of sight; cannot target a unit in combat.',
  arrow:'Until your next Start of Turn, you may re-roll natural 1s To Hit when shooting at the target enemy unit.',
@@ -458,71 +477,210 @@ export const SIGNATURE_SPELLS=['hammerhand','hashutCurse','ashStorm','hashutFlam
 export function canExchangeSignature(s,u){return s.stage==='strategy'&&s.round===1&&u?.role==='wizard'&&u.team===s.team&&!u.castThisTurn.length&&u.spells.some(key=>SPELL_ROLL.includes(key))&&!u.spells.some(key=>SIGNATURE_SPELLS.includes(key));}
 // Spells now affecting a unit, for its label: a hex on it or an enchantment it carries.
 const SPELL_TAGS={arrowCurse:['arrow','Arrow Attraction'],oakenShield:['shield','Oaken Shield'],ashStorm:['ashStorm','Storm of Ash'],arcaneUrgency:['urgency','Arcane Urgency']};
-export function activeSpells(u){return Object.entries(SPELL_TAGS).filter(([field])=>u?.[field]).map(([,[key,short]])=>({key,short,name:BATTLE_MAGIC[key].name}));}
+export function activeSpells(u){return Object.entries(SPELL_TAGS).filter(([field])=>u?.[field]).map(([,[key,short]])=>({key,short,name:SPELLS[key].name}));}
 export function generateSpells(random=Math.random){const pool=[...SPELL_ROLL],out=[];for(let i=0;i<2;i++)out.push(pool.splice(Math.min(pool.length-1,Math.floor(random()*pool.length)),1)[0]);return out;}
 export function exchangeSignature(s,id,spell,replacement='hammerhand'){const u=getUnit(s,id),choices=u?.faction==='chaos'?['hammerhand','hashutCurse','ashStorm','hashutFlames']:['hammerhand'];if(s.stage!=='strategy'||s.round!==1||u?.role!=='wizard'||u.castThisTurn.length||!SPELL_ROLL.includes(spell)||!u.spells.includes(spell)||!choices.includes(replacement)||u.spells.some(k=>choices.includes(k)))throw Error('Exchange one generated spell for a permitted signature before casting.');u.spells.splice(u.spells.indexOf(spell),1,replacement);return u.spells;}
 function spellVision(u,t){const a=rad(-heading(u)),dx=t.x-u.x,dy=t.y-u.y,lx=dx*Math.cos(a)-dy*Math.sin(a),ly=dx*Math.sin(a)+dy*Math.cos(a);return ly<0&&Math.abs(lx)<=-ly+Math.max(size(t).w,size(t).h)/2+EPS;}
-export function spellTargets(s,id,key){const u=getUnit(s,id),spell=BATTLE_MAGIC[key];if(!u||!spell)return [];if(['shield','pillar','ashStorm'].includes(key))return [u];return s.units.filter(t=>t.x!==null&&aliveCount(t)>0&&(key==='urgency'?t.team===u.team&&t.moved&&!t.fleeing&&!t.engaged:t.team!==u.team)&&(!spell.range||gap(u,t)<=spell.range+EPS)&&(['hammerhand','hashutFlames'].includes(key)?engagedWith(u,t):key==='hashutCurse'?isCharacter(t)&&spellVision(u,t):!t.engaged&&spellVision(u,t))&&(!['fireball','hashutCurse'].includes(key)||modelCanSee(s,u,t,modelSquares(s,u)[0],spell.range)));
+const targetless=spell=>spell?.reach==='self'||!!spell?.template;
+// A spell's range as players read it: inches, Self or Combat.
+export function spellRangeLabel(key){const spell=SPELLS[key];return !spell?'':spell.range?spell.range+'″':spell.reach==='combat'?'Combat':'Self';}
+// Why this wizard cannot attempt this spell now (null when it can), before any target is chosen.
+// The checks run in a fixed order, so the reason shown is the first that applies.
+export function castBlockReason(s,id,key){
+ const u=getUnit(s,id),spell=SPELLS[key];
+ if(s.pendingSpell)return 'Resolve the dispel of the spell just cast first.';
+ if(!u||u.role!=='wizard'||!spell||!u.spells?.includes(key))return 'This wizard does not know that spell.';
+ if(u.x===null||aliveCount(u)===0)return 'The wizard is not on the battlefield.';
+ if(u.fleeing)return 'Fleeing wizards cannot cast.';
+ const assailment=spell.type==='assailment';
+ if(u.team!==s.team&&!assailment)return 'Only an Assailment can be cast in the enemy’s turn.';
+ if(s.stage!==spell.phase)return `Cast in the ${spell.phase[0].toUpperCase()+spell.phase.slice(1)} phase.`;
+ if(spell.step&&s.movementStep!==spell.step)return 'Cast in the Remaining Moves sub-phase.';
+ if(u.castThisTurn.includes(key))return 'Already attempted this turn.';
+ if(u.castThisTurn.length>=u.level)return `No casting attempts left: a Level ${u.level} wizard has ${u.level} per turn.`;
+ if(u.magicExhausted)return 'Its magic is spent this turn (miscast).';
+ if(s.magicLocked?.[u.team])return 'This side cannot cast again this turn (Power Drain).';
+ if(u.raiding&&spell.range)return 'Raiding: only Self and Combat spells can be cast.';
+ if(['magic missile','magical vortex'].includes(spell.type)){if(u.movementMode==='march')return 'Marched this turn: no Magic Missiles or Magical Vortexes.';if(u.charge)return 'Charged this turn: no Magic Missiles or Magical Vortexes.';}
+ if(u.engaged&&!assailment&&spell.reach!=='self')return 'Engaged in combat: only Assailments and Self spells can be cast.';
+ // An Assailment is cast when the wizard fights: in a combat being fought, at its Initiative step.
+ if(assailment){const c=s.combatSession;if(!c||c.phase!=='attacks'||!c.units.includes(u.id))return 'Cast when the wizard fights, at its Initiative step.';if(c.initiative[u.id]!==c.groups[c.step])return `Cast at the wizard’s Initiative step (${c.initiative[u.id]}).`;}
+ return null;
 }
-export function canCast(s,id,key,targetId){const u=getUnit(s,id),spell=BATTLE_MAGIC[key],t=getUnit(s,targetId);if(s.pendingSpell||!u||u.role!=='wizard'||u.raiding&&spell?.range||u.team!==s.team&&!['hammerhand','hashutFlames'].includes(key)||u.x===null||u.fleeing||!spell||s.stage!==spell.phase||key==='urgency'&&s.movementStep!=='remaining'||['fireball','pillar','hashutCurse'].includes(key)&&u.movementMode==='march'||!u.spells.includes(key)||u.castThisTurn.includes(key)||u.castThisTurn.length>=u.level||u.magicExhausted)return false;if(u.engaged&&!['hammerhand','hashutFlames','shield','ashStorm'].includes(key))return false;if(['shield','pillar','ashStorm'].includes(key))return targetId===id;return !!t&&spellTargets(s,id,key).includes(t);}
-function magicDamage(s,target,hits,strength,ap,random,flaming=false,ignoreArmour=false){const dice={wound:[],save:[],ward:[]};let wounds=0,unsaved=0;for(let i=0;i<hits&&aliveCount(target)>0;i++){const wound=rollD6(1,random)[0];dice.wound.push(wound);if(wound<Math.max(2,Math.min(6,4+profile(target).T-strength)))continue;wounds++;if(!ignoreArmour){const armour=rollD6(1,random)[0];dice.save.push(armour);const save=Math.max(2,Math.min(7,profile(target).save+ap));if(armour>=save)continue;}const ward=target.oakenShield?5:target.role==='wizard'&&target.faction==='chaos'&&flaming?5:7;if(ward<=6){const value=rollD6(1,random)[0];dice.ward.push(value);if(value>=ward)continue;}removeCasualties(s,target,1);unsaved++;}wipeOut(s,target);return {hits,wounds,unsaved,dice};}
+// Why this unit is not a legal target for the spell (null when it is). The caster's own
+// restrictions are castBlockReason's: a target that is allowed does not lift them.
+export function targetReason(s,id,key,t){
+ const u=getUnit(s,id),spell=SPELLS[key];if(!u||!spell)return 'Unknown spell.';
+ if(!t||t.x===null||aliveCount(t)===0)return 'Not on the battlefield.';
+ if(targetless(spell))return t.id===u.id?null:spell.template?'Place the template instead of choosing a target.':'A Self spell is cast on the wizard.';
+ if(spell.friendly?t.team!==u.team:t.team===u.team)return spell.friendly?'Choose a friendly unit.':'Choose an enemy unit.';
+ if(spell.reach==='combat')return engagedWith(u,t)?null:'Not fighting the wizard.';
+ if(spell.characters&&!isCharacter(t))return 'Only a character can be targeted.';
+ if(key==='urgency'){if(!t.moved)return 'It has not moved yet this phase.';if(t.fleeing)return 'Fleeing.';}
+ if(t.engaged&&!spell.targetsEngaged)return 'Engaged in combat.';
+ if(spell.range&&gap(u,t)>spell.range+EPS)return `Out of range (${spell.range}″).`;
+ if(t.id!==u.id&&!spellVision(u,t))return 'Outside the wizard’s vision arc.';
+ if(spell.los&&!modelCanSee(s,u,t,modelSquares(s,u)[0],spell.range))return 'No line of sight.';
+ return null;
+}
+// Every unit and war machine on the battlefield with the reason it cannot be targeted (null when it can).
+export function spellTargetOptions(s,id,key){const u=getUnit(s,id),spell=SPELLS[key];if(!u||!spell)return [];if(targetless(spell))return [{unit:u,reason:targetReason(s,id,key,u)}];return combatants(s).filter(t=>t.x!==null&&aliveCount(t)>0).map(t=>({unit:t,reason:targetReason(s,id,key,t)}));}
+export function spellTargets(s,id,key){return spellTargetOptions(s,id,key).filter(o=>!o.reason).map(o=>o.unit);}
+export function canCast(s,id,key,targetId){return !castBlockReason(s,id,key)&&!targetReason(s,id,key,getUnit(s,targetId));}
+// Where a template spell may go: its centre within range of the wizard (measured from its base),
+// the whole template on the battlefield, and touching no model's base.
+export function templatePlacementError(s,id,key,point){
+ const u=getUnit(s,id),spell=SPELLS[key];if(!spell?.template)return null;
+ if(!point||!Number.isFinite(point.x)||!Number.isFinite(point.y))return `Place the ${spell.name} template.`;
+ const r=spell.template,b=boardOf(s);
+ if(circleGap(corners(u),{x:point.x,y:point.y,r:0})>spell.range+EPS)return `Its centre must be within ${spell.range}″ of the wizard.`;
+ if(point.x<r-EPS||point.x>b.width-r+EPS||point.y<r-EPS||point.y>b.height-r+EPS)return 'The whole template must be on the battlefield.';
+ if(combatants(s).some(v=>v.x!==null&&aliveCount(v)>0&&circleGap(corners(v),{x:point.x,y:point.y,r})<EPS))return 'The template cannot touch any model’s base.';
+ return null;
+}
+// A unit's Ward save against these wounds (7: none). Oaken Shield gives 5+; a Daemonsmith's
+// Blackshard armour gives 5+ against Flaming Attacks.
+export function wardSave(u,{flaming=false}={}){return u?.oakenShield?5:u?.role==='wizard'&&u?.faction==='chaos'&&flaming?5:7;}
+// Magical hits: no roll To Hit; To Wound against the target's Toughness (6 for a war machine);
+// armour saves (with any shield) unless the spell allows none; then any Ward save. With defer the
+// wounds are counted but the casualties wait for the end of the Initiative step (an Assailment).
+function magicDamage(s,target,hits,strength,ap,random,{flaming=false,ignoreArmour=false,defer=false,cap=null}={}){
+ const dice={wound:[],save:[],ward:[]},limit=cap??remainingWounds(target),toWound=Math.max(2,Math.min(6,4+shotToughness(target)-strength)),toSave=Math.max(2,Math.min(7,profileOfSave(target)+ap)),ward=wardSave(target,{flaming});let wounds=0,unsaved=0;
+ for(let i=0;i<hits&&unsaved<limit;i++){const wound=rollD6(1,random)[0];dice.wound.push(wound);if(wound<toWound)continue;wounds++;if(!ignoreArmour){const armour=rollD6(1,random)[0];dice.save.push(armour);if(armour>=toSave)continue;}if(ward<=6){const value=rollD6(1,random)[0];dice.ward.push(value);if(value>=ward)continue;}unsaved++;}
+ if(!defer){removeCasualties(s,target,unsaved);wipeOut(s,target);}
+ return {hits,wounds,unsaved,dice,toWound,toSave:ignoreArmour?null:toSave};}
+// A blast template centred on a point, model by model as the Deathshrieker's: a model wholly under
+// it, or under its centre, is hit; any other model it touches is hit on a 4+. Each hit wounds,
+// saves and Wards on its own.
+function templateHits(s,point,radius,strength,ap,random){
+ const out={hits:0,cells:[],affected:[]},per={};
+ for(const cell of blastCells(s,point,radius)){const u=cell.unit,hitRoll=cell.fully||cell.centre?null:rollD6(1,random)[0];if(hitRoll!==null&&hitRoll<4)continue;out.hits++;
+  const toWound=Math.max(2,Math.min(6,4+shotToughness(u)-strength)),toSave=Math.max(2,Math.min(7,profileOfSave(u)+ap)),woundRoll=rollD6(1,random)[0],saveRoll=woundRoll>=toWound?rollD6(1,random)[0]:null,ward=wardSave(u);
+  let slain=saveRoll!==null&&saveRoll<toSave&&aliveCount(u)>0;const wardRoll=slain&&ward<=6?rollD6(1,random)[0]:null;if(wardRoll!==null&&wardRoll>=ward)slain=false;
+  out.cells.push({unit:u.id,model:cell.model,hitRoll,woundRoll,saveRoll,ward:wardRoll,slain});const e=per[u.id]??={id:u.id,hits:0,wounds:0,unsaved:0};e.hits++;if(woundRoll>=toWound)e.wounds++;if(slain){e.unsaved++;removeCasualties(s,u,1);}}
+ out.affected=Object.values(per);for(const e of out.affected)wipeOut(s,getUnit(s,e.id));return out;}
 // A regiment whose last model falls to shooting, Stand & Shoot, a spell or a vortex leaves the
 // battlefield at once (full casualty VP). In a combat being fought, the combat result settles it.
 function wipeOut(s,u){if(!u||u.x===null||aliveCount(u)>0)return;const p=s.pendingCombat;if(s.combatSession?.units?.includes(u.id)||p&&(p.combat??[p.winner,p.loser]).includes(u.id))return;release(s,u);destroyUnit(s,u,'COMBAT_CASUALTIES');}
-function miscast(s,u,random){if(u.faction==='chaos'){const test=rollD6(1,random)[0];if(test>profile(u).T){removeCasualties(s,u,1);u.petrified++;return {kind:'Sorcerer’s Curse',test,wounds:1,toughness:profile(u).T};}}const dice=rollD6(2,random),sum=dice[0]+dice[1];if(sum<=6){const radius=sum<=4?2.5:1.5,strength=sum<=4?10:6,ap=sum<=4?4:2;const affected=s.units.filter(t=>t.x!==null&&Math.hypot(t.x-u.x,t.y-u.y)<=radius+Math.max(size(t).w,size(t).h)/2).map(t=>({id:t.id,...magicDamage(s,t,1,strength,ap,random)}));return {kind:sum<=4?'Dimensional Cascade':'Calamitous Detonation',dice,affected,cast:false};}if(sum===7){const hit=magicDamage(s,u,1,4,1,random);return {kind:'Careless Conjuration',dice,hit,cast:false};}u.magicExhausted=true;return {kind:sum<=9?'Barely Controlled Power':'Power Drain',dice,cast:true,undispellable:sum>=10};}
+// A miscast (a natural double 1 when casting) or Outclassed in the Art (a natural double 1 on a
+// Wizardly Dispel, which reads the table with dispelling in place of casting).
+// The Sorcerer's Curse comes first for a Daemonsmith: a Toughness test (a 6 always fails, a 1
+// always passes); failing costs a Wound and adds +1 Toughness instead of the Miscast table.
+// 2-4: a 5″ template on the wizard, S10 AP-4. 5-6: a 3″ template, S6 AP-2. 7: one S4 AP-1 hit.
+// 8-9: cast at its casting value (dispelled, for a dispel); this wizard is done for the turn.
+// 10-12: cast with a Perfect Invocation (dispelled); this side is done for the turn.
+function miscast(s,u,random,{dispel=false}={}){
+ if(u.faction==='chaos'&&u.role==='wizard'){const test=rollD6(1,random)[0],toughness=profile(u).T;if(test===6||test!==1&&test>toughness){removeCasualties(s,u,1);u.petrified++;return {kind:'Sorcerer’s Curse',test,wounds:1,toughness};}}
+ const dice=rollD6(2,random),sum=dice[0]+dice[1];
+ if(sum<=6){const big=sum<=4,blast=templateHits(s,{x:u.x,y:u.y},big?2.5:1.5,big?10:6,big?4:2,random);return {kind:big?'Dimensional Cascade':'Calamitous Detonation',dice,hits:blast.hits,cells:blast.cells,affected:blast.affected,cast:false};}
+ if(sum===7){const hit=magicDamage(s,u,1,4,1,random);return {kind:'Careless Conjuration',dice,hit,cast:false};}
+ if(dispel){if(sum<=9)u.dispelExhausted=true;else (s.dispelBlocked??={})[u.team]=true;return {kind:sum<=9?'Barely Controlled Power':'Power Drain',dice,dispelled:true};}
+ u.magicExhausted=true;if(sum>=10)(s.magicLocked??={})[u.team]=true;return {kind:sum<=9?'Barely Controlled Power':'Power Drain',dice,cast:true,undispellable:sum>=10};}
 function magicPanic(s,caster,target,random){const dice=rollD6(2,random),passed=hasRule(target,'frenzy')||dice[0]+dice[1]<=leadership(target);if(passed)return {dice,passed};if(target.engaged)return {dice,passed,gaveGround:true};target.fleeing=true;target.moved=true;target.heading=normalize(Math.atan2(target.x-caster.x,-(target.y-caster.y))*180/Math.PI);const flee=rollD6(2,random),move=fleeMove(s,target,flee[0]+flee[1],random);return {dice,passed,flee,fledOffBoard:move.fledOffBoard,move};}
 // Casting and dispelling are two steps. attemptSpell makes the casting roll; a cast spell that
 // can still be dispelled waits in s.pendingSpell until the defending player picks a Wizardly
 // Dispel (one eligible Wizard), the Fated Dispel, or no dispel with resolveDispel.
 // castSpell does both at once for the AI and tests.
-function wizardDispellers(s,caster,targetId){return s.units.filter(v=>v.role==='wizard'&&v.team!==caster.team&&v.x!==null&&aliveCount(v)>0&&!v.fleeing&&gap(v,caster)<=(v.level>=3?24:18)+EPS&&(!v.engaged||v.id===targetId));}
-export function dispelOptions(s){const p=s.pendingSpell;if(!p)return null;const caster=getUnit(s,p.caster);return {caster:p.caster,spell:p.key,team:caster.team==='ash'?'iron':'ash',casting:p.report.casting,wizards:wizardDispellers(s,caster,p.target).map(v=>({id:v.id,bonus:Math.ceil(v.level/2),distance:gap(v,caster)})),fated:!s.fatedDispelUsed};}
+// The Fated Dispel is once per player turn for each side.
+const fatedUsed=(s,team)=>s.fatedDispelUsed&&typeof s.fatedDispelUsed==='object'?!!s.fatedDispelUsed[team]:!!s.fatedDispelUsed;
+function useFated(s,team){if(!s.fatedDispelUsed||typeof s.fatedDispelUsed!=='object')s.fatedDispelUsed={ash:!!s.fatedDispelUsed,iron:!!s.fatedDispelUsed};s.fatedDispelUsed[team]=true;}
+export function fatedDispelAvailable(s,team){return !fatedUsed(s,team)&&!s.dispelBlocked?.[team];}
+function wizardDispellers(s,caster,targetId){return s.units.filter(v=>v.role==='wizard'&&v.team!==caster.team&&v.x!==null&&aliveCount(v)>0&&!v.fleeing&&!v.dispelExhausted&&!s.dispelBlocked?.[v.team]&&gap(v,caster)<=(v.level>=3?24:18)+EPS&&(!v.engaged||v.id===targetId));}
+export function dispelOptions(s){const p=s.pendingSpell;if(!p)return null;const caster=getUnit(s,p.caster),team=caster.team==='ash'?'iron':'ash';return {caster:p.caster,spell:p.key,team,casting:p.report.casting,wizards:wizardDispellers(s,caster,p.target).map(v=>({id:v.id,bonus:Math.ceil(v.level/2),distance:gap(v,caster)})),fated:fatedDispelAvailable(s,team)};}
 export function castSpell(s,id,key,targetId,random=Math.random,{dispel='none',dispeller=null,point=null}={}){
  if(!['none','wizard','fated'].includes(dispel))throw Error('Choose a legal dispel.');const u=getUnit(s,id);
  if(u&&dispel==='wizard'&&!wizardDispellers(s,u,targetId).some(v=>!dispeller||v.id===dispeller))throw Error('No opposing wizard is in dispel range.');
- if(dispel==='fated'&&s.fatedDispelUsed)throw Error('The Fated Dispel was already used this turn.');
+ if(u&&dispel==='fated'&&!fatedDispelAvailable(s,u.team==='ash'?'iron':'ash'))throw Error('The Fated Dispel was already used this turn.');
  const report=attemptSpell(s,id,key,targetId,random,{point});if(!report.pending)return report;
  return resolveDispel(s,dispel==='wizard'?dispeller??dispelOptions(s).wizards[0].id:dispel,random);
 }
-export function attemptSpell(s,id,key,targetId,random=Math.random,{point=null}={}){if(!canCast(s,id,key,targetId))throw Error('This spell cannot be cast on that target now.');const u=getUnit(s,id),t=getUnit(s,targetId),spell=BATTLE_MAGIC[key];if(key==='pillar'&&point&&(!Number.isFinite(point.x)||!Number.isFinite(point.y)||Math.hypot(point.x-u.x,point.y-u.y)>12+EPS||point.x<1.5||point.x>boardOf(s).width-1.5||point.y<1.5||point.y>boardOf(s).height-1.5))throw Error('Place the 3″ Pillar within 12″ of the caster and on the battlefield.');const dice=rollD6(2,random),casting=dice[0]+dice[1]+Math.ceil(u.level/2)-(t.id!==id?magicResistance(t):0),report={caster:id,spell:key,target:targetId,dice,casting,cast:false,dispel:null,effect:null};u.castThisTurn.push(key);if(key==='pillar')s.vortices=s.vortices.filter(v=>v.caster!==id);if(dice[0]===1&&dice[1]===1){report.miscast=miscast(s,u,random);if(!report.miscast.cast)return report;report.casting=spell.cast;}else if(casting<spell.cast&&!(dice[0]===6&&dice[1]===6))return report;report.cast=true;
+// The casting roll: 2D6 plus half the wizard's level (rounded up), less the Magic Resistance of an
+// enemy target; it must equal or beat the casting value. The natural dice and every modifier are
+// kept apart in the report. A natural double 6 always succeeds and cannot be dispelled at once;
+// a natural double 1 miscasts.
+export function attemptSpell(s,id,key,targetId,random=Math.random,{point=null}={}){
+ const spell=SPELLS[key],block=castBlockReason(s,id,key);if(block)throw Error(block);
+ if(targetless(spell))targetId??=id;
+ const u=getUnit(s,id),t=getUnit(s,targetId),why=targetReason(s,id,key,t);if(why)throw Error(why);
+ if(spell.template){const bad=templatePlacementError(s,id,key,point);if(bad)throw Error(bad);}
+ const dice=rollD6(2,random),modifiers=[{label:'Level '+u.level,value:Math.ceil(u.level/2)}],resistance=t.team!==u.team?magicResistance(t):0;
+ if(resistance)modifiers.push({label:'Magic Resistance',value:-resistance});
+ const casting=dice[0]+dice[1]+modifiers.reduce((n,m)=>n+m.value,0),report={caster:id,spell:key,target:targetId,dice,modifiers,casting,cast:false,dispel:null,effect:null};u.castThisTurn.push(key);
+ // Attempting a Remains in Play spell again ends the caster's earlier one at once, whatever the result.
+ if(spell.remainsInPlay){const old=s.vortices.filter(v=>v.caster===id&&(v.spell??'pillar')===key);if(old.length){s.vortices=s.vortices.filter(v=>!old.includes(v));report.ended=old.map(v=>v.id??v.caster);}}
+ if(dice[0]===1&&dice[1]===1){report.miscast=miscast(s,u,random);if(!report.miscast.cast)return report;report.casting=spell.cast;}else if(casting<spell.cast&&!(dice[0]===6&&dice[1]===6))return report;report.cast=true;
  report.perfect=dice[0]===6&&dice[1]===6||!!report.miscast?.undispellable;
  s.pendingSpell={caster:id,key,target:targetId,point,report};const options=dispelOptions(s);
  if(!report.perfect&&(options.wizards.length||options.fated)){report.pending=true;return report;}
  s.pendingSpell=null;applySpell(s,{caster:id,key,target:targetId,point,report},random);return report;}
-// Wizardly Dispel: 2D6 + half the level (rounded up); Fated Dispel: unmodified 2D6, once per turn,
-// no range. Either must beat the casting result (ties fail); a natural double 6 always dispels.
-// A natural double 1 always fails, and on a Wizardly Dispel the Wizard miscasts (Outclassed in the Art).
+// Wizardly Dispel: 2D6 + half the level (rounded up); Fated Dispel: unmodified 2D6, once per turn
+// for each side, no range. Either must beat the casting result (ties fail); a natural double 6
+// always dispels. A natural double 1 fails, except that on a Wizardly Dispel the Wizard is
+// Outclassed in the Art: the Miscast table, where 8-12 dispel the spell.
 export function resolveDispel(s,choice='none',random=Math.random){
  const p=s.pendingSpell;if(!p)throw Error('No spell is waiting for a dispel.');const options=dispelOptions(s),report=p.report;
  if(choice!=='none'){
   const wizard=choice==='fated'?null:options.wizards.find(w=>w.id===choice);
   if(choice==='fated'&&!options.fated)throw Error('The Fated Dispel was already used this turn.');
   if(choice!=='fated'&&!wizard)throw Error('Choose a Wizard in dispel range, the Fated Dispel, or no dispel.');
-  if(!wizard)s.fatedDispelUsed=true;
+  if(!wizard)useFated(s,options.team);
   const dice=rollD6(2,random),double1=dice[0]===1&&dice[1]===1,total=dice[0]+dice[1]+(wizard?wizard.bonus:0);
   report.dispel={kind:wizard?'wizard':'fated',by:wizard?.id??null,dice,total,success:!double1&&(dice[0]===6&&dice[1]===6||total>report.casting)};
-  if(double1&&wizard)report.dispel.miscast=miscast(s,getUnit(s,wizard.id),random);
+  if(double1&&wizard){report.dispel.miscast=miscast(s,getUnit(s,wizard.id),random,{dispel:true});if(report.dispel.miscast.dispelled)report.dispel.success=true;}
  }
  s.pendingSpell=null;report.pending=false;
  if(report.dispel?.success){report.cast=false;return report;}
  applySpell(s,p,random);return report;
 }
-function applySpell(s,{caster:id,key,target:targetId,point,report},random){const u=getUnit(s,id),t=getUnit(s,targetId);
- if(key==='fireball')report.effect=magicDamage(s,t,rollD6(2,random).reduce((a,b)=>a+b,0),4,0,random,true);
- else if(key==='hammerhand')report.effect=magicDamage(s,t,rollD6(2,random).reduce((a,b)=>a+Math.ceil(b/2),0),4,2,random);
- else if(key==='hashutFlames')report.effect=magicDamage(s,t,Math.ceil(rollD6(1,random)[0]/2)+1,4,1,random,true);
- else if(key==='hashutCurse'){const test=rollD6(1,random)[0],passed=test<=profile(t).T;report.effect={test,passed,...magicDamage(s,t,passed?Math.ceil(rollD6(1,random)[0]/2):Math.ceil(rollD6(1,random)[0]/2)+2,passed?2:5,0,random,false,!passed)};}
+// Wizards in the combat being fought who may still cast an Assailment at this Initiative step,
+// and have not chosen to fight on without it.
+export function assailmentWaiting(s,team=null){const c=s.combatSession;if(s.stage!=='combat'||!c||c.phase!=='attacks'||s.pendingSpell)return [];return c.units.map(id=>getUnit(s,id)).filter(u=>u?.role==='wizard'&&(!team||u.team===team)&&c.passed?.[u.id]!==c.step&&u.spells.some(key=>SPELLS[key]?.type==='assailment'&&!castBlockReason(s,u.id,key)&&spellTargets(s,u.id,key).length));}
+export function passAssailment(s,id){const c=s.combatSession;if(!c||c.phase!=='attacks')throw Error('No combat is being fought.');(c.passed??={})[id]=c.step;return c.step;}
+// An Assailment's hits join the wizard's Initiative step: its casualties are removed with the
+// step's attacks and its wounds count towards the combat result. Outside a combat being fought
+// (tests that call it directly) they are removed at once.
+function assail(s,u,t,key,hits,strength,ap,random,options={}){
+ const c=s.combatSession;if(!c||!c.units.includes(u.id)||c.phase!=='attacks')return magicDamage(s,t,hits,strength,ap,random,options);
+ const queued=(c.spellStages??[]).filter(st=>st.to===t.id).reduce((n,st)=>n+st.unsaved,0),out=magicDamage(s,t,hits,strength,ap,random,{...options,defer:true,cap:Math.max(0,remainingWounds(t)-queued)});
+ (c.spellStages??=[]).push({from:u.id,to:t.id,spell:key,initiative:c.groups[c.step],attacks:hits,hits,wounds:out.wounds,unsaved:out.unsaved,saved:out.wounds-out.unsaved,toHit:null,toWound:out.toWound,toSave:out.toSave,dice:out.dice});
+ return out;}
+function applySpell(s,{caster:id,key,target:targetId,point,report},random){const u=getUnit(s,id),t=getUnit(s,targetId),spell=SPELLS[key];
+ if(key==='fireball')report.effect=magicDamage(s,t,rollD6(2,random).reduce((a,b)=>a+b,0),4,0,random,{flaming:true});
+ else if(key==='hammerhand')report.effect=assail(s,u,t,key,rollD6(2,random).reduce((a,b)=>a+Math.ceil(b/2),0),4,2,random);
+ else if(key==='hashutFlames')report.effect=assail(s,u,t,key,Math.ceil(rollD6(1,random)[0]/2)+1,4,1,random,{flaming:true});
+ else if(key==='hashutCurse'){const test=rollD6(1,random)[0],passed=test<=profile(t).T;report.effect={test,passed,...magicDamage(s,t,passed?Math.ceil(rollD6(1,random)[0]/2):Math.ceil(rollD6(1,random)[0]/2)+2,passed?2:5,0,random,{ignoreArmour:!passed})};}
  else if(key==='ashStorm'){u.ashStorm=true;report.effect={radius:9};}
  else if(key==='arrow'){t.arrowCurse=true;t.arrowCurseCaster=u.team;report.effect={rerollOnes:true};}
  else if(key==='shield'){u.oakenShield=true;report.effect={ward:5};}
  else if(key==='coward')report.effect=magicPanic(s,u,t,random);
  else if(key==='urgency'){t.moved=false;t.spent=0;t.movementMode=null;t.charge=null;t.arcaneUrgency=true;report.effect={moveAgain:true};}
- else if(key==='pillar'){const p=point??{x:t.x,y:t.y};s.vortices=s.vortices.filter(v=>v.caster!==id);s.vortices.push({caster:id,x:p.x,y:p.y,radius:1.5});report.effect={point:p};}
+ else if(spell.template){s.vortices=s.vortices.filter(v=>!(v.caster===id&&(v.spell??'pillar')===key));s.vortexSeq=(s.vortexSeq??0)+1;const v={id:'V'+s.vortexSeq,spell:key,caster:id,team:u.team,x:point.x,y:point.y,radius:spell.template,cast:report.casting};s.vortices.push(v);report.effect={point:{x:point.x,y:point.y},vortex:v.id};}
  return report;}
-export function driftVortices(s,random=Math.random){const reports=[];for(const v of s.vortices){const angle=Math.floor(random()*8)*Math.PI/4,distance=rollD6(1,random)[0],from={x:v.x,y:v.y};v.x+=Math.sin(angle)*distance;v.y-=Math.cos(angle)*distance;const affected=[];for(const u of s.units.filter(u=>u.x!==null&&u.team!==getUnit(s,v.caster)?.team)){const a={x:from.x,y:from.y},b={x:v.x,y:v.y},dx=b.x-a.x,dy=b.y-a.y,q=dx*dx+dy*dy,p=q?Math.max(0,Math.min(1,((u.x-a.x)*dx+(u.y-a.y)*dy)/q)):0;if(Math.hypot(u.x-a.x-p*dx,u.y-a.y-p*dy)<=1.5+Math.max(size(u).w,size(u).h)/2)affected.push({id:u.id,...magicDamage(s,u,Math.ceil(rollD6(1,random)[0]/2)+3,3,2,random,true)});}reports.push({caster:v.caster,from,to:{x:v.x,y:v.y},distance,affected});}s.vortices=s.vortices.filter(v=>v.x>=-1.5&&v.x<=boardOf(s).width+1.5&&v.y>=-1.5&&v.y<=boardOf(s).height+1.5&&getUnit(s,v.caster)?.x!==null);return reports;}
-export function vortexDispellers(s,casterId){const vortex=s.vortices.find(v=>v.caster===casterId);if(!vortex)return [];return s.units.filter(u=>u.role==='wizard'&&u.team!==getUnit(s,casterId)?.team&&u.x!==null&&aliveCount(u)>0&&!u.fleeing&&!u.engaged&&Math.hypot(u.x-vortex.x,u.y-vortex.y)<=(u.level>=3?24:18)+EPS);}
-export function canDispelVortex(s,casterId){return s.stage==='strategy'&&!s.pendingSpell&&s.vortices.some(v=>v.caster===casterId)&&getUnit(s,casterId)?.team!==s.team;}
-export function dispelVortex(s,casterId,random=Math.random,mode='wizard',dispellerId=null){const vortex=s.vortices.find(v=>v.caster===casterId);if(!vortex)throw Error('No Pillar of Fire remains in play.');if(!canDispelVortex(s,casterId))throw Error('Dispel a Remains in Play spell in your own Strategy phase (Conjuration).');if(!['wizard','fated'].includes(mode))throw Error('Choose a dispel method.');const wizard=mode==='wizard'?vortexDispellers(s,casterId).find(u=>!dispellerId||u.id===dispellerId):null;if(mode==='wizard'&&!wizard)throw Error('No opposing wizard is in dispel range.');if(mode==='fated'&&s.fatedDispelUsed)throw Error('Fated Dispel already used.');const dice=rollD6(2,random),double1=dice[0]===1&&dice[1]===1,total=dice[0]+dice[1]+(wizard?Math.ceil(wizard.level/2):0),success=!double1&&(dice[0]===6&&dice[1]===6||total>BATTLE_MAGIC.pillar.cast);if(mode==='fated')s.fatedDispelUsed=true;const result={mode,by:wizard?.id??null,dice,total,success};if(double1&&wizard)result.miscast=miscast(s,wizard,random);if(success)s.vortices=s.vortices.filter(v=>v!==vortex);return result;}
+export function driftVortices(s,random=Math.random){const reports=[];for(const v of s.vortices){const angle=Math.floor(random()*8)*Math.PI/4,distance=rollD6(1,random)[0],from={x:v.x,y:v.y};v.x+=Math.sin(angle)*distance;v.y-=Math.cos(angle)*distance;const affected=[];for(const u of s.units.filter(u=>u.x!==null&&u.team!==getUnit(s,v.caster)?.team)){const a={x:from.x,y:from.y},b={x:v.x,y:v.y},dx=b.x-a.x,dy=b.y-a.y,q=dx*dx+dy*dy,p=q?Math.max(0,Math.min(1,((u.x-a.x)*dx+(u.y-a.y)*dy)/q)):0;if(Math.hypot(u.x-a.x-p*dx,u.y-a.y-p*dy)<=1.5+Math.max(size(u).w,size(u).h)/2)affected.push({id:u.id,...magicDamage(s,u,Math.ceil(rollD6(1,random)[0]/2)+3,3,2,random,{flaming:true})});}reports.push({caster:v.caster,from,to:{x:v.x,y:v.y},distance,affected});}s.vortices=s.vortices.filter(v=>v.x>=-1.5&&v.x<=boardOf(s).width+1.5&&v.y>=-1.5&&v.y<=boardOf(s).height+1.5&&getUnit(s,v.caster)?.x!==null);return reports;}
+// ---- Remains in Play: dispelling a vortex later ----
+// A vortex record: {id,spell,caster,team,x,y,radius,cast,dispelTried}. Older records without an
+// id or spell are a Pillar of Fire, found by their caster.
+function findVortex(s,ref){return (s.vortices??[]).find(v=>v.id===ref)??(s.vortices??[]).find(v=>v.caster===ref);}
+const vortexTeam=(s,v)=>v.team??getUnit(s,v.caster)?.team;
+const turnKey=s=>`${s.round}:${s.team}`;
+// Wizards who may dispel an enemy vortex: in range (18″, 24″ at Level 3 or more) of its caster or
+// of the template, not fleeing, not in combat.
+export function vortexDispellers(s,ref){const v=findVortex(s,ref);if(!v)return [];const caster=getUnit(s,v.caster),team=vortexTeam(s,v);return s.units.filter(u=>u.role==='wizard'&&u.team!==team&&u.x!==null&&aliveCount(u)>0&&!u.fleeing&&!u.engaged&&!u.dispelExhausted&&!s.dispelBlocked?.[u.team]&&Math.min(caster?.x!=null?gap(u,caster):Infinity,circleGap(corners(u),{x:v.x,y:v.y,r:v.radius??1.5}))<=(u.level>=3?24:18)+EPS);}
+// The opposing side may try once to dispel each vortex in its own Strategy phase (Conjuration).
+export function canDispelVortex(s,ref){const v=findVortex(s,ref);return !!v&&s.stage==='strategy'&&!s.pendingSpell&&vortexTeam(s,v)!==s.team&&v.dispelTried!==turnKey(s);}
+// The dispel must beat the spell's printed casting value, not the roll it was cast with, even
+// after a Perfect Invocation.
+export function dispelVortex(s,ref,random=Math.random,mode='wizard',dispellerId=null){
+ const v=findVortex(s,ref);if(!v)throw Error('No such spell remains in play.');const spell=SPELLS[v.spell??'pillar'];
+ if(!canDispelVortex(s,ref))throw Error(v.dispelTried===turnKey(s)?`${spell.name} has already faced a dispel this turn.`:'Dispel a Remains in Play spell in your own Strategy phase (Conjuration).');
+ if(!['wizard','fated'].includes(mode))throw Error('Choose a dispel method.');
+ const wizard=mode==='wizard'?vortexDispellers(s,ref).find(u=>!dispellerId||u.id===dispellerId):null;if(mode==='wizard'&&!wizard)throw Error('No opposing wizard is in dispel range.');
+ if(mode==='fated'&&!fatedDispelAvailable(s,s.team))throw Error('Fated Dispel already used.');
+ v.dispelTried=turnKey(s);if(mode==='fated')useFated(s,s.team);
+ const dice=rollD6(2,random),double1=dice[0]===1&&dice[1]===1,total=dice[0]+dice[1]+(wizard?Math.ceil(wizard.level/2):0);
+ const result={mode,by:wizard?.id??null,vortex:v.id??v.caster,spell:v.spell??'pillar',dice,total,beat:spell.cast,success:!double1&&(dice[0]===6&&dice[1]===6||total>spell.cast)};
+ if(double1&&wizard){result.miscast=miscast(s,wizard,random,{dispel:true});if(result.miscast.dispelled)result.success=true;}
+ if(result.success)s.vortices=s.vortices.filter(x=>x!==v);return result;}
 export function canEngineerReroll(s){const u=getUnit(s,'A6'),r=s.rocket;return !!u&&u.x!==null&&!u.fleeing&&!u.engaged&&!u.engineerUsed&&r.x!==null&&Math.hypot(u.x-r.x,u.y-r.y)<=profile(u).Ld+EPS;}
 export function engineerReroll(s,dice,which,random=Math.random){if(!canEngineerReroll(s))throw Error('The Daemonsmith cannot assist the Deathshrieker now.');if(!['artillery','scatter'].includes(which))throw Error('Choose one Artillery or Scatter die.');const next={...dice},fresh=rollRocketDice(random);next[which]=fresh[which];if(which==='scatter')next.hitArrow=fresh.hitArrow;getUnit(s,'A6').engineerUsed=true;return next;}
 
@@ -984,13 +1142,14 @@ export function beginCombat(s,id){
  if(units.length<2||!units.some(u=>!u.combatResolved))throw Error('Select an unresolved engaged regiment.');
  const ids=units.map(u=>u.id),initiative=Object.fromEntries(units.map(u=>[u.id,combatInitiative(u,opponents(s,u))]));
  return s.combatSession={units:ids,sides:{ash:ids.filter(i=>getUnit(s,i).team==='ash'),iron:ids.filter(i=>getUnit(s,i).team==='iron')},a:first.id,b:opponents(s,first)[0]?.id??null,
-  standards:Object.fromEntries(units.map(u=>[u.id,commandAlive(u,'S')])),initiative,groups:[...new Set(Object.values(initiative))].sort((x,y)=>y-x),step:0,phase:'attacks',stages:[],damage:Object.fromEntries(ids.map(i=>[i,0]))};
+  standards:Object.fromEntries(units.map(u=>[u.id,commandAlive(u,'S')])),initiative,groups:[...new Set(Object.values(initiative))].sort((x,y)=>y-x),step:0,phase:'attacks',stages:[],spellStages:[],passed:{},damage:Object.fromEntries(ids.map(i=>[i,0]))};
 }
 // One Initiative step: every unit at this Initiative attacks, its models split between the enemy
 // units they can reach (see attackAllocation); casualties are removed after the whole step.
 export function fightCombatStep(s,random=Math.random){
- const c=s.combatSession;if(s.stage!=='combat'||c?.phase!=='attacks')throw Error('Show Initiative before rolling attacks.');
- const initiative=c.groups[c.step],stages=[],claimed={};
+ const c=s.combatSession;if(s.stage!=='combat'||c?.phase!=='attacks')throw Error('Show Initiative before rolling attacks.');if(s.pendingSpell)throw Error('Resolve the dispel of the spell just cast first.');
+ // Assailments cast at this step join it: their wounds are claimed before the attacks are rolled.
+ const initiative=c.groups[c.step],stages=[...(c.spellStages??[])],claimed={};c.spellStages=[];for(const st of stages)claimed[st.to]=(claimed[st.to]??0)+st.unsaved;
  for(const id of c.units){
   const u=getUnit(s,id);if(c.initiative[id]!==initiative||!u||u.x===null||aliveCount(u)===0)continue;
   for(const [target,models]of attackAllocation(s,u,c.damage[id])){
