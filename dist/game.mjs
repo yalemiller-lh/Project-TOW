@@ -134,7 +134,11 @@ export const deploymentFacing=(s,team)=>s?.facing?.[team]??(team==='ash'?0:180);
 export function insideZone(s,team,p){return withinPolygon(p,zoneOf(s,team));}
 export function zoneBounds(s,team){const z=zoneOf(s,team);return {left:Math.min(...z.map(p=>p.x)),right:Math.max(...z.map(p=>p.x)),top:Math.min(...z.map(p=>p.y)),bottom:Math.max(...z.map(p=>p.y))};}
 function claimStandard(s,u,by){if(u&&!u.standardClaimed&&commandAlive(u,'S')){u.standardClaimed=by;(s.trophies??=[]).push({unit:u.id,team:by,round:s.round});}}
-function destroyUnit(u,reason=null){Object.assign(u,{x:null,y:null,destroyed:true,fleeing:false,engaged:null,raiding:null});if(reason)u.leftBoard=reason;}
+// Destruction is registered once, with its reason: COMBAT_CASUALTIES (wiped out by attacks:
+// shooting, magic or close combat), RUN_DOWN (caught while fleeing), FLED_OFF_TABLE, or
+// SPECIAL_RULE (a war machine abandoned by its crew, a fleeing unit lost to Peril). A Remains in
+// Play spell of its own goes with it.
+function destroyUnit(s,u,reason='COMBAT_CASUALTIES'){if(!u)return;Object.assign(u,{x:null,y:null,destroyed:true,fleeing:false,engaged:null,raiding:null});u.destroyedBy??=reason;if(reason==='FLED_OFF_TABLE')u.leftBoard='fled';if(s)s.vortices=(s.vortices??[]).filter(v=>v.caster!==u.id);}
 // The prototype keeps 1″ between units. A unit that already stands closer than that to another
 // (friends left shoulder to shoulder after a combat) may move along or away from it, but never into it.
 // Only friends: an enemy is never reached by an ordinary move, only by a charge.
@@ -464,9 +468,9 @@ export function canCast(s,id,key,targetId){const u=getUnit(s,id),spell=BATTLE_MA
 function magicDamage(s,target,hits,strength,ap,random,flaming=false,ignoreArmour=false){const dice={wound:[],save:[],ward:[]};let wounds=0,unsaved=0;for(let i=0;i<hits&&aliveCount(target)>0;i++){const wound=rollD6(1,random)[0];dice.wound.push(wound);if(wound<Math.max(2,Math.min(6,4+profile(target).T-strength)))continue;wounds++;if(!ignoreArmour){const armour=rollD6(1,random)[0];dice.save.push(armour);const save=Math.max(2,Math.min(7,profile(target).save+ap));if(armour>=save)continue;}const ward=target.oakenShield?5:target.role==='wizard'&&target.faction==='chaos'&&flaming?5:7;if(ward<=6){const value=rollD6(1,random)[0];dice.ward.push(value);if(value>=ward)continue;}removeCasualties(s,target,1);unsaved++;}wipeOut(s,target);return {hits,wounds,unsaved,dice};}
 // A regiment whose last model falls to shooting, Stand & Shoot, a spell or a vortex leaves the
 // battlefield at once (full casualty VP). In a combat being fought, the combat result settles it.
-function wipeOut(s,u){if(!u||u.x===null||aliveCount(u)>0)return;const p=s.pendingCombat;if(s.combatSession?.units?.includes(u.id)||p&&(p.combat??[p.winner,p.loser]).includes(u.id))return;release(s,u);s.vortices=(s.vortices??[]).filter(v=>v.caster!==u.id);destroyUnit(u);}
+function wipeOut(s,u){if(!u||u.x===null||aliveCount(u)>0)return;const p=s.pendingCombat;if(s.combatSession?.units?.includes(u.id)||p&&(p.combat??[p.winner,p.loser]).includes(u.id))return;release(s,u);destroyUnit(s,u,'COMBAT_CASUALTIES');}
 function miscast(s,u,random){if(u.faction==='chaos'){const test=rollD6(1,random)[0];if(test>profile(u).T){removeCasualties(s,u,1);u.petrified++;return {kind:'Sorcerer’s Curse',test,wounds:1,toughness:profile(u).T};}}const dice=rollD6(2,random),sum=dice[0]+dice[1];if(sum<=6){const radius=sum<=4?2.5:1.5,strength=sum<=4?10:6,ap=sum<=4?4:2;const affected=s.units.filter(t=>t.x!==null&&Math.hypot(t.x-u.x,t.y-u.y)<=radius+Math.max(size(t).w,size(t).h)/2).map(t=>({id:t.id,...magicDamage(s,t,1,strength,ap,random)}));return {kind:sum<=4?'Dimensional Cascade':'Calamitous Detonation',dice,affected,cast:false};}if(sum===7){const hit=magicDamage(s,u,1,4,1,random);return {kind:'Careless Conjuration',dice,hit,cast:false};}u.magicExhausted=true;return {kind:sum<=9?'Barely Controlled Power':'Power Drain',dice,cast:true,undispellable:sum>=10};}
-function magicPanic(s,caster,target,random){const dice=rollD6(2,random),passed=dice[0]+dice[1]<=leadership(target);if(passed)return {dice,passed};if(target.engaged)return {dice,passed,gaveGround:true};target.fleeing=true;target.moved=true;target.heading=normalize(Math.atan2(target.x-caster.x,-(target.y-caster.y))*180/Math.PI);const flee=rollD6(2,random),move=fleeMove(s,target,flee[0]+flee[1],random);return {dice,passed,flee,fledOffBoard:move.fledOffBoard,move};}
+function magicPanic(s,caster,target,random){const dice=rollD6(2,random),passed=hasRule(target,'frenzy')||dice[0]+dice[1]<=leadership(target);if(passed)return {dice,passed};if(target.engaged)return {dice,passed,gaveGround:true};target.fleeing=true;target.moved=true;target.heading=normalize(Math.atan2(target.x-caster.x,-(target.y-caster.y))*180/Math.PI);const flee=rollD6(2,random),move=fleeMove(s,target,flee[0]+flee[1],random);return {dice,passed,flee,fledOffBoard:move.fledOffBoard,move};}
 // Casting and dispelling are two steps. attemptSpell makes the casting roll; a cast spell that
 // can still be dispelled waits in s.pendingSpell until the defending player picks a Wizardly
 // Dispel (one eligible Wizard), the Fated Dispel, or no dispel with resolveDispel.
@@ -755,7 +759,7 @@ export function resolveCharge(s,id,dice){
  if(u.charge.reaction==='pending')throw Error('Choose the defender’s reaction first.');
  const t=getUnit(s,u.charge.target),fled=u.charge.reaction==='flee',p=t?.x!==null?chargePlan(s,u,t):{error:'Target fled off the table.'},route=p.error?u.charge.initialPlan:p,roll=Math.max(...dice),range=profile(u).M+roll,success=!p.error&&range+EPS>=p.cost;
  let end={...u},travel=0;
- if(success){end=p.end;travel=p.cost;if(fled){claimStandard(s,t,u.team);destroyUnit(t);}else engage(u,t);}
+ if(success){end=p.end;travel=p.cost;if(fled){claimStandard(s,t,u.team);destroyUnit(s,t,'RUN_DOWN');}else engage(u,t);}
  else if(route?.start){
   const budget=fled?range:roll;
   const wheelAngle=route.wheelCost<=budget?route.angle:Math.sign(route.angle)*2*Math.asin(Math.min(1,budget/(2*size(u).w)))*180/Math.PI;
@@ -825,8 +829,8 @@ function attackStage(s,attacker,defender,random,lost=0,{models=null,cap=null}={}
  return {from:attacker.id,to:defender.id,initiative:combatInitiative(attacker,defender),fighters:fighting.length,lostBefore:lost,attacks,hits,wounds,saved:wounds-unsaved,unsaved,toHit,toWound,toSave,dice};
 }
 export function removeCasualties(s,u,count){
- if(u.role==='warmachine'){u.wounds=Math.max(0,u.wounds-count);u.crew=Math.min(u.crew,u.wounds);if(!u.wounds){release(s,u);destroyUnit(u);}return;}
- if(isCharacter(u)){u.wounds=Math.max(0,u.wounds-count);if(!u.wounds){release(s,u);s.vortices=s.vortices.filter(v=>v.caster!==u.id);destroyUnit(u);}return;}
+ if(u.role==='warmachine'){u.wounds=Math.max(0,u.wounds-count);u.crew=Math.min(u.crew,u.wounds);if(!u.wounds){release(s,u);destroyUnit(s,u,'COMBAT_CASUALTIES');}return;}
+ if(isCharacter(u)){u.wounds=Math.max(0,u.wounds-count);if(!u.wounds){release(s,u);destroyUnit(s,u,'COMBAT_CASUALTIES');}return;}
  // Models are physically removed from the right-hand end of the rear rank, so the survivors
  // stay together and the fighting rank stays full; the musician, then the standard bearer,
  // then the champion go only when no ordinary warriors remain.
@@ -884,12 +888,13 @@ export function fireRocket(s,targetId,profileKey,dice,random=Math.random,{indire
   // The central hole's Multiple Wounds count on a model with several Wounds (a war machine or a character).
   const multiple=slain&&isCentre&&profile.centreMultipleWounds&&(cell.unit.role==='warmachine'||isCharacter(cell.unit))?rollD6(1,random)[0]:null,wounds=slain?Math.min(multiple??1,remainingWounds(cell.unit)):0;
   report.affected.push({unit:cell.unit.id,model:cell.model,centre:isCentre,hitRoll,woundRoll,saveRoll,ward,toWound,toSave,slain,multiple,wounds});
-  if(slain){removeCasualties(s,cell.unit,wounds);report.unsaved+=wounds;if(aliveCount(cell.unit)===0){release(s,cell.unit);cell.unit.destroyed=true;cell.unit.x=null;cell.unit.y=null;}}
+  if(slain){removeCasualties(s,cell.unit,wounds);report.unsaved+=wounds;if(aliveCount(cell.unit)===0){release(s,cell.unit);destroyUnit(s,cell.unit,'COMBAT_CASUALTIES');}}
  }
  if(profileKey==='incendiary')for(const unit of s.units.filter(u=>report.affected.some(a=>a.unit===u.id&&a.slain)&&u.x!==null)){
-  const panic=rollD6(2,random);report.panic??=[];report.panic.push({unit:unit.id,dice:panic,passed:panic[0]+panic[1]<=leadership(unit)});
-  if(panic[0]+panic[1]>leadership(unit)){unit.fleeing=true;unit.moved=true;const away=Math.atan2(unit.x-s.rocket.x,-(unit.y-s.rocket.y))*180/Math.PI;unit.heading=normalize(away);const flee=rollD6(2,random),move=fleeMove(s,unit,flee[0]+flee[1],random);Object.assign(report.panic.at(-1),{fleeDice:flee,fledOffBoard:move.fledOffBoard,move});}
-  if(hasRule(unit,'frenzy'))Object.assign(report.panic.at(-1),{passed:true,frenzy:true});
+  // A Frenzied unit passes Panic tests (it never flees from them).
+  const panic=rollD6(2,random),frenzy=hasRule(unit,'frenzy'),passed=frenzy||panic[0]+panic[1]<=leadership(unit);report.panic??=[];report.panic.push({unit:unit.id,dice:panic,passed,...(frenzy?{frenzy:true}:{})});
+  if(!passed){unit.fleeing=true;unit.moved=true;const away=Math.atan2(unit.x-s.rocket.x,-(unit.y-s.rocket.y))*180/Math.PI;unit.heading=normalize(away);const flee=rollD6(2,random),move=fleeMove(s,unit,flee[0]+flee[1],random);Object.assign(report.panic.at(-1),{fleeDice:flee,fledOffBoard:move.fledOffBoard,move});}
+
  }
  s.rocket.lastShot=report;return report;
 }
@@ -930,7 +935,7 @@ export function fireCannon(s,id,targetId,mode,dice,random=Math.random,{aimShort=
  else{report.strike={x:plan.aim.x+plan.direction.x*dice.strike,y:plan.aim.y+plan.direction.y*dice.strike};const bounce=dice.bounce==='misfire'?0:dice.bounce;report.end={x:report.strike.x+plan.direction.x*bounce,y:report.strike.y+plan.direction.y*bounce};cells=cannonballCells(s,report.strike,report.end,plan.direction);}
  for(const cell of cells){if(aliveCount(cell.unit)===0)continue;report.hits++;const strength=mode==='grape'?4:10,ap=mode==='grape'?1:3,woundRoll=rollD6(1,random)[0],toWound=Math.max(2,Math.min(6,4+shotToughness(cell.unit)-strength)),saveRoll=woundRoll>=toWound?rollD6(1,random)[0]:null,toSave=Math.max(2,Math.min(7,profileOfSave(cell.unit)+ap)),ward=cell.unit.oakenShield&&saveRoll!==null&&saveRoll<toSave?rollD6(1,random)[0]:null,slain=saveRoll!==null&&saveRoll<toSave&&(ward===null||ward<5);
   report.affected.push({unit:cell.unit.id,model:cell.model?.index??null,woundRoll,saveRoll,ward,toWound,toSave,slain});
-  if(slain){removeCasualties(s,cell.unit,1);report.unsaved++;if(aliveCount(cell.unit)===0){release(s,cell.unit);destroyUnit(cell.unit);}}
+  if(slain){removeCasualties(s,cell.unit,1);report.unsaved++;if(aliveCount(cell.unit)===0){release(s,cell.unit);destroyUnit(s,cell.unit,'COMBAT_CASUALTIES');}}
  }
  c.lastShot=report;return report;
 }
@@ -1011,24 +1016,30 @@ export function compareCombat(s){
  const result={units:c.units,sides:c.sides,a:c.a,b:c.b,initiative:c.initiative,stages:c.stages,damage:c.damage,score:{...score,...Object.fromEntries(units.map(u=>[u.id,score[u.team]]))},winnerSide,loserSide,winners,losers,winner,loser,outcome,breakDice:null,breaks:{},margin,round:s.round};
  for(const u of units)u.combatResolved=true;s.lastCombat=result;(s.combatHistory??=[]).push(result);s.combatSession=null;
  // The dead are removed; a destroyed unit's standard goes to the other side if any of it stands.
- for(const dead of units.filter(u=>aliveCount(u)===0)){const other=dead.team==='ash'?'iron':'ash';if(c.standards?.[dead.id]&&standing(other)&&!dead.standardClaimed){dead.standardClaimed=other;(s.trophies??=[]).push({unit:dead.id,team:other,round:s.round});}release(s,dead);if(!dead.destroyed||dead.x!==null)destroyUnit(dead);}
+ for(const dead of units.filter(u=>aliveCount(u)===0)){const other=dead.team==='ash'?'iron':'ash';if(c.standards?.[dead.id]&&standing(other)&&!dead.standardClaimed){dead.standardClaimed=other;(s.trophies??=[]).push({unit:dead.id,team:other,round:s.round});}release(s,dead);if(!dead.destroyed||dead.x!==null)destroyUnit(s,dead,'COMBAT_CASUALTIES');}
  if(outcome==='destroyed'){const free=winners.filter(id=>unit(id).role!=='warmachine'&&!opponents(s,unit(id)).length);if(free.length){s.pendingCombat={combat:c.units,winnerSide,loserSide:null,margin,outcome:'overrun',stage:'winner-choice',winners:free,losers:[],results:{},former,winner:free[0],loser:former[free[0]]?.[0]??loser,loserDestroyed:true,retreat:{moved:0,dir:null}};}}
  // Every losing unit still facing an enemy takes a Break test, in a fixed order (not the order the
  // combat happened to be started from); one left with no enemy in contact does not.
- else if(winnerSide){const testing=[...losers].sort().filter(id=>{const l=unit(id);return l&&l.x!==null&&aliveCount(l)>0&&opponents(s,l).length;});const p=s.pendingCombat={combat:c.units,winnerSide,loserSide,margin,stage:'break',winners,losers:testing,results:{},former,loser:testing[0]};if(testing.length)p.winner=facingWinner(s,p,testing[0]);else if(!nextWinner(s,p,0))s.pendingCombat=null;}
+ else if(winnerSide){const testing=[...losers].sort().filter(id=>{const l=unit(id);return l&&l.x!==null&&aliveCount(l)>0&&opponents(s,l).length;});const sideUS=team=>units.filter(u=>u.team===team&&u.x!==null&&aliveCount(u)>0).reduce((n,u)=>n+unitStrength(u),0),p=s.pendingCombat={combat:c.units,winnerSide,loserSide,margin,stage:'break',winners,losers:testing,results:{},former,loser:testing[0],strength:{winner:sideUS(winnerSide),loser:sideUS(loserSide)}};if(testing.length)p.winner=facingWinner(s,p,testing[0]);else if(!nextWinner(s,p,0))s.pendingCombat=null;}
  for(const id of loserSide?units.filter(u=>u.team===loserSide).map(u=>u.id):[]){const l=unit(id);if(l?.effects)l.effects=l.effects.filter(e=>e.rule!=='frenzy');}
  return result;
 }
 export function rollCombatBreak(s,random=Math.random){
  const p=s.pendingCombat;if(s.stage!=='combat'||p?.stage!=='break')throw Error('Compare combat results before the Break test.');
  const loser=getUnit(s,p.loser),winner=getUnit(s,p.winner),dice=combatDice(2,random),natural=dice[0]+dice[1],ld=leadership(loser);
- p.outcome=dice[0]===1&&dice[1]===1||natural+p.margin<=ld?'give-ground':natural>ld?'break':'fall-back';if(loser.role==='wizard'&&loser.faction==='chaos'&&!loser.stubbornUsed){loser.stubbornUsed=true;p.outcome='fall-back';}const stubborn=loser.effects?.find(e=>e.rule==='stubborn'&&!e.used);if(stubborn&&p.outcome!=='give-ground'){stubborn.used=true;p.outcome='fall-back';p.stubborn=true;}p.breakDice=dice;
+ p.outcome=dice[0]===1&&dice[1]===1||natural+p.margin<=ld?'give-ground':natural>ld?'break':'fall-back';
+ // Outnumbered: Fall Back in Good Order becomes a Break when the winning side's Unit Strength is
+ // more than twice the losing side's (both after casualties; exactly twice is not enough).
+ p.outnumbered=false;if(p.outcome==='fall-back'&&p.strength&&p.strength.winner>2*p.strength.loser){p.outcome='break';p.outnumbered=true;}
+ // Stubborn (the Daemonsmith, or the landmark's property) turns a Break into Fall Back; it is spent
+ // only when it changes the result, never on a Give Ground.
+ if(loser.role==='wizard'&&loser.faction==='chaos'&&!loser.stubbornUsed&&p.outcome==='break'){loser.stubbornUsed=true;p.outcome='fall-back';p.stubborn=true;}const stubborn=loser.effects?.find(e=>e.rule==='stubborn'&&!e.used);if(stubborn&&p.outcome==='break'){stubborn.used=true;p.outcome='fall-back';p.stubborn=true;}p.breakDice=dice;
  // Shieldwall: a loser that did not charge, beaten by an enemy that did.
  const chargedBy=opponents(s,loser).length?opponents(s,loser):[winner].filter(Boolean);
  p.shieldwallAvailable=p.outcome==='fall-back'&&loser.role!=='warmachine'&&FACTIONS[loser.faction??'chaos'].shieldwall&&!loser.shieldwallUsed&&loser.charge?.status!=='success'&&chargedBy.some(e=>e.charge?.status==='success');
  p.stage=p.shieldwallAvailable?'loser-choice':'retreat';
- if(s.lastCombat){s.lastCombat={...s.lastCombat,outcome:p.outcome,breakDice:dice,breaks:{...s.lastCombat.breaks,[loser.id]:{dice,outcome:p.outcome}}};if(s.combatHistory?.length)s.combatHistory[s.combatHistory.length-1]=s.lastCombat;}
- return {dice,outcome:p.outcome,loser:p.loser,leadership:ld,shieldwallAvailable:p.shieldwallAvailable};
+ if(s.lastCombat){s.lastCombat={...s.lastCombat,outcome:p.outcome,breakDice:dice,breaks:{...s.lastCombat.breaks,[loser.id]:{dice,outcome:p.outcome,outnumbered:p.outnumbered,stubborn:!!p.stubborn}}};if(s.combatHistory?.length)s.combatHistory[s.combatHistory.length-1]=s.lastCombat;}
+ return {dice,outcome:p.outcome,loser:p.loser,leadership:ld,shieldwallAvailable:p.shieldwallAvailable,outnumbered:p.outnumbered,stubborn:!!p.stubborn};
 }
 export function chooseLoserAction(s,choice){
  const p=s.pendingCombat;if(s.stage!=='combat'||p?.stage!=='loser-choice')throw Error('No loser choice is available.');
@@ -1049,7 +1060,7 @@ function fleeMove(s,u,distance,random=Math.random,depth=0){
  while(!offBoard(end,s)&&(others.some(v=>gap(end,v)<1-EPS)||terrainBlocks(s,corners(end)))){travel+=.05;end=forwardPose(start,travel);}
  const leave=forwardPose(start,Math.min(.02,travel)),path=hull([...corners(leave),...corners(end)]),crossed=others.filter(v=>polygonGap(path,corners(v))<EPS);
  const report={unit:u.id,distance:travel,passedThrough:crossed.map(v=>v.id),peril:[],panic:[],fledOffBoard:offBoard(end,s)};
- if(report.fledOffBoard)destroyUnit(u,'fled');
+ if(report.fledOffBoard)destroyUnit(s,u,'FLED_OFF_TABLE');
  else{
   const square=(pose,m)=>[[m.x,m.y],[m.x+m.size,m.y],[m.x+m.size,m.y+m.size],[m.x,m.y+m.size]].map(([x,y])=>localPoint(pose,x,y)),models=modelSquares(s,u).filter(m=>!m.dead);
   for(const enemy of crossed.filter(v=>v.team!==u.team))for(const m of models){
@@ -1059,7 +1070,7 @@ function fleeMove(s,u,distance,random=Math.random,depth=0){
    if(lost)removeCasualties(s,u,1);
   }
   Object.assign(u,{x:end.x,y:end.y});
-  if(aliveCount(u)===0){s.vortices=s.vortices.filter(v=>v.caster!==u.id);destroyUnit(u);}
+  if(aliveCount(u)===0)destroyUnit(s,u,'SPECIAL_RULE');
  }
  report.casualties=report.peril.filter(p=>p.lost).length;report.destroyed=!!u.destroyed;
  const from=u.x!==null?u:end;
@@ -1085,7 +1096,7 @@ function retreatPose(s,u,enemy,distance,stopNear=true){
  const dx=u.x-enemy.x,dy=u.y-enemy.y,len=Math.hypot(dx,dy)||1,dir={x:dx/len,y:dy/len},start={x:u.x,y:u.y},touching=touchingAtStart(s,u);let moved=0;
  for(let i=1;i<=Math.ceil(distance*20);i++){
   const d=Math.min(distance,i/20),pose={...u,x:start.x+dir.x*d,y:start.y+dir.y*d};
-  if(offBoard(pose,s))return {moved,offBoard:true,dir};
+  if(offBoard(pose,s))break;
   const obstructed=combatants(s).some(v=>v.x!==null&&v.id!==u.id&&v.id!==enemy.id&&(touching.has(v.id)?overlaps(pose,v):gap(pose,v)<1-EPS))||terrainBlocks(s,corners(pose));
   if(obstructed)break;
   Object.assign(u,{x:pose.x,y:pose.y});moved=d;
@@ -1111,7 +1122,7 @@ function pursuitAdvance(s,winner,distance,dir,ignoredId,originalId){
     let lo=moved,hi=d;for(let k=0;k<24;k++){const mid=(lo+hi)/2;if(gap({...winner,x:start.x+dir.x*mid,y:start.y+dir.y*mid},obstacle)<EPS)hi=mid;else lo=mid;}
     Object.assign(winner,{x:start.x+dir.x*hi,y:start.y+dir.y*hi});moved=hi;contact=obstacle.id;
     if(!obstacle.fleeing){const aligned=alignedContact(winner,obstacle);if(!offBoard(aligned,s)&&!combatants(s).some(v=>v.id!==winner.id&&v.id!==obstacle.id&&v.x!==null&&aliveCount(v)>0&&(v.team===winner.team&&engagedWith(v,obstacle)?overlaps(aligned,v):gap(aligned,v)<1-EPS)))Object.assign(winner,{x:aligned.x,y:aligned.y,heading:aligned.heading});}
-    if(obstacle.fleeing){claimStandard(s,obstacle,winner.team);destroyUnit(obstacle);}
+    if(obstacle.fleeing){claimStandard(s,obstacle,winner.team);destroyUnit(s,obstacle,'RUN_DOWN');}
     else{
      const unfought=obstacle.engaged&&!obstacle.combatResolved;engage(winner,obstacle);
      if(obstacle.id!==originalId){winner.charge={target:obstacle.id,status:'success',distance:moved,face:chargeFace(winner,obstacle),pursuit:true};if(unfought){winner.combatResolved=false;joined=true;winner.pursued=true;}else{winner.pursuitPending=true;winner.combatResolved=obstacle.combatResolved=true;}}
@@ -1154,7 +1165,7 @@ function endAftermath(s,p,fallback){
 function afterLoser(s,p,fallback){
  if(p.losers){
   const i=p.losers.indexOf(p.loser),next=p.losers.slice(i+1).find(id=>{const u=getUnit(s,id);return u&&u.x!==null&&aliveCount(u)>0&&opponents(s,u).length;});
-  if(next){for(const key of ['outcome','breakDice','shieldwallAvailable','loserChoice','retreat','retreatDice','fleeDistance','loserDestroyed','stubborn'])delete p[key];Object.assign(p,{stage:'break',loser:next});p.winner=facingWinner(s,p,next);return false;}
+  if(next){for(const key of ['outcome','breakDice','shieldwallAvailable','loserChoice','retreat','retreatDice','fleeDistance','loserDestroyed','stubborn','outnumbered'])delete p[key];Object.assign(p,{stage:'break',loser:next});p.winner=facingWinner(s,p,next);return false;}
   if(nextWinner(s,p,0))return false;
   endAftermath(s,p,fallback);return true;
  }
@@ -1168,7 +1179,7 @@ export function moveCombatLoser(s,random=Math.random){
  const loser=getUnit(s,p.loser),winner=getUnit(s,p.winner);
  if(loser.role==='warmachine'){
   // A war machine never moves: its crew abandon it if it breaks, otherwise it fights on.
-  const abandoned=p.outcome==='break';if(abandoned){loser.wounds=0;loser.crew=0;release(s,loser);destroyUnit(loser);}
+  const abandoned=p.outcome==='break';if(abandoned){loser.wounds=0;loser.crew=0;release(s,loser);destroyUnit(s,loser,'SPECIAL_RULE');}
   const move={distance:0,dice:null,outcome:p.outcome,offBoard:false,abandoned};
   p.results={...p.results,[loser.id]:{outcome:p.outcome,retreat:{moved:0,dir:null},noPursuit:true,loserDestroyed:abandoned}};
   if(s.lastCombat){s.lastCombat={...s.lastCombat,loserMove:move};if(s.combatHistory?.length)s.combatHistory[s.combatHistory.length-1]=s.lastCombat;}
@@ -1177,14 +1188,18 @@ export function moveCombatLoser(s,random=Math.random){
  }
  release(s,loser);
  const dice=p.outcome==='give-ground'?null:combatDice(2,random),distance=p.outcome==='give-ground'?2:Math.max(1,(p.outcome==='fall-back'?Math.max(...dice):dice[0]+dice[1])-(FACTIONS[loser.faction??'chaos'].resolute?1:0));
- const retreat=p.outcome==='break'?fleeFrom(s,loser,winner,distance,random):retreatPose(s,loser,winner,distance);if(retreat.offBoard){loser.x=null;loser.y=null;loser.destroyed=true;}
+ // Only a unit that Breaks can leave the battlefield (fleeing off it, it is lost); one that Gives
+ // Ground or Falls Back in Good Order stops at the edge.
+ const retreat=p.outcome==='break'?fleeFrom(s,loser,winner,distance,random):retreatPose(s,loser,winner,distance);if(retreat.offBoard&&loser.x!==null)destroyUnit(s,loser,'FLED_OFF_TABLE');
  if(p.outcome==='break'&&loser.x!==null)loser.fleeing=true;
+ // Each Break outcome is kept as its own record, apart from the fleeing flag (a unit that Falls Back rallies).
+ loser.combatOutcome={kind:{'give-ground':'GAVE_GROUND','fall-back':'FELL_BACK',break:'BROKE'}[p.outcome],round:s.round,outnumbered:!!p.outnumbered};
  // A loser that could not get clear is still fighting whoever it touches.
  for(const e of combatants(s))if(stillTouching(loser,e))engage(loser,e);
  const loserDestroyed=!!retreat.offBoard||!!loser.destroyed;
  p.results={...p.results,[loser.id]:{outcome:p.outcome,retreat,retreatDice:dice,fleeDistance:distance,loserDestroyed}};
  Object.assign(p,{retreat,retreatDice:dice,fleeDistance:distance,loserDestroyed});
- if(s.lastCombat){s.lastCombat={...s.lastCombat,loserMove:{distance:retreat.moved,dice,outcome:p.outcome,offBoard:!!retreat.offBoard,flee:retreat.flee??null},loserMoves:{...s.lastCombat.loserMoves,[loser.id]:{distance:retreat.moved,dice,outcome:p.outcome,offBoard:!!retreat.offBoard}}};if(s.combatHistory?.length)s.combatHistory[s.combatHistory.length-1]=s.lastCombat;}
+ if(s.lastCombat){s.lastCombat={...s.lastCombat,loserMove:{distance:retreat.moved,dice,outcome:p.outcome,offBoard:!!retreat.offBoard,flee:retreat.flee??null},loserMoves:{...s.lastCombat.loserMoves,[loser.id]:{distance:retreat.moved,dice,outcome:p.outcome,offBoard:!!retreat.offBoard}},outcomes:{...s.lastCombat.outcomes,[loser.id]:loser.combatOutcome.kind}};if(s.combatHistory?.length)s.combatHistory[s.combatHistory.length-1]=s.lastCombat;}
  const finished=afterLoser(s,p,{winner:p.winner,loser:p.loser,outcome:p.outcome,choice:'restrain',rolls:{},movement:{loser:retreat.moved},loserDestroyed});
  return {loser:loser.id,outcome:p.outcome,distance:retreat.moved,dice,offBoard:!!retreat.offBoard,flee:retreat.flee??null,finished};
 }
@@ -1202,7 +1217,7 @@ export function winnerCombat(s,choice='follow',random=Math.random,reformHeading=
    const dice=combatDice(2,random);out.rolls.pursuit=dice;
    const chase=Math.max(1,dice[0]+dice[1]-(FACTIONS[winner.faction??'chaos'].resolute?1:0));out.pursuitDistance=chase;
    if(p.outcome==='overrun')advance=chase;
-   else if(p.outcome==='break'&&(p.loserDestroyed||chase>=p.fleeDistance)){if(loser.x!==null){claimStandard(s,loser,winner.team);destroyUnit(loser);}out.loserDestroyed=true;advance=chase;}
+   else if(p.outcome==='break'&&(p.loserDestroyed||chase>=p.fleeDistance)){if(loser.x!==null){claimStandard(s,loser,winner.team);destroyUnit(s,loser,'RUN_DOWN');}out.loserDestroyed=true;advance=chase;}
    else if(p.outcome==='fall-back'&&loser.x!==null&&chase>=p.fleeDistance){out.caughtInGoodOrder=true;advance=p.retreat.moved;}
    else advance=Math.min(chase,Math.max(0,(p.retreat?.moved??0)-1));
   }
