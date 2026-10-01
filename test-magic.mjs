@@ -6,6 +6,15 @@ function battle(){const s=G.createGame('empire');G.autoDeploy(s);G.begin(s,()=>0
 function prepare(s,key,phase='strategy',caster='A6'){s.stage=phase;s.team=caster[0]==='A'?'ash':'iron';const u=G.getUnit(s,caster);u.spells=[key,'shield'];u.castThisTurn=[];return u;}
 
 {
+ const s=battle(),ash=prepare(s,'shield'),iron=G.getUnit(s,'I7');ash.x=8;ash.y=40;iron.x=64;iron.y=8;
+ const first=G.castSpell(s,ash.id,'shield',ash.id,()=>.8,{dispel:'fated'});assert.equal(first.dispel.kind,'fated');assert.equal(s.fatedDispelUsed,true);
+ ash.spells=['shield','arrow'];const target=G.getUnit(s,'I1');target.x=8;target.y=24;
+ assert.throws(()=>G.castSpell(s,ash.id,'arrow',target.id,()=>.8,{dispel:'fated'}),/already used this turn/);
+ s.stage='combat';G.nextTurn(s);assert.equal(s.fatedDispelUsed,false);
+ iron.spells=['shield'];iron.castThisTurn=[];const next=G.castSpell(s,iron.id,'shield',iron.id,()=>.8,{dispel:'fated'});assert.equal(next.dispel.kind,'fated');assert.equal(s.fatedDispelUsed,true);
+}
+
+{
  const s=battle(),a=G.getUnit(s,'A6'),b=G.getUnit(s,'I7');assert.equal(a.level,2);assert.equal(b.level,2);assert.equal(a.wounds,2);assert.equal(b.wounds,2);assert.deepEqual(a.spells,['fireball','arrow']);assert.equal(G.size(a).w,25/25.4);assert.equal(G.modelSquares(s,a).length,1);assert.equal(G.profile(a).T,4);assert.equal(G.profile(b).Ld,7);
 }
 {

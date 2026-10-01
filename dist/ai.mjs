@@ -224,7 +224,7 @@ export function takeStep(s,random=Math.random){
   G.finishDeclarations(s);return {message:'The bot finishes charge declarations.'};
  }
  if(s.stage==='movement'&&s.movementStep==='charges'){
-  const u=s.units.find(u=>u.team==='iron'&&u.charge?.status==='declared');if(u){s.selected=u.id;const target=G.getUnit(s,u.charge.target),plan=target?.x!==null?G.chargePlan(s,u,target):{error:true},first=roll(random),reroll=u.faction==='orc'&&!plan.error&&G.profile(u).M+Math.max(...first)<plan.cost,dice=reroll?roll(random):first,out=G.resolveCharge(s,u.id,dice);return {message:`${u.id} charge ${out.success?'succeeds':'fails'} (${reroll?'Warband reroll · ':''}${dice.join(', ')}).`,roll:{label:`${u.id} · Charge roll · keep highest`,dice,team:'iron'}};}
+  const u=s.units.find(u=>u.team==='iron'&&u.charge?.status==='declared');if(u){s.selected=u.id;const target=G.getUnit(s,u.charge.target),plan=target?.x!==null?G.chargePlan(s,u,target):{error:true},first=roll(random),reroll=u.faction==='orc'&&!plan.error&&G.profile(u).M+Math.max(...first)<plan.cost,dice=reroll?roll(random):first,out=G.resolveCharge(s,u.id,dice);return {message:`${u.id} ${out.success?'charge succeeds':out.pursuit?'pursues fleeing target':'charge fails'} (${reroll?'Warband reroll · ':''}${dice.join(', ')}).`,roll:{label:`${u.id} · Charge roll · keep highest`,dice,team:'iron'}};}
   G.enterRemaining(s);return {message:'The bot begins remaining moves.'};
  }
  if(s.stage==='movement'){
