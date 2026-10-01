@@ -49,6 +49,19 @@ test('the whole footprint, rotated or not, must be inside the zone, including co
  s.zones.ash=[{x:0,y:24},{x:20,y:24},{x:20,y:30},{x:48,y:30},{x:48,y:36},{x:0,y:36}];
  assert.equal(G.checkPosition(s,u,8,30,true),null);assert.match(G.checkPosition(s,u,20,27,true),/zone/);
 });
+test('Quick deploy puts war machines at the back of the zone and varies the line from game to game',()=>{
+ const rng=seed=>()=>{seed=seed*16807%2147483647;return seed/2147483647;};
+ for(const m of ['pitched-battle','mountain-pass','close-encounter','meeting-engagement'])for(const seed of [3,7]){
+  const s=bm({points:750,deployment:{map:m}});G.autoDeploy(s,{random:rng(seed)});
+  for(const p of G.combatants(s).filter(p=>p.role==='warmachine')){
+   const a=G.deploymentFacing(s,p.team)*Math.PI/180,depth=q=>q.x*Math.sin(a)-q.y*Math.cos(a),back=Math.min(...G.zoneOf(s,p.team).map(depth));
+   assert.ok(Math.min(...G.corners(p).map(depth))-back<.6,`${m}: ${p.id} stands on the back edge of its zone`);
+  }
+ }
+ const layout=seed=>{const s=bm();G.autoDeploy(s,seed?{random:rng(seed)}:{});return JSON.stringify(G.combatants(s).map(p=>[p.id,Math.round(p.x*2),Math.round(p.y*2)]));};
+ assert.notEqual(layout(3),layout(11),'different games deploy differently');assert.equal(layout(0),layout(0),'without a random source the plan is fixed');
+ const classic=G.createGame('empire');G.autoDeploy(classic,{random:rng(5)});assert.ok(classic.rocket.y>45&&classic.cannons.every(c=>c.y<3),'classic Quick deploy: machines on the back edges');
+});
 test('Quick deploy finds legal places for every unit and war machine on the Battle March table',()=>{
  const s=bm();G.autoDeploy(s);for(const u of s.units)assert.equal(G.checkPosition(s,u,u.x,u.y,true),null,u.id);assert.ok(s.cannons.every(c=>c.x!==null));assert.ok(s.rocket.x!==null);
 });

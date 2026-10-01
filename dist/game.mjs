@@ -149,24 +149,40 @@ export function checkPosition(state,unit,x,y,deployment=false,{moving=false}={})
 export function place(s,id,x,y){if(s.stage!=='deployment')throw Error('Deployment is finished.');const u=getUnit(s,id);if(!u)throw Error('Unknown regiment.');deployGate(s,u);const error=checkPosition(s,u,x,y,true);if(error)throw Error(error);Object.assign(u,{x,y});deployPlaced(s,u);return u;}
 export function placeRocket(s,x,y){if(s.stage!=='deployment')throw Error('Deploy the launcher before battle.');if(s.rocket.absent)throw Error('This army has no Deathshrieker.');deployGate(s,s.rocket);if(!Number.isFinite(x)||!Number.isFinite(y))throw Error('Enter valid coordinates.');if(!inZone(s,'ash',corners({...s.rocket,x,y})))throw Error('Keep the whole launcher in the red deployment zone.');const footprint=rocketFootprint(x,y);if(s.units.some(u=>u.x!==null&&polygonGap(corners(u),footprint)<1-EPS))throw Error('Keep the launcher at least 1″ from regiments.');Object.assign(s.rocket,{x,y});deployPlaced(s,s.rocket);return s.rocket;}
 export function placeCannon(s,id,x,y){if(s.stage!=='deployment')throw Error('Deploy cannons before battle.');const cannon=s.cannons.find(c=>c.id===id);if(!cannon)throw Error('Choose an Empire cannon.');deployGate(s,cannon);if(!Number.isFinite(x)||!Number.isFinite(y))throw Error('Enter valid coordinates.');const footprint=cannonFootprint(x,y);if(!inZone(s,'iron',corners({...cannon,x,y})))throw Error('Keep the whole cannon in the blue deployment zone.');if(s.units.some(u=>u.x!==null&&polygonGap(corners(u),footprint)<1-EPS)||s.cannons.some(c=>c.id!==id&&c.x!==null&&polygonGap(cannonFootprint(c.x,c.y),footprint)<1-EPS))throw Error('Keep cannons at least 1″ from other units.');Object.assign(cannon,{x,y});deployPlaced(s,cannon);return cannon;}
-export function autoDeploy(s,{team=null}={}){if(s.stage!=='deployment')throw Error('Deployment is finished.');if((s.format?.id??'classic')!=='classic')return alternating(s)?alternateAutoDeploy(s,team):searchDeploy(s,team);s.units.forEach((u,i)=>{if(!team||u.team===team)Object.assign(u,{x:u.id==='A6'?3.5:u.id==='I7'?70:[18,36,54,64][i%4],y:u.team==='ash'?42:6});});if(!team||team==='ash')placeRocket(s,8,42);if(!team||team==='iron')for(const [i,c]of s.cannons.entries())placeCannon(s,c.id,[8,45][i],6);}
+// Quick deploy. Battle March always uses the deployment plan below; a classic game does too when
+// given a random source (the game's Quick deploy), otherwise it keeps its fixed test layout.
+export function autoDeploy(s,{team=null,random=null}={}){if(s.stage!=='deployment')throw Error('Deployment is finished.');if((s.format?.id??'classic')!=='classic'||random)return alternating(s)?alternateAutoDeploy(s,team,random):searchDeploy(s,team,random);s.units.forEach((u,i)=>{if(!team||u.team===team)Object.assign(u,{x:u.id==='A6'?3.5:u.id==='I7'?70:[18,36,54,64][i%4],y:u.team==='ash'?42:6});});if(!team||team==='ash')placeRocket(s,8,42);if(!team||team==='iron')for(const [i,c]of s.cannons.entries())placeCannon(s,c.id,[8,45][i],6);}
 // Spread each army across the middle of its zone, trying the nearest legal spots.
 function deployOrderOf(s,side){return [...s.units.filter(u=>u.team===side&&!isCharacter(u)),...combatants(s).filter(m=>m.role==='warmachine'&&m.team===side),...s.units.filter(u=>u.team===side&&isCharacter(u))];}
 function placePiece(s,p,x,y){return p.role==='warmachine'?(p.team==='ash'?placeRocket(s,x,y):placeCannon(s,p.id,x,y)):place(s,p.id,x,y);}
-function autoSpot(s,p,i,count){
- // Lines parallel to the army's front (rows, or columns when it faces along the table): the middle
- // of the zone first, then its back and front edges, each tried nearest the unit's share of the width.
- const b=zoneBounds(s,p.team),side=[90,270].includes(deploymentFacing(s,p.team)),{h}=size(p);
- const [a0,a1,d0,d1]=side?[b.top,b.bottom,b.left,b.right]:[b.left,b.right,b.top,b.bottom],ideal=a0+(a1-a0)*(i+1)/(count+1),middle=(d0+d1)/2,at=(line,along)=>side?[line,along]:[along,line];
- const along=Array.from({length:Math.ceil((a1-a0)*2)+1},(_,k)=>a0+k/2).sort((a,c)=>Math.abs(a-ideal)-Math.abs(c-ideal));
- for(const line of [middle,d0+h/2+.01,d1-h/2-.01])for(const a of along){try{placePiece(s,p,...at(line,a));return p;}catch{}}
- // Triangles and quarters: any legal spot in the zone, nearest that ideal one first.
- const [ix,iy]=at(middle,ideal),grid=[];for(let x=b.left;x<=b.right+EPS;x+=.5)for(let y=b.top;y<=b.bottom+EPS;y+=.5)grid.push({x,y});
- for(const g of grid.sort((m,n)=>Math.hypot(m.x-ix,m.y-iy)-Math.hypot(n.x-ix,n.y-iy))){try{placePiece(s,p,g.x,g.y);return p;}catch{}}
+// The quick-deploy plan for one army: regiments form the battle line along the front of the zone,
+// war machines stand at its very back toward the flanks (where their long range still reaches),
+// and characters just behind the middle of the line. With a random source the line's order,
+// spacing and flank choice change from game to game; without one the plan is always the same.
+function deployPlan(s,team,random=null){
+ s.autoPlan??={};if(s.autoPlan[team])return s.autoPlan[team];
+ const pieces=deployOrderOf(s,team),line=pieces.filter(p=>!isCharacter(p)&&p.role!=='warmachine'),machines=pieces.filter(p=>p.role==='warmachine'),heroes=pieces.filter(p=>isCharacter(p));
+ const jitter=n=>random?(random()-.5)*n:0,shuffle=list=>random?list.map(v=>[random(),v]).sort((a,b)=>a[0]-b[0]).map(([,v])=>v):list,plan={};
+ shuffle(line).forEach((p,i,all)=>{plan[p.id]={slot:Math.max(.04,Math.min(.96,(i+1)/(all.length+1)+jitter(.5/(all.length+1)))),band:'front'};});
+ const flanks=shuffle([.08,.92]).concat([.3,.7,.5]);machines.forEach((p,i)=>{plan[p.id]={slot:Math.max(.02,Math.min(.98,flanks[i%flanks.length]+jitter(.1))),band:'back'};});
+ heroes.forEach((p,i)=>{plan[p.id]={slot:.5+(i-(heroes.length-1)/2)*.14+jitter(.24),band:'back'};});
+ return s.autoPlan[team]=plan;
+}
+function autoSpot(s,p,{slot=.5,band='front'}={}){
+ // Worked across the army's front (lateral) and toward the enemy (depth), so the same plan fits
+ // zones along the long edges, the short edges (Mountain Pass), quarters and triangles.
+ const a=rad(deploymentFacing(s,p.team)),fw={x:Math.sin(a),y:-Math.cos(a)},lat={x:Math.cos(a),y:Math.sin(a)},zone=zoneOf(s,p.team),{h}=size(p);
+ const L=zone.map(q=>q.x*lat.x+q.y*lat.y),D=zone.map(q=>q.x*fw.x+q.y*fw.y),l0=Math.min(...L),l1=Math.max(...L),d0=Math.min(...D),d1=Math.max(...D);
+ const front=d1-h/2-.01,back=d0+h/2+.01,middle=(d0+d1)/2,ideal=l0+(l1-l0)*slot,point=(l,d)=>({x:l*lat.x+d*fw.x,y:l*lat.y+d*fw.y});
+ const lines=band==='back'?[back,middle,front]:[front,middle,back],along=Array.from({length:Math.ceil((l1-l0)*2)+1},(_,k)=>l0+k/2).sort((m,n)=>Math.abs(m-ideal)-Math.abs(n-ideal));
+ for(const d of lines)for(const l of along){const q=point(l,d);try{placePiece(s,p,q.x,q.y);return p;}catch{}}
+ // Triangles and quarters: any legal spot in the zone, nearest the intended one first.
+ const want=point(ideal,lines[0]),b=zoneBounds(s,p.team),grid=[];for(let x=b.left;x<=b.right+EPS;x+=.5)for(let y=b.top;y<=b.bottom+EPS;y+=.5)grid.push({x,y});
+ for(const g of grid.sort((m,n)=>Math.hypot(m.x-want.x,m.y-want.y)-Math.hypot(n.x-want.x,n.y-want.y))){try{placePiece(s,p,g.x,g.y);return p;}catch{}}
  throw Error(`No legal deployment space for ${p.name??p.id}.`);
 }
-function searchDeploy(s,team){
- for(const side of team?[team]:['ash','iron']){const pieces=deployOrderOf(s,side);for(const p of pieces){p.x=null;p.y=null;}pieces.forEach((p,i)=>autoSpot(s,p,i,pieces.length));}
+function searchDeploy(s,team,random=null){
+ for(const side of team?[team]:['ash','iron']){const pieces=deployOrderOf(s,side);for(const p of pieces){p.x=null;p.y=null;}if(s.autoPlan)delete s.autoPlan[side];const plan=deployPlan(s,side,random);pieces.forEach(p=>autoSpot(s,p,plan[p.id]));}
 }
 // ---- Alternating deployment: one unit at a time. The deployment roll-off winner chooses who
 // deploys first; the armies then alternate, and once one army is down the other places the rest.
@@ -189,13 +205,13 @@ export function confirmDeployment(s){
 }
 // With a team: place and confirm that side's next unit. Without: deploy both armies at once
 // (a quick start for testing and two-player setups).
-function alternateAutoDeploy(s,team){
+function alternateAutoDeploy(s,team,random=null){
  const d=s.deployOrder;
- if(!team){d.auto=true;try{searchDeploy(s,null);}finally{d.auto=false;}for(const p of [...deploymentPieces(s,'ash'),...deploymentPieces(s,'iron')])p.deployed=true;d.first??='ash';Object.assign(d,{next:null,pending:null,complete:true});return null;}
+ if(!team){d.auto=true;try{searchDeploy(s,null,random);}finally{d.auto=false;}for(const p of [...deploymentPieces(s,'ash'),...deploymentPieces(s,'iron')])p.deployed=true;d.first??='ash';Object.assign(d,{next:null,pending:null,complete:true});return null;}
  if(!d.first)throw Error('Roll off first: the winner chooses who deploys first.');
  if(d.next!==team)throw Error(d.complete?'Both armies are deployed.':`${armyName(d.next,s)} deploys the next unit.`);
  const order=deployOrderOf(s,team),pending=d.pending?getUnit(s,d.pending):null,p=pending??order.find(q=>!q.deployed);
- if(!pending)autoSpot(s,p,order.indexOf(p),order.length);
+ if(!pending)autoSpot(s,p,deployPlan(s,team,random)[p.id]);
  return confirmDeployment(s);
 }
 export function deploymentComplete(s){return combatants(s).every(p=>p.x!==null)&&(!s.deployOrder?.alternate||s.deployOrder.complete);}
@@ -547,12 +563,29 @@ function alignedContact(u,t,face=chargeFace(u,t),free=null){
  const reach=(own.w+width)/2-baseSize(u)/25.4,steps=[];for(let d=.1;centering+d<=reach+EPS||centering-d>=-reach-EPS;d+=.1){if(centering+d<=reach+EPS)steps.push(centering+d);if(centering-d>=-reach-EPS)steps.push(centering-d);}
  return steps.map(at).find(free)??best;
 }
+// The pose after closing the door: turned flush to the face by pivoting about the point where the
+// charger touched it, so it may overhang the corner of the face; slid along the face only as far as
+// needed to keep at least one model in contact.
+const FACE_EDGE={front:[0,1],'right flank':[1,2],rear:[2,3],'left flank':[3,0]};
+function touchesFace(pose,t,face){const c=corners(t),[i,j]=FACE_EDGE[face],[fl,fr]=corners(pose);return Math.min(pointSegment(fl,c[i],c[j]),pointSegment(fr,c[i],c[j]),pointSegment(c[i],fl,fr),pointSegment(c[j],fl,fr))<.15;}
+function closeTheDoor(u,t,face){
+ const out=normalize(heading(t)+{front:0,rear:180,'left flank':-90,'right flank':90}[face]),own=size(u),theirs=size(t),depth=face.includes('flank')?theirs.w:theirs.h,width=face.includes('flank')?theirs.h:theirs.w;
+ const oa=rad(out),normal={x:Math.sin(oa),y:-Math.cos(oa)},right={x:Math.cos(oa),y:Math.sin(oa)},poly=corners(t),[fl,fr]=corners(u);
+ // The point of contact: the place along the charger's front edge nearest the target.
+ const near=p=>Math.min(...poly.map((q,i)=>pointSegment(p,q,poly[(i+1)%4]))),f=Array.from({length:21},(_,i)=>i/20).sort((a,b)=>near({x:fl.x+(fr.x-fl.x)*a,y:fl.y+(fr.y-fl.y)*a})-near({x:fl.x+(fr.x-fl.x)*b,y:fl.y+(fr.y-fl.y)*b}))[0];
+ const p={x:fl.x+(fr.x-fl.x)*f,y:fl.y+(fr.y-fl.y)*f},along=(p.x-t.x)*right.x+(p.y-t.y)*right.y,reach=(own.w+width)/2-baseSize(u)/25.4;
+ // Facing the target, the charger's front-left corner lies half a frontage along the face's right-hand direction from its centre.
+ const offset=Math.max(-reach,Math.min(reach,along-own.w/2+f*own.w));
+ return {...u,x:t.x+normal.x*(own.h+depth)/2+right.x*offset,y:t.y+normal.y*(own.h+depth)/2+right.y*offset,heading:normalize(out+180)};
+}
 export function chargePlan(s,u,t){
  const direct=directChargePlan(s,u,t);if(!direct.error)return direct;
  if(!u||!t||u.x===null||t.x===null||u.team===t.team||u.engaged||u.fleeing||u.rallied||gap(u,t)>profile(u).M+6+EPS||/front arc/.test(direct.error))return direct;
  const face=chargeFace(u,t),offset={front:0,rear:180,'left flank':-90,'right flank':90}[face],out=normalize(heading(t)+offset),desired=normalize(out+180),own=size(u),theirs=size(t),depth=face.includes('flank')?theirs.w:theirs.h,width=face.includes('flank')?theirs.h:theirs.w;
  const oa=rad(out),normal={x:Math.sin(oa),y:-Math.cos(oa)},right={x:Math.cos(oa),y:Math.sin(oa)},others=combatants(s).filter(v=>v.x!==null&&v.id!==u.id&&v.id!==t.id),limit=profile(u).M+6;
- let best=null;
+ // Two passes: first square up on the face for maximum frontage (with the free alignment) at any
+ // wheel that allows it; only if none does, close the door about the point of contact.
+ const search=allowDoor=>{let best=null;
  for(let angle=-90;angle<=90;angle+=5){
   const after=Math.abs(angle)>EPS?wheelPose(u,angle):{...u},wheel=wheelCost(angle,u);if(wheel>=limit||offBoard(after,s))continue;
   let blocked=false,previous=corners(u).slice(0,2);
@@ -562,17 +595,23 @@ export function chargePlan(s,u,t){
   for(let d=.1;d<=remaining+.1;d+=.1){
    const contact=forwardPose(after,Math.min(d,remaining));if(offBoard(contact,s)||others.some(v=>blocksContact(u,t,v,contact))||terrainBlocks(s,corners(contact))){blocked=true;break;}
    if(gap(contact,t)>.12)continue;
-   if(chargeFace(contact,t)!==face)break;
+   // The face is the one the charger's position gave when the charge was declared; a charger on the
+   // border of two arcs may read differently on contact, which is fine while it touches that face.
+   if(chargeFace(contact,t)!==face&&!touchesFace(contact,t,face))break;
    const fits=pose=>!offBoard(pose,s)&&gap(pose,t)<=.02&&!others.some(v=>blocksContact(u,t,v,pose))&&!terrainBlocks(s,corners(pose));
-   const end=alignedContact(contact,t,face,fits);
-   const alignAngle=((desired-heading(contact)+540)%360)-180,slide=Math.hypot(end.x-contact.x,end.y-contact.y),shared=others.some(v=>sharesCombat(u,t,v));
-   if(Math.abs(alignAngle)>90+EPS||slide>.2+2*own.w*Math.sin(rad(Math.abs(alignAngle))/2)+(shared?own.w+width:0)||!fits(end))break;
+   const alignAngle=((desired-heading(contact)+540)%360)-180,shared=others.some(v=>sharesCombat(u,t,v)),allowed=.2+2*own.w*Math.sin(rad(Math.abs(alignAngle))/2)+(shared?own.w+width:0);
+   let end=alignedContact(contact,t,face,fits),slide=Math.hypot(end.x-contact.x,end.y-contact.y),door=false;
+   // Closing the door: when squaring up on the middle of the face would need a long slide, the
+   // charger pivots about its point of contact instead and ends flush where it touched.
+   if(allowDoor&&(slide>allowed||!fits(end))){const pivot=closeTheDoor(contact,t,face);if(fits(pivot)){end=pivot;slide=Math.hypot(end.x-contact.x,end.y-contact.y);door=true;}}
+   if(Math.abs(alignAngle)>90+EPS||slide>allowed+(door?baseSize(u)/25.4:0)||!fits(end))break;
    const swept=hull([...corners(after),...corners(contact)]);if(others.some(v=>!sharesCombat(u,t,v)&&polygonGap(swept,corners(v))<1-EPS)||terrainBlocks(s,swept))break;
    const plan={start:{...u},afterWheel:after,contact,end,angle,distance:Math.min(d,remaining),wheelCost:wheel,alignAngle,cost:wheel+Math.min(d,remaining),face,target:t.id};
    if(!best||plan.cost<best.cost)best=plan;break;
   }
  }
- return best??direct;
+ return best;};
+ return search(false)??search(true)??direct;
 }
 export function declareCharge(s,id,target){
  const u=getUnit(s,id),t=getUnit(s,target);

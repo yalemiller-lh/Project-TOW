@@ -31,7 +31,9 @@ function placeBest(s,u,row,score){
  for(const y of rows){const options=candidateXs(s).map(x=>({x,y,score:score(pose(u,x,y))})).sort((a,b)=>b.score-a.score||Math.abs(a.x-mid)-Math.abs(b.x-mid));for(const o of options)if(tryPlace(s,u,o.x,o.y))return o;}
  throw Error(`No legal deployment space for ${u.id}.`);
 }
-export function deployOpponent(s){
+// War machines stand on the back edge of the zone, where their range still reaches the enemy. A
+// random source varies the opening spread; without one the bot deploys the same way every time.
+export function deployOpponent(s,random=null){
  if(s.stage!=='deployment')throw Error('The bot can deploy only before the battle.');
  const mine=s.units.filter(u=>u.team==='iron'&&u.x===null),cannons=s.cannons.filter(c=>c.x===null),foes=s.units.filter(u=>u.team==='ash'&&u.x!==null&&u.role!=='wizard');
  const faction=s.units.find(u=>u.team==='iron')?.faction;
@@ -39,8 +41,9 @@ export function deployOpponent(s){
  const reach=u=>G.missileWeapon(u).range+G.profile(u).M+2;
  if(!foes.length){
   // Nothing to react to yet: an even spread across the zone.
-  const W=s.board.width;for(const [u,x]of [...infantry,...missile].map((u,i)=>[u,W*[.25,.5,.75,.89][i%4]]))placeBest(s,u,frontRow(s,u),p=>-Math.abs(p.x-x));
-  for(const [c,x]of cannons.map((c,i)=>[c,W*[.11,.625][i%2]]))placeBest(s,c,frontRow(s,c),p=>-Math.abs(p.x-x));
+  const W=s.board.width,mix=list=>random?list.map(v=>[random(),v]).sort((a,b)=>a[0]-b[0]).map(([,v])=>v):list,slots=mix([.25,.5,.75,.89]).map(f=>f+(random?(random()-.5)*.08:0));
+  for(const [u,x]of [...infantry,...missile].map((u,i)=>[u,W*slots[i%4]]))placeBest(s,u,frontRow(s,u),p=>-Math.abs(p.x-x));
+  for(const [c,x]of cannons.map((c,i)=>[c,W*mix([.11,.89])[i%2]]))placeBest(s,c,backRow(s,c),p=>-Math.abs(p.x-x));
   if(wizard)placeBest(s,wizard,backRow(s,wizard),p=>-Math.abs(p.x-W*.97));return;
  }
  // The enemy blocks to oppose: the Decimators, then the regiments nearest to them.
@@ -48,13 +51,14 @@ export function deployOpponent(s){
  const claimed=new Set();
  const oppose=u=>{const target=opposite.find(t=>!claimed.has(t.id))??opposite[0];claimed.add(target.id);return target;};
  if(faction==='empire'){
-  for(const c of cannons){const others=()=>s.cannons.filter(o=>o.x!==null&&o.id!==c.id);placeBest(s,c,frontRow(s,c),p=>shots(s,p,60)+Math.min(12,...others().map(o=>Math.abs(o.x-p.x)),12)*.05);}
-  for(const u of missile)placeBest(s,u,frontRow(s,u),p=>shots(s,p,reach(u)));
+  for(const c of cannons){const others=()=>s.cannons.filter(o=>o.x!==null&&o.id!==c.id);placeBest(s,c,backRow(s,c),p=>shots(s,p,60)+Math.min(12,...others().map(o=>Math.abs(o.x-p.x)),12)*.05+(random?random()*.3:0));}
+  // The crossbows, like the State Troops, keep out of the cannons' fire lanes from the back edge.
+  for(const u of missile)placeBest(s,u,frontRow(s,u),p=>shots(s,p,reach(u))-3*lanesCut(s,p));
   for(const u of infantry){const target=oppose(u);placeBest(s,u,frontRow(s,u),p=>-Math.abs(p.x-target.x)*.3-5*lanesCut(s,p));}
  }else{
   for(const u of infantry){const target=oppose(u);placeBest(s,u,frontRow(s,u),p=>-Math.abs(p.x-target.x));}
   for(const u of missile)placeBest(s,u,frontRow(s,u),p=>shots(s,p,reach(u))-Math.abs(p.x-s.board.width/2)*.01);
-  for(const c of cannons)placeBest(s,c,frontRow(s,c),p=>shots(s,p,60));
+  for(const c of cannons)placeBest(s,c,backRow(s,c),p=>shots(s,p,60));
  }
  for(const hero of mine.filter(u=>u.role==='character')){const line=s.units.filter(u=>u.team==='iron'&&u.x!==null&&!G.isCharacter(u)),mid=line.reduce((n,u)=>n+u.x,0)/Math.max(1,line.length);placeBest(s,hero,backRow(s,hero),p=>-Math.abs(p.x-mid)-5*lanesCut(s,p));}
  if(wizard){const line=s.units.filter(u=>u.team==='iron'&&u.x!==null&&!G.isCharacter(u)),mid=line.reduce((n,u)=>n+u.x,0)/Math.max(1,line.length);placeBest(s,wizard,backRow(s,wizard),p=>-Math.abs(p.x-mid)-5*lanesCut(s,p)+(line.some(u=>Math.abs(u.x-p.x)<G.size(u).w/2)?2:0));}
@@ -70,30 +74,30 @@ export function deploymentChoice(s){
  if(G.deploymentTurn(s)==='iron')return 'deploy';
  return null;
 }
-export function takeDeploymentStep(s){
+export function takeDeploymentStep(s,random=null){
  const choice=deploymentChoice(s);
  if(choice==='deploy-order'){G.chooseDeploymentOrder(s,'iron','ash');return {message:'The bot won the deployment roll-off and has you deploy first.'};}
  if(choice==='first-turn'){G.chooseFirstTurn(s,'iron','iron');return {message:'The bot won the roll-off and takes the first turn.'};}
- if(choice==='deploy'){const out=deployNext(s),p=G.getUnit(s,out.id);return {message:`The bot deploys ${p.name}.`,id:out.id,...out};}
+ if(choice==='deploy'){const out=deployNext(s,random),p=G.getUnit(s,out.id);return {message:`The bot deploys ${p.name}.`,id:out.id,...out};}
  return null;
 }
 // The bot plans its whole remaining deployment against what is on the table now, then places
 // the first unit of that plan: war machines and shooters first for a gun line, blocks first
 // otherwise, characters and wizards last.
 const PLAN_ORDER={empire:['warmachine','missile','infantry','character','wizard'],other:['infantry','missile','warmachine','character','wizard']};
-export function deployNext(s){
+export function deployNext(s,random=null){
  if(G.deploymentTurn(s)!=='iron')throw Error('It is not the bot’s turn to deploy.');
  // The gun-line planner works across the table; on a map deployed along it, spread out instead.
- if(G.deploymentFacing(s,'iron')!==180)return G.autoDeploy(s,{team:'iron'});
+ if(G.deploymentFacing(s,'iron')!==180)return G.autoDeploy(s,{team:'iron',random});
  const trial=structuredClone(s);trial.deployOrder.auto=true;
  for(const p of G.deploymentPieces(trial,'iron'))if(!p.deployed){p.x=null;p.y=null;}
- try{deployOpponent(trial);}catch{}
+ try{deployOpponent(trial,random);}catch{}
  const order=PLAN_ORDER[s.units.find(u=>u.team==='iron')?.faction==='empire'?'empire':'other'];
  for(const p of G.deploymentPieces(s,'iron').filter(p=>!p.deployed).sort((a,b)=>order.indexOf(a.role)-order.indexOf(b.role))){
   const planned=G.getUnit(trial,p.id);if(planned?.x==null)continue;
   try{if(p.role==='warmachine')G.placeCannon(s,p.id,planned.x,planned.y);else G.place(s,p.id,planned.x,planned.y);return G.confirmDeployment(s);}catch{}
  }
- return G.autoDeploy(s,{team:'iron'});
+ return G.autoDeploy(s,{team:'iron',random});
 }
 
 export function humanDecision(s){

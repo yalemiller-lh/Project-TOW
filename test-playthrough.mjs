@@ -22,7 +22,7 @@ function overlaps(s){
 const fingerprint=s=>JSON.stringify([s.stage,s.team,s.round,s.movementStep,s.pendingCombat,s.combatSession,s.pendingSpell?.key,G.combatants(s).map(u=>[u.x,u.y,u.heading,u.moved,u.shot,u.engaged,u.charge?.status,u.charge?.reaction,u.fleeing,u.deadModels?.length,u.wounds,u.combatResolved,u.castThisTurn?.length,u.marchTest,u.impetuousTest])]);
 function redStep(s,r){
  const d=AI.humanDecision(s);
- if(d?.kind==='reaction'){const c=s.units.find(u=>u.team==='iron'&&u.charge?.reaction==='pending'),def=G.getUnit(s,c.charge.target),close=!!G.standShootTooClose(s,def,s.units.filter(v=>v.charge?.status==='declared'&&v.charge.target===def.id));G.chargeReaction(s,c.id,def.fleeing?'flee':!close&&G.canStandShoot(s,def,c)&&r()<.5?'stand-shoot':r()<.25?'flee':'hold',r);return 'reaction';}
+ if(d?.kind==='reaction'){const c=s.units.find(u=>u.team==='iron'&&u.charge?.reaction==='pending'),def=G.getUnit(s,c.charge.target),close=!!G.standShootTooClose(s,def,s.units.filter(v=>v.charge?.status==='declared'&&v.charge.target===def.id));G.chargeReaction(s,c.id,def.fleeing?'flee':!close&&G.canStandShoot(s,def,c)&&r()<.5?'stand-shoot':r()<.25&&!G.hasRule(def,'frenzy')?'flee':'hold',r);return 'reaction';}
  if(d?.kind==='shieldwall'){G.chooseLoserAction(s,r()<.5?'shieldwall':'fall-back');return 'shieldwall';}
  if(d?.kind==='aftermath'){G.winnerCombat(s,pick(r,['follow','restrain','follow-reform']),r);return 'aftermath';}
  if(d?.kind==='dispel'){const o=G.dispelOptions(s);G.resolveDispel(s,pick(r,['none',...(o.fated?['fated']:[]),...o.wizards.map(w=>w.id)]),r);return 'dispel';}
@@ -42,9 +42,9 @@ function redStep(s,r){
 // Classic: Red deploys, then the bot. Battle March: roll off, alternate one unit at a time, roll
 // off for the first turn; the bot makes its own choices when it wins.
 function deploy(s,r){
- if(!s.deployOrder?.alternate){G.autoDeploy(s,{team:'ash'});AI.deployOpponent(s);return G.begin(s,r);}
- const d=s.deployOrder;G.deploymentRollOff(s,r);if(d.rollOff.winner==='ash')G.chooseDeploymentOrder(s,'ash',r()<.5?'ash':'iron');else AI.takeDeploymentStep(s);
- for(let guard=0;guard<40&&!d.complete;guard++){if(AI.deploymentChoice(s)==='deploy')AI.takeDeploymentStep(s);else G.autoDeploy(s,{team:'ash'});}
+ if(!s.deployOrder?.alternate){G.autoDeploy(s,{team:'ash',random:r});AI.deployOpponent(s,r);return G.begin(s,r);}
+ const d=s.deployOrder;G.deploymentRollOff(s,r);if(d.rollOff.winner==='ash')G.chooseDeploymentOrder(s,'ash',r()<.5?'ash':'iron');else AI.takeDeploymentStep(s,r);
+ for(let guard=0;guard<40&&!d.complete;guard++){if(AI.deploymentChoice(s)==='deploy')AI.takeDeploymentStep(s,r);else G.autoDeploy(s,{team:'ash',random:r});}
  assert.ok(d.complete,'deployment finishes');
  G.firstTurnRollOff(s,r);if(s.firstTurn.winner==='ash')G.chooseFirstTurn(s,'ash',r()<.5?'ash':'iron');else AI.takeDeploymentStep(s);
  G.begin(s,r);
