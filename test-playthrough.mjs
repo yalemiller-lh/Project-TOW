@@ -24,6 +24,7 @@ function redStep(s,r){
  const d=AI.humanDecision(s);
  if(d?.kind==='reaction'){const c=s.units.find(u=>u.team==='iron'&&u.charge?.reaction==='pending'),def=G.getUnit(s,c.charge.target),close=!!G.standShootTooClose(s,def,s.units.filter(v=>v.charge?.status==='declared'&&v.charge.target===def.id));G.chargeReaction(s,c.id,def.fleeing?'flee':!close&&G.canStandShoot(s,def,c)&&r()<.5?'stand-shoot':r()<.25&&!G.hasRule(def,'frenzy')?'flee':'hold',r);return 'reaction';}
  if(d?.kind==='shieldwall'){G.chooseLoserAction(s,r()<.5?'shieldwall':'fall-back');return 'shieldwall';}
+ if(d?.kind==='declare'){const p=s.pendingCombat,targets=G.pursuitTargets(s,p.winner);G.declarePursuit(s,p.winner,pick(r,['follow','restrain','follow-reform']),pick(r,targets).id,r);return 'declare';}
  if(d?.kind==='aftermath'){G.winnerCombat(s,pick(r,['follow','restrain','follow-reform']),r);return 'aftermath';}
  if(d?.kind==='dispel'){const o=G.dispelOptions(s);G.resolveDispel(s,pick(r,['none',...(o.fated?['fated']:[]),...o.wizards.map(w=>w.id)]),r);return 'dispel';}
  if(s.pendingCombat){G.finishCombat(s,pick(r,['follow','restrain']),r);return 'finish';}

@@ -36,13 +36,14 @@ test('Giving Ground or Falling Back at the table edge stops there: the unit is n
  for(const [dice,outcome] of [[[3,3],'give-ground'],[[2,2],'fall-back']]){
   const {s,a,b}=engaged();Object.assign(b,{x:36,y:G.size(b).h/2+.3,heading:180});Object.assign(a,{x:36,y:b.y+(G.size(a).h+G.size(b).h)/2,heading:0});
   breakFor(s,'A1','I1',{margin:outcome==='give-ground'?0:4});const r=G.rollCombatBreak(s,seq(dice.map(face)));assert.equal(r.outcome,outcome);if(s.pendingCombat.stage==='loser-choice')G.chooseLoserAction(s,'fall-back');
+  while(s.pendingCombat.stage==='declare')G.declarePursuit(s,s.pendingCombat.winner,'restrain',null,seq([0,0]));
   G.moveCombatLoser(s,seq([face(2),face(2)]));assert.notEqual(b.x,null,`${outcome}: still on the table`);assert.ok(!b.destroyed);assert.equal(b.fleeing,false);
   assert.equal(b.combatOutcome.kind,outcome==='give-ground'?'GAVE_GROUND':'FELL_BACK');assert.equal(BM.casualtyVP(b).vp,0);
  }
 });
 test('every destruction keeps its reason: fled off the table, wiped out by attacks',()=>{
  const {s,a,b}=engaged();Object.assign(b,{x:36,y:G.size(b).h/2+.3,heading:180});Object.assign(a,{x:36,y:b.y+(G.size(a).h+G.size(b).h)/2,heading:0});
- breakFor(s,'A1','I1',{margin:3});assert.equal(G.rollCombatBreak(s,seq([face(6),face(6)])).outcome,'break');G.moveCombatLoser(s,seq([face(6),face(6)]));
+ breakFor(s,'A1','I1',{margin:3});assert.equal(G.rollCombatBreak(s,seq([face(6),face(6)])).outcome,'break');while(s.pendingCombat.stage==='declare')G.declarePursuit(s,s.pendingCombat.winner,'restrain',null,seq([0,0]));G.moveCombatLoser(s,seq([face(6),face(6)]));
  assert.equal(b.x,null);assert.equal(b.destroyedBy,'FLED_OFF_TABLE');assert.equal(b.leftBoard,'fled');assert.equal(b.combatOutcome.kind,'BROKE');
  const t=G.createGame('empire');G.autoDeploy(t);t.rocket.wounds=0;G.begin(t);G.nextPhase(t);for(const p of G.combatants(t))if(!['A1','I4'].includes(p.id)){p.x=null;p.y=null;}
  Object.assign(t,{stage:'shooting',team:'iron'});const target=G.getUnit(t,'A1'),i4=G.getUnit(t,'I4');Object.assign(i4,{x:35,y:15,heading:180,moved:false,shot:false,movementMode:null});Object.assign(target,{x:35,y:25,heading:0});
@@ -52,4 +53,16 @@ test('a Frenzied unit passes the Panic test of a Curse of Cowardly Flight',()=>{
  const s=G.createGame('empire');G.autoDeploy(s);G.begin(s,()=>0);const w=G.getUnit(s,'A6'),t=G.getUnit(s,'I1');Object.assign(s,{stage:'strategy',team:'ash'});
  Object.assign(w,{x:30,y:30,spells:['coward'],castThisTurn:[]});Object.assign(t,{x:30,y:20});t.effects=[{rule:'frenzy',source:'test'}];
  const r=G.castSpell(s,'A6','coward','I1',seq([.99,.99,.99,.99,.99,.99]));if(r.cast&&!r.dispel?.success){assert.equal(r.effect.passed,true);assert.equal(t.fleeing,false);}
+});
+function handBuilt(s,winner,loser,outcome,extra={}){winner.engaged=loser.engaged=null;s.lastCombat={a:winner.id,b:loser.id};s.combatHistory=[s.lastCombat];s.pendingCombat={stage:'winner-choice',winner:winner.id,loser:loser.id,outcome,retreat:{moved:3,dir:{x:0,y:-1}},fleeDistance:3,loserDestroyed:false,...extra};}
+test('catching a unit that Fell Back in Good Order re-engages it, and the pursuer counts as charging next turn',()=>{
+ const {s,a,b}=engaged();Object.assign(b,{y:b.y-3});handBuilt(s,a,b,'fall-back');
+ const out=G.winnerCombat(s,'follow',seq([face(6),face(6)]));
+ assert.equal(out.pursuitDistance,11,'the total of 2D6, Resolute −1');assert.equal(out.caughtInGoodOrder,true);assert.notEqual(b.x,null,'not destroyed');assert.ok(G.engagedWith(a,b));
+ assert.equal(a.charge.status,'success');assert.equal(a.charge.pursuit,true);assert.equal(out.countsAsCharging,true);
+});
+test('an overrun goes straight ahead from the unit\'s facing, without pivoting',()=>{
+ const {s,a,b}=engaged();Object.assign(a,{heading:30});b.x=null;b.y=null;b.destroyed=true;handBuilt(s,a,b,'overrun',{loserDestroyed:true,retreat:{moved:0,dir:null}});
+ const x0=a.x,y0=a.y,out=G.winnerCombat(s,'follow',seq([face(3),face(3)]));
+ assert.equal(a.heading,30,'no pivot');assert.ok(out.movement.winner>0);const dx=a.x-x0,dy=a.y-y0,ang=Math.atan2(dx,-dy)*180/Math.PI;assert.ok(Math.abs(ang-30)<1,'along its facing');
 });

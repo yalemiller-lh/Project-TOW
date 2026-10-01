@@ -1039,13 +1039,15 @@ export function rollCombatBreak(s,random=Math.random){
  p.shieldwallAvailable=p.outcome==='fall-back'&&loser.role!=='warmachine'&&FACTIONS[loser.faction??'chaos'].shieldwall&&!loser.shieldwallUsed&&loser.charge?.status!=='success'&&chargedBy.some(e=>e.charge?.status==='success');
  p.stage=p.shieldwallAvailable?'loser-choice':'retreat';
  if(s.lastCombat){s.lastCombat={...s.lastCombat,outcome:p.outcome,breakDice:dice,breaks:{...s.lastCombat.breaks,[loser.id]:{dice,outcome:p.outcome,outnumbered:p.outnumbered,stubborn:!!p.stubborn}}};if(s.combatHistory?.length)s.combatHistory[s.combatHistory.length-1]=s.lastCombat;}
- return {dice,outcome:p.outcome,loser:p.loser,leadership:ld,shieldwallAvailable:p.shieldwallAvailable,outnumbered:p.outnumbered,stubborn:!!p.stubborn};
+ const result={dice,outcome:p.outcome,loser:p.loser,leadership:ld,shieldwallAvailable:p.shieldwallAvailable,outnumbered:p.outnumbered,stubborn:!!p.stubborn};
+ if(p.stage==='retreat'&&p.losers)afterBreak(s,p);
+ return result;
 }
 export function chooseLoserAction(s,choice){
  const p=s.pendingCombat;if(s.stage!=='combat'||p?.stage!=='loser-choice')throw Error('No loser choice is available.');
  if(!['shieldwall','fall-back'].includes(choice))throw Error('Choose Shieldwall or Fall Back in Good Order.');
  if(choice==='shieldwall'){getUnit(s,p.loser).shieldwallUsed=true;p.outcome='give-ground';if(s.lastCombat){s.lastCombat={...s.lastCombat,outcome:p.outcome,breaks:{...s.lastCombat.breaks,[p.loser]:{...s.lastCombat.breaks?.[p.loser],outcome:p.outcome}}};if(s.combatHistory?.length)s.combatHistory[s.combatHistory.length-1]=s.lastCombat;}}
- p.loserChoice=choice;p.stage='retreat';return {choice,outcome:p.outcome};
+ p.loserChoice=choice;p.stage='retreat';const result={choice,outcome:p.outcome,loser:p.loser};if(p.losers)afterBreak(s,p);return result;
 }
 // Old World flee move: straight ahead and through other units. Friends passed through take a
 // Panic test and may flee in turn (a chain reaction); every model whose path crossed an enemy
@@ -1108,10 +1110,12 @@ function retreatPose(s,u,enemy,distance,stopNear=true){
 // (counting as charging, and it will not pursue again).
 function pursuitAdvance(s,winner,distance,dir,ignoredId,originalId){
  const start={x:winner.x,y:winner.y},touching=touchingAtStart(s,winner);let moved=0,contact=null,blocked=false,offBoardPursuit=false,joined=false;
+ // Reaching the table edge (not one it already touched) takes the pursuer off the table until it returns.
+ const edges=p=>{const r=rectangle(p),b=boardOf(s);return [r.left<EPS&&'left',r.right>b.width-EPS&&'right',r.top<EPS&&'top',r.bottom>b.height-EPS&&'bottom'].filter(Boolean);},startEdges=edges(winner);
  for(let i=1;i<=Math.ceil(distance*20);i++){
-  const d=Math.min(distance,i/20),pose={...winner,x:start.x+dir.x*d,y:start.y+dir.y*d};
-  if(offBoard(pose,s)){
-   const r=rectangle(pose),edge=r.left<0?'left':r.right>boardOf(s).width?'right':r.top<0?'top':'bottom';
+  const d=Math.min(distance,i/20),pose={...winner,x:start.x+dir.x*d,y:start.y+dir.y*d},reached=edges(pose).filter(e=>!startEdges.includes(e));
+  if(offBoard(pose,s)||reached.length){
+   const r=rectangle(pose),edge=reached[0]??(r.left<0?'left':r.right>boardOf(s).width?'right':r.top<0?'top':'bottom');
    winner.offBoardPursuit={edge,x:winner.x,y:winner.y};winner.x=null;winner.y=null;offBoardPursuit=true;break;
   }
   if(terrainBlocks(s,corners(pose))){blocked=true;break;}
@@ -1145,9 +1149,14 @@ function winnerTarget(s,p,id){
 }
 function nextWinner(s,p,from){
  for(let i=from;i<(p.winners?.length??0);i++){
+  const decl=p.declarations?.[p.winners[i]],w=getUnit(s,p.winners[i]);
+  if(decl){if(decl.done||!w||w.x===null||aliveCount(w)===0)continue;
+   // A winner still touching an enemy once the losers have moved cannot pursue: its declaration lapses.
+   if(opponents(s,w).length){decl.done=true;decl.lapsed=true;continue;}
+   const r=p.results[decl.target]??{};Object.assign(p,{stage:'winner-choice',winnerIndex:i,winner:w.id,loser:decl.target,outcome:decl.outcome,retreat:r.retreat??{moved:0,dir:null},retreatDice:r.retreatDice??null,fleeDistance:r.fleeDistance??0,loserDestroyed:!!r.loserDestroyed||!!getUnit(s,decl.target)?.destroyed});return true;}
   // A unit that pursued into another combat this phase does not pursue again.
-  const w=getUnit(s,p.winners[i]);if(!w||w.x===null||aliveCount(w)===0||w.role==='warmachine'||w.pursued||opponents(s,w).length)continue;
-  const t=winnerTarget(s,p,w.id);if(!t)continue;const r=p.results[t.loser]??{};
+  if(!w||w.x===null||aliveCount(w)===0||w.role==='warmachine'||w.pursued||opponents(s,w).length)continue;
+  const t=winnerTarget(s,p,w.id);if(!t||p.declarations&&t.outcome!=='overrun')continue;const r=p.results[t.loser]??{};
   Object.assign(p,{stage:'winner-choice',winnerIndex:i,winner:w.id,loser:t.loser,outcome:t.outcome,retreat:r.retreat??{moved:0,dir:null},retreatDice:r.retreatDice??null,fleeDistance:r.fleeDistance??0,loserDestroyed:t.outcome==='overrun'||!!r.loserDestroyed||!!getUnit(s,t.loser)?.destroyed});
   return true;
  }
@@ -1162,10 +1171,44 @@ function endAftermath(s,p,fallback){
  for(const a of units)for(const b of units)if(a.team==='ash'&&stillTouching(a,b))engage(a,b);
 }
 // Move on after a loser has moved: the next loser's Break test, then the winners.
+// ---- The aftermath order, for combats built by compareCombat: every losing unit takes its Break
+// test (and any Shieldwall choice); then each winner that can pursue declares pursuit or restraint,
+// and which single loser it pursues, before any loser rolls its retreat; then every loser moves;
+// then the declared pursuits are made, one at a time.
+const BREAK_KEYS=['outcome','breakDice','shieldwallAvailable','loserChoice','retreat','retreatDice','fleeDistance','loserDestroyed','stubborn','outnumbered'];
+function afterBreak(s,p){
+ p.results={...p.results,[p.loser]:{...p.results?.[p.loser],outcome:p.outcome,breakDice:p.breakDice,loserChoice:p.loserChoice??null,stubborn:!!p.stubborn,outnumbered:!!p.outnumbered}};
+ const i=p.losers.indexOf(p.loser),next=p.losers.slice(i+1).find(id=>{const u=getUnit(s,id);return u&&u.x!==null&&aliveCount(u)>0&&opponents(s,u).length;});
+ if(next){for(const key of BREAK_KEYS)delete p[key];Object.assign(p,{stage:'break',loser:next});p.winner=facingWinner(s,p,next);return;}
+ p.declarations={};p.declaring=p.winners.filter(id=>canDeclarePursuit(s,p,id));
+ if(p.declaring.length){Object.assign(p,{stage:'declare',winner:p.declaring[0]});return;}
+ startRetreats(s,p);
+}
+function canDeclarePursuit(s,p,id){const w=getUnit(s,id);return !!w&&w.x!==null&&aliveCount(w)>0&&w.role!=='warmachine'&&!w.pursued&&(p.former?.[id]??[]).some(f=>p.results?.[f]?.outcome&&getUnit(s,f)?.role!=='warmachine');}
+// The losers this winner fought, with their Break outcomes: broken units first.
+export function pursuitTargets(s,id){const p=s.pendingCombat;if(!p)return [];const order={break:0,'fall-back':1,'give-ground':2};return (p.former?.[id]??[]).filter(f=>p.results?.[f]?.outcome&&getUnit(s,f)?.role!=='warmachine').sort((a,b)=>order[p.results[a].outcome]-order[p.results[b].outcome]||unitStrength(getUnit(s,b))-unitStrength(getUnit(s,a))||a.localeCompare(b)).map(f=>({id:f,outcome:p.results[f].outcome}));}
+// A winner declares, before the losers move: pursue (or follow up), pursue and reform, or restrain;
+// and which loser. A restraint test is taken now, before any retreat dice are seen.
+export function declarePursuit(s,id,choice='follow',targetId=null,random=Math.random){
+ const p=s.pendingCombat;if(s.stage!=='combat'||p?.stage!=='declare')throw Error('Pursuit is declared after the Break tests, before the losers move.');
+ if(id!==p.winner)throw Error(`${getUnit(s,p.winner)?.name??p.winner} declares next.`);
+ if(!['follow','follow-reform','restrain'].includes(choice))throw Error('Choose pursue, pursue and reform, or restrain.');
+ const w=getUnit(s,id),targets=pursuitTargets(s,id);if(hasRule(w,'frenzy')&&choice==='restrain')choice='follow';
+ const target=targetId??targets[0]?.id;if(!targets.some(t=>t.id===target))throw Error('Choose a losing unit this regiment fought.');
+ const decl={choice,target,outcome:p.results[target].outcome,follow:choice!=='restrain'};
+ if(choice==='restrain'){const dice=combatDice(2,random),failed=dice[0]+dice[1]>leadership(w,'restraint');decl.restraint={dice,passed:!failed};decl.follow=failed;}
+ p.declarations[id]=decl;
+ if(s.lastCombat){s.lastCombat={...s.lastCombat,declarations:{...s.lastCombat.declarations,[id]:{choice:decl.choice,target,restraint:decl.restraint??null}}};if(s.combatHistory?.length)s.combatHistory[s.combatHistory.length-1]=s.lastCombat;}
+ const next=p.declaring[p.declaring.indexOf(id)+1];if(next)p.winner=next;else startRetreats(s,p);
+ return {...decl,winner:id};
+}
+function startRetreats(s,p){const first=p.losers.find(id=>p.results?.[id]?.outcome&&getUnit(s,id)?.x!==null);if(first){loadLoser(s,p,first);return;}if(!nextWinner(s,p,0))endAftermath(s,p);}
+// Restore one loser's Break outcome for its retreat.
+function loadLoser(s,p,id){for(const key of BREAK_KEYS)delete p[key];const r=p.results[id];Object.assign(p,{stage:'retreat',loser:id,outcome:r.outcome,breakDice:r.breakDice,loserChoice:r.loserChoice,stubborn:r.stubborn,outnumbered:r.outnumbered});p.winner=facingWinner(s,p,id);}
 function afterLoser(s,p,fallback){
  if(p.losers){
-  const i=p.losers.indexOf(p.loser),next=p.losers.slice(i+1).find(id=>{const u=getUnit(s,id);return u&&u.x!==null&&aliveCount(u)>0&&opponents(s,u).length;});
-  if(next){for(const key of ['outcome','breakDice','shieldwallAvailable','loserChoice','retreat','retreatDice','fleeDistance','loserDestroyed','stubborn','outnumbered'])delete p[key];Object.assign(p,{stage:'break',loser:next});p.winner=facingWinner(s,p,next);return false;}
+  const i=p.losers.indexOf(p.loser),next=p.losers.slice(i+1).find(id=>p.results?.[id]?.outcome&&!p.results[id].retreat&&getUnit(s,id)?.x!==null&&aliveCount(getUnit(s,id))>0);
+  if(next){loadLoser(s,p,next);return false;}
   if(nextWinner(s,p,0))return false;
   endAftermath(s,p,fallback);return true;
  }
@@ -1208,28 +1251,42 @@ export function winnerCombat(s,choice='follow',random=Math.random,reformHeading=
  if(!['follow','follow-reform','restrain'].includes(choice))throw Error('Choose follow, follow and reform, or restrain.');
  const winner=getUnit(s,p.winner),loser=getUnit(s,p.loser),out={winner:p.winner,loser:p.loser,outcome:p.outcome,choice,rolls:{},movement:{loser:p.retreat?.moved??0},loserDestroyed:p.loserDestroyed};
  if(reformHeading!==null&&(!Number.isFinite(reformHeading)||reformHeading<0||reformHeading>=360))throw Error('Choose a facing from 0° to 359°.');
- const reform=()=>{const target={...winner,heading:normalize(reformHeading??heading(winner))},error=checkPosition(s,target,target.x,target.y);out.reform={passed:!error,heading:heading(winner),error};if(!error){winner.heading=target.heading;out.reform.heading=winner.heading;}};
+ const reform=()=>{const target={...winner,heading:normalize(reformHeading??heading(winner))},error=checkPosition(s,target,target.x,target.y,false,{moving:true});out.reform={passed:!error,heading:heading(winner),error};if(!error){winner.heading=target.heading;out.reform.heading=winner.heading;}};
+ // A declared winner makes the move it declared before the losers moved; its restraint test, if
+ // any, was taken then.
+ const decl=p.declarations?.[p.winner];if(decl){choice=decl.choice;decl.done=true;}
  if(hasRule(winner,'frenzy')&&choice==='restrain')choice='follow';out.choice=choice;
- let follow=choice!=='restrain';if(choice==='restrain'){const dice=combatDice(2,random);out.rolls.restraint=dice;follow=dice[0]+dice[1]>leadership(winner,'restraint');out.restraintFailed=follow;if(!follow&&p.outcome==='overrun')reform();}
+ let follow=choice!=='restrain';
+ if(decl?.restraint){out.rolls.restraint=decl.restraint.dice;follow=decl.follow;out.restraintFailed=follow;}
+ else if(choice==='restrain'){const dice=combatDice(2,random);out.rolls.restraint=dice;follow=dice[0]+dice[1]>leadership(winner,'restraint');out.restraintFailed=follow;}
+ // Restrained: a free reform after an overrun-or-restrain against a wiped-out enemy, or after a Give Ground.
+ if(!follow&&(p.outcome==='overrun'||p.outcome==='give-ground'))reform();
  if(follow){
-  let advance=p.retreat?.moved??0;
+  let advance=p.retreat?.moved??0,dir=p.retreat?.dir??null,chase=0;
   if(p.outcome!=='give-ground'){
+   // Pursuit and overrun: the total of 2D6 (Resolute: −1).
    const dice=combatDice(2,random);out.rolls.pursuit=dice;
-   const chase=Math.max(1,dice[0]+dice[1]-(FACTIONS[winner.faction??'chaos'].resolute?1:0));out.pursuitDistance=chase;
-   if(p.outcome==='overrun')advance=chase;
-   else if(p.outcome==='break'&&(p.loserDestroyed||chase>=p.fleeDistance)){if(loser.x!==null){claimStandard(s,loser,winner.team);destroyUnit(s,loser,'RUN_DOWN');}out.loserDestroyed=true;advance=chase;}
-   else if(p.outcome==='fall-back'&&loser.x!==null&&chase>=p.fleeDistance){out.caughtInGoodOrder=true;advance=p.retreat.moved;}
-   else advance=Math.min(chase,Math.max(0,(p.retreat?.moved??0)-1));
+   chase=Math.max(1,dice[0]+dice[1]-(FACTIONS[winner.faction??'chaos'].resolute?1:0));out.pursuitDistance=chase;advance=chase;
+   if(p.outcome==='overrun')dir={x:Math.sin(rad(heading(winner))),y:-Math.cos(rad(heading(winner)))};
+   else if(loser.x!==null){
+    // A pursuer pivots about its centre toward the unit it pursues, then moves; it catches only by reaching it.
+    const dx=loser.x-winner.x,dy=loser.y-winner.y,len=Math.hypot(dx,dy)||1,turned={...winner,heading:normalize(Math.atan2(dx,-dy)*180/Math.PI)};dir={x:dx/len,y:dy/len};
+    if(!checkPosition(s,turned,turned.x,turned.y,false,{moving:true}))winner.heading=turned.heading;out.heading=heading(winner);
+   }
+   dir??={x:Math.sin(rad(heading(winner))),y:-Math.cos(rad(heading(winner)))};out.direction=dir;
   }
-  if(advance>0){
-   const dir=p.outcome==='overrun'||!p.retreat?.dir?{x:Math.sin(rad(heading(winner))),y:-Math.cos(rad(heading(winner)))}:p.retreat.dir;
-   const moved=pursuitAdvance(s,winner,advance,dir,out.loserDestroyed?loser.id:null,loser.id);
+  if(advance>0&&dir){
+   const moved=pursuitAdvance(s,winner,advance,dir,null,loser.id);
    out.movement.winner=moved.distance;out.contact=moved.contact;out.blocked=moved.blocked;out.offBoardPursuit=moved.offBoardPursuit;out.joinedCombat=moved.joined;
-   if(out.caughtInGoodOrder&&moved.distance+EPS<advance)out.caughtInGoodOrder=false;
-   if((p.outcome==='give-ground'||out.caughtInGoodOrder)&&loser.x!==null&&gap(winner,loser)<EPS)engage(winner,loser);
+   if(p.outcome==='break'&&moved.contact===loser.id&&loser.destroyed){out.loserDestroyed=true;out.runDown=loser.id;}
+   // Catching a unit that Fell Back in Good Order does not destroy it: the combat goes on, and the
+   // pursuer counts as charging next turn.
+   if(p.outcome==='fall-back'&&moved.contact===loser.id&&loser.x!==null){out.caughtInGoodOrder=true;engage(winner,loser);winner.charge={target:loser.id,status:'success',distance:chase,face:chargeFace(winner,loser),pursuit:true};winner.pursuitPending=true;out.countsAsCharging=true;}
+   if(moved.contact&&moved.contact!==loser.id&&getUnit(s,moved.contact)?.x!==null)out.countsAsCharging=true;
+   if(p.outcome==='give-ground'&&loser.x!==null&&gap(winner,loser)<EPS)engage(winner,loser);
   }
  }
- if(choice==='follow-reform'&&out.loserDestroyed&&!out.contact&&winner.x!==null){const dice=combatDice(2,random);out.rolls.reform=dice;if(dice[0]+dice[1]<=leadership(winner,'restraint'))reform();else out.reform={passed:false,heading:heading(winner),error:'Leadership test failed.'};}
+ if(choice==='follow-reform'&&out.loserDestroyed&&!opponents(s,winner).length&&winner.x!==null){const dice=combatDice(2,random);out.rolls.reform=dice;if(dice[0]+dice[1]<=leadership(winner,'restraint'))reform();else out.reform={passed:false,heading:heading(winner),error:'Leadership test failed.'};}
  if(p.outcome==='overrun')out.overrun=follow;
  // A loser that could not move away is still in the fight: the combat continues next turn.
  if(!out.loserDestroyed&&loser&&(stillTouching(winner,loser)||engagedWith(winner,loser))){engage(winner,loser);out.stillEngaged=true;}
@@ -1247,6 +1304,7 @@ export function finishCombat(s,choice='follow',random=Math.random,reformHeading=
   if(p.stage==='break')rollCombatBreak(s,random);
   else if(p.stage==='loser-choice')chooseLoserAction(s,'shieldwall');
   else if(p.stage==='retreat'||!p.stage&&p.outcome!=='overrun'){p.stage='retreat';moveCombatLoser(s,random);}
+  else if(p.stage==='declare')declarePursuit(s,p.winner,choice,null,random);
   else{if(!p.stage)p.stage='winner-choice';out=winnerCombat(s,choice,random,reformHeading);}
  }
  return out??s.lastCombat?.aftermath;

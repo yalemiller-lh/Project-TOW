@@ -127,7 +127,8 @@ export function humanDecision(s){
  if(charge)return {id:charge.charge.target,kind:'reaction',message:`Choose a reaction for ${charge.charge.target} against ${charge.id}.`};
  const p=s.pendingCombat;
  if(p?.stage==='loser-choice'&&G.getUnit(s,p.loser).team==='ash')return {id:p.loser,kind:'shieldwall',message:`Choose ${p.loser}'s Shieldwall or Fall Back.`};
- if(p?.stage==='winner-choice'&&G.getUnit(s,p.winner).team==='ash')return {id:p.winner,kind:'aftermath',message:`Choose ${p.winner}'s pursuit or restraint.`};
+ if(p?.stage==='declare'&&G.getUnit(s,p.winner).team==='ash')return {id:p.winner,kind:'declare',message:`Declare ${p.winner}'s pursuit or restraint before the losers move.`};
+ if(p?.stage==='winner-choice'&&!p.declarations?.[p.winner]&&G.getUnit(s,p.winner).team==='ash')return {id:p.winner,kind:'aftermath',message:`Choose ${p.winner}'s overrun or restraint.`};
  return null;
 }
 
@@ -135,7 +136,9 @@ export function humanDecision(s){
 // including when the player's turn produced the combat.
 export function combatDecision(s){
  const p=s.pendingCombat;if(s.stage!=='combat'||!p)return null;
- const owner=['break','loser-choice','retreat'].includes(p.stage)?p.loser:p.stage==='winner-choice'?p.winner:null;
+ // A pursuit declared before the losers moved is carried out without a further choice, whoever owns it.
+ if(p.stage==='winner-choice'&&p.declarations?.[p.winner])return p.stage;
+ const owner=['break','loser-choice','retreat'].includes(p.stage)?p.loser:['winner-choice','declare'].includes(p.stage)?p.winner:null;
  return G.getUnit(s,owner)?.team==='iron'?p.stage:null;
 }
 
@@ -144,6 +147,8 @@ function resolveCombatDecision(s,random){
  if(p.stage==='break'){const out=G.rollCombatBreak(s,random);return {message:`${p.loser} ${out.outcome.replace('-',' ')} (${out.dice.join('+')}).`};}
  if(p.stage==='loser-choice'){G.chooseLoserAction(s,p.shieldwallAvailable?'shieldwall':'fall-back');return {message:`${p.loser} chooses ${p.loserChoice}.`};}
  if(p.stage==='retreat'){const out=G.moveCombatLoser(s,random);return {message:`${out.loser} retreats ${out.distance.toFixed(1)}″.`};}
+ // The bot pursues the unit it can do most harm to: broken units first.
+ if(p.stage==='declare'){const out=G.declarePursuit(s,p.winner,'follow',null,random);return {message:`${out.winner} will ${out.outcome==='give-ground'?'follow up':'pursue'} ${out.target}.`};}
  const out=G.winnerCombat(s,'follow',random);return {message:`${out.winner} ${out.outcome==='overrun'?'overruns':out.outcome==='break'?'pursues':'follows up'}.`};
 }
 

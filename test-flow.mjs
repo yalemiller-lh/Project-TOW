@@ -6,9 +6,10 @@ function battle(){const s=G.createGame();G.autoDeploy(s);G.begin(s,()=>0);return
 function combat(){const s=battle(),winner=G.getUnit(s,'A1'),loser=G.getUnit(s,'I1');Object.assign(winner,{x:18,y:22,engaged:loser.id});Object.assign(loser,{x:18,y:22-G.SIZE.h,engaged:winner.id});s.stage='combat';return {s,winner,loser};}
 function pending(s,winner,loser,outcome,options={}){winner.engaged=loser.engaged=null;s.lastCombat={a:winner.id,b:loser.id};s.combatHistory=[s.lastCombat];s.pendingCombat={stage:'winner-choice',winner:winner.id,loser:loser.id,outcome,retreat:{moved:options.moved??4,dir:{x:0,y:-1}},fleeDistance:options.fleeDistance??4,loserDestroyed:options.destroyed??false};}
 
-test('a pursuer moves its rolled distance after catching and destroying a fleeing unit',()=>{
- const {s,winner,loser}=combat();loser.y=14;pending(s,winner,loser,'break');const out=G.winnerCombat(s,'follow',()=>.4);
- assert.equal(out.pursuitDistance,5);assert.equal(out.loserDestroyed,true);assert.equal(loser.x,null);assert.ok(out.movement.winner>4.9);assert.ok(winner.y<17.1);
+test('a pursuer catches a fleeing unit only by reaching it, and runs it down without saves',()=>{
+ const {s,winner,loser}=combat();loser.y=14;loser.fleeing=true;pending(s,winner,loser,'break');const out=G.winnerCombat(s,'follow',()=>.4);
+ assert.equal(out.pursuitDistance,5);assert.equal(out.loserDestroyed,true);assert.equal(out.runDown,'I1');assert.equal(loser.x,null);assert.equal(loser.destroyedBy,'RUN_DOWN');assert.ok(out.movement.winner<5,'it halts where it caught the unit');
+ const far=combat();far.loser.y=8;far.loser.fleeing=true;pending(far.s,far.winner,far.loser,'break');const miss=G.winnerCombat(far.s,'follow',()=>.4);assert.equal(miss.loserDestroyed,false,'a bigger total that never reaches it is not a catch');assert.notEqual(far.loser.x,null);
 });
 test('a pursuer still moves when the fleeing unit already left the board',()=>{
  const {s,winner,loser}=combat();G.getUnit(s,'I1').x=null;G.getUnit(s,'I1').y=null;pending(s,winner,loser,'break',{destroyed:true,fleeDistance:8});const out=G.winnerCombat(s,'follow',()=>0);

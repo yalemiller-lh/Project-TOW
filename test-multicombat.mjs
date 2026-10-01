@@ -57,7 +57,7 @@ test('combat result in a multiple combat: summed wounds, highest rank bonus, one
 });
 test('the loser takes a Break test; a winner it moved away from follows up, one still touching it fights on',()=>{
  const s=combat();G.resolveCombat(s,'A1',()=>0);const p=s.pendingCombat;assert.equal(p.outcome,'give-ground','double 1 always gives ground');
- assert.equal(p.stage,'retreat');G.moveCombatLoser(s,()=>0);assert.equal(s.pendingCombat.stage,'winner-choice');assert.equal(s.pendingCombat.winner,'A1');
+ assert.equal(p.stage,'declare','winners declare before the loser moves');while(s.pendingCombat.stage==='declare')G.declarePursuit(s,s.pendingCombat.winner,'follow');assert.equal(s.pendingCombat.stage,'retreat');G.moveCombatLoser(s,()=>0);assert.equal(s.pendingCombat.stage,'winner-choice');assert.equal(s.pendingCombat.winner,'A1');
  assert.ok(engaged(s,'A2','I1'),'I1 gave ground along A2’s side, so A2 is still in the fight and does not follow up');
  G.winnerCombat(s,'follow',()=>0);assert.equal(s.pendingCombat,null);assert.ok(engaged(s,'A1','I1'),'A1 followed up into contact again');
 });
@@ -68,7 +68,9 @@ test('two losers each test; a winner still touching an enemy cannot pursue',()=>
  s.stage='combat';s.team='ash';for(const id of ['I1','I2'])G.removeCasualties(s,G.getUnit(s,id),12);
  G.beginCombat(s,'A1');while(s.combatSession.phase==='attacks')G.fightCombatStep(s,()=>0);const r=G.compareCombat(s);
  assert.equal(r.winnerSide,'ash');assert.deepEqual([...r.losers].sort(),['I1','I2']);
- const order=[];for(let i=0;i<4&&s.pendingCombat?.stage==='break';i++){const loser=s.pendingCombat.loser;order.push(loser);G.rollCombatBreak(s,loser==='I1'?seq([.99,.99]):()=>0);if(s.pendingCombat.stage==='loser-choice')G.chooseLoserAction(s,'fall-back');G.moveCombatLoser(s,()=>.5);}
+ const order=[];for(let i=0;i<4&&s.pendingCombat?.stage==='break';i++){const loser=s.pendingCombat.loser;order.push(loser);G.rollCombatBreak(s,loser==='I1'?seq([.99,.99]):()=>0);if(s.pendingCombat.stage==='loser-choice')G.chooseLoserAction(s,'fall-back');}
+ assert.equal(s.pendingCombat.stage,'declare','every Break test comes before any retreat dice');assert.equal(s.pendingCombat.results.I1.retreatDice,undefined);
+ G.declarePursuit(s,'A1','follow','I1');while(s.pendingCombat?.stage==='retreat')G.moveCombatLoser(s,()=>.5);
  assert.equal(order.length,2,'both losers took a Break test');
  assert.equal(G.getUnit(s,'I1').fleeing,true);assert.ok(engaged(s,'A1','I2'),'I2 could not get clear');
  assert.equal(s.pendingCombat,null,'A1 is still in contact with I2, so it cannot pursue I1');
