@@ -14,54 +14,69 @@ const roll=random=>G.rollD6(2,random);
 // take the spots with the most clear shots, the State Troops face the enemy without blocking a
 // fire lane, and the Battlemage stands behind the middle of the line.
 export function readyToDeploy(s){if(s.deployOrder?.alternate)return !!deploymentChoice(s);return s.stage==='deployment'&&s.units.filter(u=>u.team==='ash').every(u=>u.x!==null)&&(s.rocket.x!==null||s.rocket.absent)&&(s.units.some(u=>u.team==='iron'&&u.x===null)||s.cannons.some(c=>c.x===null));}
-// Candidate spots come from the bot's actual deployment zone on the current battlefield.
-const candidateXs=s=>{const b=G.zoneBounds(s,'iron');return Array.from({length:Math.max(1,Math.floor(b.right-b.left)-1)},(_,i)=>b.left+1+i);};
-const frontRow=(s,u)=>G.zoneBounds(s,'iron').bottom-G.size(u).h/2-.01,backRow=(s,u)=>G.zoneBounds(s,'iron').top+G.size(u).h/2+.01;
-const pose=(u,x,y)=>({...u,x,y,heading:180});
+// The bot plans in its own deployment frame: "across" runs along its front, "depth" grows toward
+// the enemy. The same plan then fits zones on the long edges, the short edges (Mountain Pass),
+// quarters (Close Encounter) and triangles (Opposed Flanks, Outflank): the front line is the
+// front-most spot that fits at each point along the zone, so a triangle's line follows its diagonal.
+function deployFrame(s,team='iron'){
+ const a=G.deploymentFacing(s,team)*Math.PI/180,fw={x:Math.sin(a),y:-Math.cos(a)},lat={x:Math.cos(a),y:Math.sin(a)},zone=G.zoneOf(s,team);
+ const across=p=>p.x*lat.x+p.y*lat.y,depth=p=>p.x*fw.x+p.y*fw.y,L=zone.map(across),D=zone.map(depth);
+ return {across,depth,l0:Math.min(...L),l1:Math.max(...L),d0:Math.min(...D),d1:Math.max(...D),at:(l,d)=>({x:l*lat.x+d*fw.x,y:l*lat.y+d*fw.y})};
+}
 function blocked(s,from,to,ignore){return s.units.some(v=>v.x!==null&&!ignore.includes(v.id)&&G.aliveCount(v)>0&&G.polygonGap([from,to],G.corners(v))<1e-6)||s.cannons.some(c=>c.x!==null&&!ignore.includes(c.id)&&G.polygonGap([from,to],G.corners(c))<1e-6);}
 const targetValue=t=>t.role==='missile'?1.3:t.role==='wizard'?.5:1;
-// Enemy units a shooter at this spot could hit: inside its front arc, within reach, clear line.
-function shots(s,shooter,reach){return s.units.filter(t=>t.team==='ash'&&t.x!==null).reduce((sum,t)=>{const dy=t.y-shooter.y,dx=t.x-shooter.x;return (shooter.role==='warmachine'||dy>0&&Math.abs(dx)<=dy+G.size(t).w/2)&&G.gap(shooter,t)<=reach&&!blocked(s,{x:shooter.x,y:shooter.y},{x:t.x,y:t.y},[shooter.id,t.id])?sum+targetValue(t):sum;},0);}
+// Enemy units a shooter at this spot could hit: in its front arc (a war machine turns to fire),
+// within reach, with a clear line.
+function shots(s,shooter,reach){return s.units.filter(t=>t.team!==shooter.team&&t.x!==null).reduce((sum,t)=>(shooter.role==='warmachine'||G.inVisionArc(shooter,t))&&G.gap(shooter,t)<=reach&&!blocked(s,{x:shooter.x,y:shooter.y},{x:t.x,y:t.y},[shooter.id,t.id])?sum+targetValue(t):sum,0);}
 // How many currently clear bot fire lanes a footprint at this spot would cut.
 function lanesCut(s,candidate){let cut=0;for(const f of [...s.units.filter(u=>u.team==='iron'&&u.x!==null&&u.role==='missile'),...s.cannons.filter(c=>c.x!==null)])for(const t of s.units.filter(t=>t.team==='ash'&&t.x!==null)){const a={x:f.x,y:f.y},b={x:t.x,y:t.y};if(!blocked(s,a,b,[f.id,t.id])&&G.polygonGap([a,b],G.corners(candidate))<1e-6)cut++;}return cut;}
-function tryPlace(s,u,x,y){try{if(u.role==='warmachine')G.placeCannon(s,u.id,x,y);else G.place(s,u.id,x,y);return true;}catch{return false;}}
-// Place at the best-scoring legal spot on the given row.
-function placeBest(s,u,row,score){
- const mid=s.board.width/2,z=G.zoneBounds(s,'iron'),h=G.size(u).h,rows=[row,(z.top+z.bottom)/2,z.top+h/2+.01,z.bottom-h/2-.01].filter((y,i,a)=>a.indexOf(y)===i);
- for(const y of rows){const options=candidateXs(s).map(x=>({x,y,score:score(pose(u,x,y))})).sort((a,b)=>b.score-a.score||Math.abs(a.x-mid)-Math.abs(b.x-mid));for(const o of options)if(tryPlace(s,u,o.x,o.y))return o;}
+function tryPlace(s,u,x,y){try{G.placeAt(s,u.id,x,y);return true;}catch{return false;}}
+// A regiment with no enemy in its front arc turns toward the one it answers (15° steps), when it still fits.
+function faceEnemy(s,u,t){if(!t||t.x===null||G.inVisionArc(u,t))return;const h=Math.round(Math.atan2(t.x-u.x,-(t.y-u.y))*180/Math.PI/15)*15;try{G.turnDeployed(s,u.id,(h+360)%360);}catch{}}
+const nearestFoe=(s,u)=>s.units.filter(t=>t.team!==u.team&&t.x!==null&&!G.isCharacter(t)).sort((a,b)=>G.gap(u,a)-G.gap(u,b))[0];
+// Place at the best-scoring legal spot. For each point along the zone the candidate is the
+// front-most (band 'front') or back-most (band 'back') spot that fits there.
+function placeBest(s,u,band,score){
+ const zf=deployFrame(s),{h}=G.size(u),front=zf.d1-h/2-.01,back=zf.d0+h/2+.01,steps=Math.max(0,Math.floor((front-back)*2)),depths=Array.from({length:steps+1},(_,k)=>band==='back'?back+k/2:front-k/2),options=[];
+ for(let l=zf.l0+.5;l<=zf.l1-.5+1e-9;l+=.5)for(const d of depths){const {x,y}=zf.at(l,d);if(G.deployError(s,u,x,y)===null){options.push({x,y,l,d,score:score({...u,x,y})});break;}}
+ options.sort((a,b)=>b.score-a.score||(band==='back'?a.d-b.d:b.d-a.d));
+ for(const o of options)if(tryPlace(s,u,o.x,o.y))return o;
  throw Error(`No legal deployment space for ${u.id}.`);
 }
 // War machines stand on the back edge of the zone, where their range still reaches the enemy. A
 // random source varies the opening spread; without one the bot deploys the same way every time.
 export function deployOpponent(s,random=null){
  if(s.stage!=='deployment')throw Error('The bot can deploy only before the battle.');
- const mine=s.units.filter(u=>u.team==='iron'&&u.x===null),cannons=s.cannons.filter(c=>c.x===null),foes=s.units.filter(u=>u.team==='ash'&&u.x!==null&&u.role!=='wizard');
+ const zf=deployFrame(s),mine=s.units.filter(u=>u.team==='iron'&&u.x===null),cannons=s.cannons.filter(c=>c.x===null),foes=s.units.filter(u=>u.team==='ash'&&u.x!==null&&u.role!=='wizard');
  const faction=s.units.find(u=>u.team==='iron')?.faction;
  const infantry=mine.filter(u=>u.role==='infantry'),missile=mine.filter(u=>u.role==='missile'),wizard=mine.find(u=>u.role==='wizard');
- const reach=u=>G.missileWeapon(u).range+G.profile(u).M+2;
+ const reach=u=>G.missileWeapon(u).range+G.profile(u).M+2,slot=f=>zf.l0+(zf.l1-zf.l0)*f,across=p=>zf.across(p);
+ const line=()=>s.units.filter(u=>u.team==='iron'&&u.x!==null&&!G.isCharacter(u)),middle=()=>{const l=line();return l.length?l.reduce((n,u)=>n+across(u),0)/l.length:slot(.5);};
+ const mix=list=>random?list.map(v=>[random(),v]).sort((a,b)=>a[0]-b[0]).map(([,v])=>v):list;
  if(!foes.length){
-  // Nothing to react to yet: an even spread across the zone.
-  const W=s.board.width,mix=list=>random?list.map(v=>[random(),v]).sort((a,b)=>a[0]-b[0]).map(([,v])=>v):list,slots=mix([.25,.5,.75,.89]).map(f=>f+(random?(random()-.5)*.08:0));
-  for(const [u,x]of [...infantry,...missile].map((u,i)=>[u,W*slots[i%4]]))placeBest(s,u,frontRow(s,u),p=>-Math.abs(p.x-x));
-  for(const [c,x]of cannons.map((c,i)=>[c,W*mix([.11,.89])[i%2]]))placeBest(s,c,backRow(s,c),p=>-Math.abs(p.x-x));
-  if(wizard)placeBest(s,wizard,backRow(s,wizard),p=>-Math.abs(p.x-W*.97));return;
- }
- // The enemy blocks to oppose: the Decimators, then the regiments nearest to them.
- const soft=foes.find(u=>u.role==='missile')??foes[0],opposite=[soft,...foes.filter(u=>u!==soft).sort((a,b)=>Math.abs(a.x-soft.x)-Math.abs(b.x-soft.x))];
- const claimed=new Set();
- const oppose=u=>{const target=opposite.find(t=>!claimed.has(t.id))??opposite[0];claimed.add(target.id);return target;};
- if(faction==='empire'){
-  for(const c of cannons){const others=()=>s.cannons.filter(o=>o.x!==null&&o.id!==c.id);placeBest(s,c,backRow(s,c),p=>shots(s,p,60)+Math.min(12,...others().map(o=>Math.abs(o.x-p.x)),12)*.05+(random?random()*.3:0));}
-  // The crossbows, like the State Troops, keep out of the cannons' fire lanes from the back edge.
-  for(const u of missile)placeBest(s,u,frontRow(s,u),p=>shots(s,p,reach(u))-3*lanesCut(s,p));
-  for(const u of infantry){const target=oppose(u);placeBest(s,u,frontRow(s,u),p=>-Math.abs(p.x-target.x)*.3-5*lanesCut(s,p));}
+  // Nothing to react to yet: an even spread along the front, the cannons on the back edge's flanks.
+  const slots=mix([.25,.5,.75,.89]).map(f=>f+(random?(random()-.5)*.08:0));
+  for(const [u,f]of [...infantry,...missile].map((u,i)=>[u,slots[i%4]]))placeBest(s,u,'front',p=>-Math.abs(across(p)-slot(f)));
+  for(const [c,f]of cannons.map((c,i)=>[c,mix([.11,.89])[i%2]]))placeBest(s,c,'back',p=>-Math.abs(across(p)-slot(f)));
  }else{
-  for(const u of infantry){const target=oppose(u);placeBest(s,u,frontRow(s,u),p=>-Math.abs(p.x-target.x));}
-  for(const u of missile)placeBest(s,u,frontRow(s,u),p=>shots(s,p,reach(u))-Math.abs(p.x-s.board.width/2)*.01);
-  for(const c of cannons)placeBest(s,c,backRow(s,c),p=>shots(s,p,60));
+  // The enemy blocks to oppose: the Decimators (or whatever shoots) first, then the regiments nearest to them.
+  const soft=foes.find(u=>u.role==='missile')??foes[0],opposite=[soft,...foes.filter(u=>u!==soft).sort((a,b)=>Math.abs(across(a)-across(soft))-Math.abs(across(b)-across(soft)))];
+  const claimed=new Set(),oppose=()=>{const target=opposite.find(t=>!claimed.has(t.id))??opposite[0];claimed.add(target.id);return target;};
+  if(faction==='empire'){
+   // A gun line: cannons on the back edge with the most clear shots and some spacing, crossbows at
+   // the front where they see most, State Troops facing the enemy without blocking a fire lane.
+   for(const c of cannons){const others=()=>s.cannons.filter(o=>o.x!==null&&o.id!==c.id);placeBest(s,c,'back',p=>shots(s,p,60)+Math.min(12,...others().map(o=>Math.abs(across(o)-across(p))),12)*.05+(random?random()*.3:0));}
+   for(const u of missile){placeBest(s,u,'front',p=>shots(s,p,reach(u))-3*lanesCut(s,p));faceEnemy(s,u,nearestFoe(s,u));}
+   for(const u of infantry){const target=oppose();placeBest(s,u,'front',p=>-Math.abs(across(p)-across(target))*.3-5*lanesCut(s,p));faceEnemy(s,u,target);}
+  }else{
+   for(const u of infantry){const target=oppose();placeBest(s,u,'front',p=>-Math.abs(across(p)-across(target)));faceEnemy(s,u,target);}
+   for(const u of missile){placeBest(s,u,'front',p=>shots(s,p,reach(u))-Math.abs(across(p)-slot(.5))*.01);faceEnemy(s,u,nearestFoe(s,u));}
+   for(const c of cannons)placeBest(s,c,'back',p=>shots(s,p,60));
+  }
  }
- for(const hero of mine.filter(u=>u.role==='character')){const line=s.units.filter(u=>u.team==='iron'&&u.x!==null&&!G.isCharacter(u)),mid=line.reduce((n,u)=>n+u.x,0)/Math.max(1,line.length);placeBest(s,hero,backRow(s,hero),p=>-Math.abs(p.x-mid)-5*lanesCut(s,p));}
- if(wizard){const line=s.units.filter(u=>u.team==='iron'&&u.x!==null&&!G.isCharacter(u)),mid=line.reduce((n,u)=>n+u.x,0)/Math.max(1,line.length);placeBest(s,wizard,backRow(s,wizard),p=>-Math.abs(p.x-mid)-5*lanesCut(s,p)+(line.some(u=>Math.abs(u.x-p.x)<G.size(u).w/2)?2:0));}
+ // Characters behind the middle of the line, out of the fire lanes; the wizard tucked behind a regiment.
+ for(const hero of mine.filter(u=>u.role==='character'))placeBest(s,hero,'back',p=>-Math.abs(across(p)-middle())-5*lanesCut(s,p));
+ if(wizard)placeBest(s,wizard,'back',p=>-Math.abs(across(p)-middle())-5*lanesCut(s,p)+(line().some(u=>Math.abs(across(u)-across(p))<G.size(u).w/2)?2:0));
 }
 
 // ---- Battle March setup: roll-off choices and one unit at a time ----------------------------
@@ -90,18 +105,16 @@ export function takeDeploymentStep(s,random=null){
 const PLAN_ORDER={empire:['warmachine','missile','infantry','character','wizard'],other:['infantry','missile','warmachine','character','wizard']};
 export function deployNext(s,random=null){
  if(G.deploymentTurn(s)!=='iron')throw Error('It is not the bot’s turn to deploy.');
- // The gun-line planner works across the table; on a map deployed along it, spread out instead.
- if(G.deploymentFacing(s,'iron')!==180)return G.autoDeploy(s,{team:'iron',random});
  const trial=structuredClone(s);trial.deployOrder.auto=true;
  for(const p of G.deploymentPieces(trial,'iron'))if(!p.deployed){p.x=null;p.y=null;}
  try{deployOpponent(trial,random);}catch{}
  const order=PLAN_ORDER[s.units.find(u=>u.team==='iron')?.faction==='empire'?'empire':'other'];
  for(const p of G.deploymentPieces(s,'iron').filter(p=>!p.deployed).sort((a,b)=>order.indexOf(a.role)-order.indexOf(b.role))){
   const planned=G.getUnit(trial,p.id);if(planned?.x==null)continue;
-  try{G.placeAt(s,p.id,planned.x,planned.y);}catch{continue;}
+  try{G.placeAt(s,p.id,planned.x,planned.y);if(planned.heading!==p.heading)try{G.turnDeployed(s,p.id,planned.heading);}catch{}}catch{continue;}
   // The rest of its batch (all war machines, or all characters) goes where the plan put them;
   // anything that no longer fits is placed by quick deployment, which then confirms the batch.
-  for(const id of s.deployOrder.batch?.ids??[]){const q=G.getUnit(s,id),pl=G.getUnit(trial,id);if(q.x===null&&pl?.x!=null)try{G.placeAt(s,id,pl.x,pl.y);}catch{}}
+  for(const id of s.deployOrder.batch?.ids??[]){const q=G.getUnit(s,id),pl=G.getUnit(trial,id);if(q.x===null&&pl?.x!=null)try{G.placeAt(s,id,pl.x,pl.y);if(pl.heading!==q.heading)try{G.turnDeployed(s,id,pl.heading);}catch{}}catch{}}
   return G.autoDeploy(s,{team:'iron',random});
  }
  return G.autoDeploy(s,{team:'iron',random});

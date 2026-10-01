@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import * as G from './dist/game.mjs';
 import * as AI from './dist/ai.mjs';
+import * as F from './dist/formats.mjs';
+import './dist/battlemarch.mjs';
 
 const test=(name,fn)=>{fn();console.log('PASS '+name);};
 function redDeployed(opponent,xs=[18,36,54,64]){const s=G.createGame(opponent);for(const [i,u]of s.units.filter(u=>u.team==='ash').entries())G.place(s,u.id,u.role==='wizard'?3.5:xs[i],42);G.placeRocket(s,8,42);return s;}
@@ -24,4 +26,19 @@ for(const xs of [[18,36,54,64],[14,24,34,62],[40,50,60,68]])test(`the Empire gun
 });
 test('with nothing to react to, the bot still deploys a legal spread',()=>{
  const s=G.createGame('empire');AI.deployOpponent(s);assert.ok(bot(s).every(u=>u.x!==null));
+});
+test('on every Battle March map the bot deploys legally, mostly facing the enemy, cannons behind its line',()=>{
+ const rng=seed=>()=>{seed=seed*16807%2147483647;return seed/2147483647;};
+ let facing=0,regs=0;
+ for(const m of F.DEPLOYMENT_MAPS.filter(m=>m.official))for(const mirrored of [false,true]){
+  const r=rng(5),s=G.createGame('empire',{format:'battle-march',points:500,deployment:{map:m.id,mirrored},objectives:'troves2',random:r}),d=s.deployOrder;
+  if(AI.deploymentChoice(s)==='zone')AI.takeDeploymentStep(s,r);else G.chooseDeploymentZone(s,G.deploymentZoneChooser(s),'A');G.deploymentRollOff(s,r);
+  for(let g=0;g<40&&!d.complete;g++){if(AI.deploymentChoice(s)==='deploy')AI.takeDeploymentStep(s,r);else G.autoDeploy(s,{team:d.next,random:r});}
+  assert.equal(d.complete,true,m.id);for(const p of G.combatants(s))assert.ok(p.x!==null&&G.inZone(s,p.team,G.corners(p)),`${m.id}: ${p.id} in its zone`);
+  const bot=s.units.filter(u=>u.team==='iron'&&!G.isCharacter(u)),red=s.units.filter(u=>u.team==='ash'&&!G.isCharacter(u));
+  for(const u of bot){regs++;if(red.some(t=>G.inVisionArc(u,t)))facing++;}
+  const a=G.deploymentFacing(s,'iron')*Math.PI/180,depth=p=>p.x*Math.sin(a)-p.y*Math.cos(a);
+  for(const c of s.cannons)assert.ok(bot.every(u=>depth(c)<=depth(u)+1e-6),`${m.id}${mirrored?' mirrored':''}: ${c.id} behind the line`);
+ }
+ assert.ok(facing>=.8*regs,`${facing} of ${regs} bot regiments start with an enemy in their front arc`);
 });
