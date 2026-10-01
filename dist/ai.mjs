@@ -172,7 +172,7 @@ function moveRegiment(s,u,random){
  const separation=goal.dist(u),wantMarch=(goal.kind==='enemy'?u.role!=='missile'&&separation>14:separation>G.profile(u).M+.5)&&u.marchTest!==false,mode=u.movementMode??(wantMarch?'march':'advance');
  if(mode==='march'&&G.needsMarchTest(s,u)&&u.marchTest===null){const dice=roll(random),passed=G.marchTest(s,u.id,dice);return {message:`${u.id} march test ${passed?'passed':'failed'} (${dice.join('+')}).`};}
  const best=bestOrder(s,u,goal,mode)??(mode==='march'?bestOrder(s,u,goal,'advance'):null);
- if(best){G.commitOrder(s,u.id,best.order);return {message:`${u.id} ${describeOrder(best.order)} toward ${goal.name}.`};}
+ if(best){G.commitOrder(s,u.id,best.order,random);return {message:`${u.id} ${describeOrder(best.order)} toward ${goal.name}.`};}
  return endMove(s,u,`${u.id} holds position.`);
 }
 // A unit that ends its move on a treasure trove may start burning it (Raid & Burn, when on):
@@ -266,7 +266,7 @@ export function takeStep(s,random=Math.random){
   G.finishDeclarations(s);return {message:'The bot finishes charge declarations.'};
  }
  if(s.stage==='movement'&&s.movementStep==='charges'){
-  const u=s.units.find(u=>u.team==='iron'&&u.charge?.status==='declared');if(u){s.selected=u.id;const target=G.getUnit(s,u.charge.target),plan=target?.x!==null?G.chargePlan(s,u,target):{error:true},first=roll(random),reroll=u.faction==='orc'&&!plan.error&&G.profile(u).M+Math.max(...first)<plan.cost,dice=reroll?roll(random):first,out=G.resolveCharge(s,u.id,dice);return {message:`${u.id} ${out.success?'charge succeeds':out.pursuit?'pursues fleeing target':'charge fails'} (${reroll?'Warband reroll · ':''}${dice.join(', ')}).`,roll:{label:`${u.id} · Charge roll · keep highest`,dice,team:'iron'}};}
+  const u=s.units.find(u=>u.team==='iron'&&u.charge?.status==='declared');if(u){s.selected=u.id;const target=G.getUnit(s,u.charge.target),plan=target?.x!==null?G.chargePlan(s,u,target):{error:true},first=roll(random),reroll=u.faction==='orc'&&!plan.error&&G.profile(u).M+Math.max(...first)<plan.cost,dice=reroll?roll(random):first,out=G.resolveCharge(s,u.id,dice,random);return {message:`${u.id} ${out.success?'charge succeeds':out.pursuit?'pursues fleeing target':'charge fails'} (${reroll?'Warband reroll · ':''}${dice.join(', ')}).`,roll:{label:`${u.id} · Charge roll · keep highest`,dice,team:'iron'}};}
   G.enterRemaining(s);return {message:'The bot begins remaining moves.'};
  }
  if(s.stage==='movement'){

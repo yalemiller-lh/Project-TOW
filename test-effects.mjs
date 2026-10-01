@@ -38,7 +38,7 @@ test('effects can grant a Ward save and improve Armour Piercing, which spells do
  const s=battle(),w=G.getUnit(s,'A6'),t=G.getUnit(s,'I1');assert.equal(G.wardSave(w),7);G.addEffect(s,[w],effect([],{rules:[{rule:'ward',value:5}]}));assert.equal(G.wardSave(w),5);
  const before=G.saveTarget(t,w);G.addEffect(s,[w],effect([],{ap:1,stack:'vessel'}));assert.equal(G.saveTarget(t,w),Math.min(7,before+1));
  clearExcept(s,['A6','I1']);Object.assign(s,{stage:'shooting',team:'ash'});Object.assign(w,{x:30,y:30,heading:0,spells:['fireball'],castThisTurn:[]});Object.assign(t,{x:30,y:20,heading:180});
- const r=G.castSpell(s,'A6','fireball','I1',(()=>{let i=0;const f=[5,5,6,6,6,1];return ()=>(f[Math.min(i++,f.length-1)]-1)/6+.01;})());assert.equal(r.effect.toSave,G.profile(t).save-1,'Fireball has no AP; the shield still counts');
+ const r=G.castSpell(s,'A6','fireball','I1',(()=>{let i=0;const f=[5,5,6,6,6,1];return ()=>(f[Math.min(i++,f.length-1)]-1)/6+.01;})());assert.equal(r.effect.toSave,G.profile(t).save,'Fireball has no AP, and the caster\'s AP bonus does not apply to it');
 });
 test('a spell that adds Movement does not change which models fight',()=>{
  const s=battle();clearExcept(s,['A1','I1']);const a=G.getUnit(s,'A1'),b=G.getUnit(s,'I1');Object.assign(b,{x:30,y:20,heading:180});Object.assign(a,{x:33.5,y:20+(G.size(a).h+G.size(b).h)/2,heading:0});a.engaged=['I1'];b.engaged=['A1'];

@@ -194,6 +194,7 @@ test('the bot chooses its zone, deploys one legal batch per turn, answers the ro
  G.firstTurnRollOff(s,seq([0,.9]));assert.equal(AI.deploymentChoice(s),'first-turn');AI.takeDeploymentStep(s);assert.equal(s.firstTurn.chosen,'iron');
  G.begin(s,r);assert.equal(s.team,'iron');
  const near=()=>Math.min(...s.objectives.items.map(o=>Math.min(...s.units.filter(u=>u.team==='iron'&&BM.canControl(u)).map(u=>BM.objectiveDistance(u,o))))),start=near();
- for(let guard=0;guard<200&&s.team==='iron'&&s.stage!=='finished';guard++){if(AI.shouldAct(s))AI.takeStep(s,r);else break;}
+ // The player lets any spell the bot casts through.
+ for(let guard=0;guard<200&&s.team==='iron'&&s.stage!=='finished';guard++){if(AI.shouldAct(s))AI.takeStep(s,r);else if(s.pendingSpell)G.resolveDispel(s,'none',r);else break;}
  assert.ok(near()<start,`the bot closes on an objective (${start.toFixed(1)}″ → ${near().toFixed(1)}″)`);
 });

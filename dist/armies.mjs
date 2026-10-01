@@ -13,14 +13,14 @@ export const PREFERENCES={excluded:[{name:'K’daai Fireborn',faction:'chaos',re
 // restricted: counts against Battle March's single "0–X per 1,000 points" selection.
 export const ENTRIES={
  chaos:{
-  daemonsmith:{name:'Daemonsmith Sorcerer',category:'characters',role:'wizard',base:85,options:{level2:{name:'Wizard Level 2',cost:30,required:true}},general:true},
+  daemonsmith:{name:'Daemonsmith Sorcerer',category:'characters',role:'wizard',base:85,options:{level2:{name:'Wizard Level 2',cost:30,required:true}},general:true,lores:{options:['daemonology','darkMagic','elementalism','battle'],default:'battle'}},
   warriors:{name:'Chaos Dwarf Warriors',category:'core',role:'infantry',troop:'heavy',perModel:7,minModels:5,options:{shields:{name:'Shields',perModel:1,required:true}},command:{C:{name:'Veteran Warrior',cost:6},S:{name:'Standard Bearer',cost:6},M:{name:'Musician',cost:6}}},
   decimators:{name:'Blunderbuss Decimators',category:'core',role:'missile',troop:'heavy',perModel:10,minModels:5,options:{shields:{name:'Shields',perModel:1}},command:{C:{name:'Veteran Warrior',cost:6},S:{name:'Standard Bearer',cost:6},M:{name:'Musician',cost:6}}},
   deathshrieker:{name:'Deathshrieker Rocket Launcher',category:'special',role:'warmachine',base:110,restricted:'0–2 per 1,000 points'},
  },
  empire:{
   captain:{name:'Captain of the Empire',category:'characters',role:'character',kind:'empireCaptain',base:45,options:{greatWeapon:{name:'Great weapon',cost:4},fullPlate:{name:'Full plate armour',cost:6}},general:true},
-  masterMage:{name:'Master Mage',category:'characters',role:'wizard',base:60,options:{level2:{name:'Wizard Level 2',cost:30,required:true}},general:true},
+  masterMage:{name:'Master Mage',category:'characters',role:'wizard',base:60,options:{level2:{name:'Wizard Level 2',cost:30,required:true}},general:true,lores:{options:['battle'],default:'battle'}},
   stateTroops:{name:'State Troops',category:'core',role:'infantry',troop:'regular',perModel:5,minModels:10,options:{spears:{name:'Thrusting spears',perModel:1},shields:{name:'Shields',perModel:1}},command:{C:{name:'Sergeant',cost:5},S:{name:'Standard Bearer',cost:5},M:{name:'Musician',cost:5}}},
   missileTroops:{name:'State Missile Troops (crossbows)',category:'core',role:'missile',troop:'regular',perModel:7,minModels:10,command:{C:{name:'Sergeant',cost:5},S:{name:'Standard Bearer',cost:5},M:{name:'Musician',cost:5}}},
   greatCannon:{name:'Great Cannon',category:'special',role:'warmachine',base:125,restricted:"1 single 'per 1000 points' selection in Battle March"},
@@ -50,6 +50,9 @@ export function rosterCost(roster){return roster.entries.reduce((n,item)=>n+entr
 export const BATTLE_MARCH_LIMITS={entry:{characters:25,core:35,special:30,rare:25,mercenaries:25},category:{characters:{max:50},core:{min:25},special:{max:50},rare:{max:25},mercenaries:{max:20}},maxUnitStrength:20,minUnits:2,restrictedSelections:1};
 const CATEGORY_NAME={characters:'character',core:'Core unit',special:'Special unit',rare:'Rare unit',mercenaries:'Mercenary unit'};
 const fmt=n=>Number.isInteger(n)?String(n):n.toFixed(1);
+// Lores of Magic by key; the engine implements Battle Magic and Daemonology.
+export const LORE_NAMES={battle:'Battle Magic',daemonology:'Daemonology',darkMagic:'Dark Magic',elementalism:'Elementalism'};
+export const LORES_IMPLEMENTED=['battle','daemonology'];
 export function validateRoster(roster,points,{format='battle-march'}={}){
  const errors=[],faction=roster.faction,entries=roster.entries,total=rosterCost(roster),L=BATTLE_MARCH_LIMITS;
  for(const gap of format==='battle-march'&&!Object.values(ENTRIES[faction]??{}).some(e=>e.general)?GAPS[faction]??[]:[])errors.push(gap);
@@ -59,6 +62,7 @@ export function validateRoster(roster,points,{format='battle-march'}={}){
   if(PREFERENCES.excluded.some(x=>x.name===e.name))errors.push(`${e.name} is excluded by player preference.`);
   if(e.perModel&&(!Number.isInteger(item.models)||item.models<e.minModels))errors.push(`${label} needs at least ${e.minModels} models; it has ${item.models}.`);
   if(e.maxModels&&item.models>e.maxModels)errors.push(`${label} may have at most ${e.maxModels} models; it has ${item.models}.`);
+  if(e.lores){const lore=item.lore??e.lores.default;if(!e.lores.options.includes(lore))errors.push(`${label} cannot use ${LORE_NAMES[lore]??lore}.`);else if(!LORES_IMPLEMENTED.includes(lore))errors.push(`${LORE_NAMES[lore]} is not implemented yet.`);}
   if(format!=='battle-march')continue;
   const cap=points*L.entry[e.category]/100;
   if(cost>cap)errors.push(`${label} costs ${cost} points; the ${CATEGORY_NAME[e.category]} ceiling is ${fmt(cap)} (${L.entry[e.category]}% of ${points}).`);
