@@ -27,6 +27,8 @@ function redStep(s,r){
  if(d?.kind==='declare'){const p=s.pendingCombat,targets=G.pursuitTargets(s,p.winner);G.declarePursuit(s,p.winner,pick(r,['follow','restrain','follow-reform']),pick(r,targets).id,r);return 'declare';}
  if(d?.kind==='aftermath'){G.winnerCombat(s,pick(r,['follow','restrain','follow-reform']),r);return 'aftermath';}
  if(d?.kind==='dispel'){const o=G.dispelOptions(s);G.resolveDispel(s,pick(r,['none',...(o.fated?['fated']:[]),...o.wizards.map(w=>w.id)]),r);return 'dispel';}
+ // Red's wizard at its Initiative step in a combat: cast an Assailment now and then, or fight on.
+ if(d?.kind==='assailment'){const w=G.getUnit(s,d.id),key=w.spells.find(k=>G.SPELLS[k]?.type==='assailment'&&!G.castBlockReason(s,w.id,k)&&G.spellTargets(s,w.id,k).length);if(key&&r()<.6){G.attemptSpell(s,w.id,key,pick(r,G.spellTargets(s,w.id,key)).id,r);return 'assailment';}G.passAssailment(s,w.id);return 'fight on';}
  if(s.pendingCombat){G.finishCombat(s,pick(r,['follow','restrain']),r);return 'finish';}
  const red=s.units.filter(u=>u.team==='ash'&&u.x!==null&&G.aliveCount(u)>0);
  // Red casts now and then, so the bot's dispels are exercised too.
@@ -37,7 +39,8 @@ function redStep(s,r){
  if(s.stage==='movement'&&s.movementStep==='remaining')for(const u of red){const o=BM.raidOptions(s,u);if(o.length&&r()<.5){BM.startRaid(s,u.id,o[0].id);return 'raid';}}
  if(s.stage==='movement'){const u=red.find(u=>G.canAct(s,u));if(u){const M=G.profile(u).M;for(let tries=0;tries<6;tries++){const order=r()<.35?{kind:'wheel',angle:pick(r,[-30,-15,15,30]),distance:0,mode:'advance'}:{kind:'advance',distance:Math.round(r()*M*2*2)/2||.5,mode:r()<.4?'march':'advance',angle:0};if(order.mode==='march'&&G.needsMarchTest(s,u)&&u.marchTest===null){G.marchTest(s,u.id,G.rollD6(2,r));break;}if(!G.orderError(s,u,order)){G.commitOrder(s,u.id,order);return 'move';}}if(G.canAct(s,u))G.hold(s,u.id);return 'hold';}}
  if(s.stage==='shooting'){for(const u of red.filter(u=>G.canShoot(s,u))){const t=G.shootingTargets(s,u).filter(x=>!x.plan.error);if(t.length){G.shoot(s,u.id,pick(r,t).unit.id,r);return 'shoot';}G.finishShooting(s,u.id);return 'no shot';}if(G.canFireRocket(s)){const t=G.rocketTargets(s).filter(x=>!x.error);if(t.length){G.fireRocket(s,pick(r,t).unit.id,pick(r,['demolition','incendiary']),G.rollRocketDice(r),r);return 'rocket';}}}
- if(s.stage==='combat'){const pair=G.combatPairs(s)[0];if(pair){G.resolveCombat(s,pair[0],r);return 'fight';}}
+ // Red fights each combat one Initiative step at a time, so the bot's wizard can cast at its step.
+ if(s.stage==='combat'){if(s.combatSession?.phase==='attacks'){G.fightCombatStep(s,r);return 'fight step';}if(s.combatSession?.phase==='compare'){G.compareCombat(s);return 'compare';}const pair=G.combatPairs(s)[0];if(pair){G.beginCombat(s,pair[0]);return 'begin combat';}}
  G.nextPhase(s);return 'next phase';
 }
 // Classic: Red deploys, then the bot. Battle March: roll off, alternate one unit at a time, roll
