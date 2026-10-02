@@ -55,7 +55,7 @@ function fightOut(s,charges,firstId,team,n){
 }
 // The chance a charge arrives: Movement plus the higher of 2D6 must cover the distance (a
 // Warband re-rolls a failed charge).
-function reachChance(u,cost){const k=Math.ceil(cost-G.profile(u).M-1e-6),p=k<=1?1:k>6?0:1-((k-1)/6)**2;return u.faction==='orc'?1-(1-p)**2:p;}
+function reachChance(u,cost){const k=Math.ceil(cost-G.profile(u).M-1e-6),p=k<=1?1:k>6?0:1-((k-1)/6)**2;return G.hasWarband(u)?1-(1-p)**2:p;}
 // One unit set squarely in front of another, as a frontal charge would end.
 function frontal(e,u){const a=G.heading(u)*Math.PI/180,d=(G.size(u).h+G.size(e).h)/2,end={...e,x:u.x+Math.sin(a)*d,y:u.y-Math.cos(a)*d,heading:(G.heading(u)+180)%360};return {end,cost:Math.max(0,G.gap(e,u)),face:'front'};}
 // What a charge by `a` on `b` is worth to the bot, played out once per turn and remembered.
@@ -446,7 +446,7 @@ export function takeStep(s,random=Math.random){
   G.finishDeclarations(s,random);return {message:'The bot finishes charge declarations.'};
  }
  if(s.stage==='movement'&&s.movementStep==='charges'){
-  const u=s.units.find(u=>u.team===ME&&u.charge?.status==='declared');if(u){s.selected=u.id;const target=G.getUnit(s,u.charge.target),plan=target?.x!==null?G.chargePlan(s,u,target,{sight:false}):{error:true},first=roll(random),reroll=u.faction==='orc'&&!plan.error&&G.profile(u).M+Math.max(...first)<plan.cost,dice=reroll?roll(random):first,out=G.resolveCharge(s,u.id,dice,random);return {message:`${u.id} ${out.success?'charge succeeds':out.pursuit?'pursues fleeing target':'charge fails'} (${reroll?'Warband reroll · ':''}${dice.join(', ')}).`,roll:{label:`${u.id} · Charge roll · keep highest`,dice,team:ME}};}
+  const u=s.units.find(u=>u.team===ME&&u.charge?.status==='declared');if(u){s.selected=u.id;const target=G.getUnit(s,u.charge.target),plan=target?.x!==null?G.chargePlan(s,u,target,{sight:false}):{error:true},first=roll(random),reroll=G.hasWarband(u)&&!plan.error&&G.profile(u).M+Math.max(...first)<plan.cost,dice=reroll?roll(random):first,out=G.resolveCharge(s,u.id,dice,random);return {message:`${u.id} ${out.success?'charge succeeds':out.pursuit?'pursues fleeing target':'charge fails'} (${reroll?'Warband reroll · ':''}${dice.join(', ')}).`,roll:{label:`${u.id} · Charge roll · keep highest`,dice,team:ME}};}
   G.enterRemaining(s,random);return {message:'The bot begins remaining moves.'};
  }
  if(s.stage==='movement'){

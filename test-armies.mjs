@@ -37,9 +37,9 @@ test('the army total and the category allowances are checked',()=>{
  assert.match(errors(chaos(warriors(20),warriors(20),warriors(20),warriors(20)),750).join('\n'),/The army costs 827 points; the limit is 750/);
  assert.match(errors({faction:'chaos',entries:[{entry:'daemonsmith',general:true},{entry:'deathshrieker'},{entry:'decimators',models:5}]},400).join('\n'),/Core total 50 points is under the 25% minimum/);
 });
-test('Orcs are not offered for Battle March until an Orc General exists, and the reason is given',()=>{
- assert.match(errors({faction:'orc',entries:[{entry:'orcMob',models:20},{entry:'orcMob',models:20}]}).join('\n'),/No Orc character/);
- assert.throws(()=>G.createGame('orc',{format:'battle-march'}),/No Orc character/);
+test('an Orc & Goblin army takes its Goblin Oddgit as General; Orc Mobs alone cannot field one',()=>{
+ assert.match(errors({faction:'orc',entries:[{entry:'orcMob',models:20},{entry:'orcMob',models:20}]}).join('\n'),/Choose one eligible character as the General/);
+ assert.equal(G.createGame('orc',{format:'battle-march'}).armies.iron.roster.id,'orc-squig-750');
 });
 test('K’daai Fireborn are never offered, by player preference',()=>{
  assert.ok(!Object.values(A.ENTRIES).some(f=>Object.values(f).some(e=>/K.daai/.test(e.name))));assert.match(A.PREFERENCES.excluded[0].reason,/preference/);

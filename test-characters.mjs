@@ -13,7 +13,7 @@ test('the 500-point lists build as legal armies with their characters, options a
  const spears=s.units.find(u=>u.entry==='stateTroops');assert.deepEqual([spears.models,spears.spears,spears.shields,spears.cost],[20,true,true,155]);
  const bows=s.units.find(u=>u.entry==='missileTroops');assert.deepEqual([bows.models,bows.command],[10,{C:false,S:false,M:true}]);
  const dec=s.units.find(u=>u.entry==='decimators');assert.deepEqual([dec.models,dec.shields,dec.cost],[9,true,105]);assert.equal(s.units.find(u=>u.entry==='warriors').models,19);
- assert.equal(A.defaultRoster('orc',500),null);
+ assert.equal(A.defaultRoster('orc',500).id,'orc-squig-750','the squig list, partly built');
 });
 test('the Captain has his profile, full plate armour, and a great weapon at S+2 that strikes last',()=>{
  const s=game500(),captain=s.units.find(u=>u.role==='character'),warriors=s.units.find(u=>u.entry==='warriors');

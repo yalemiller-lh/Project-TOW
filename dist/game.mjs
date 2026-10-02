@@ -28,8 +28,19 @@ export function allPieces(s){return [...s.units,s.rocket,...(s.cannons??[])].fil
 export const PROFILE={M:3,WS:4,BS:3,S:3,T:4,W:1,I:2,A:1,Ld:9,save:4};
 export const SIZE={w:125/25.4,h:100/25.4};
 export const FACTIONS={chaos:{name:'Chaos Dwarf Warriors',army:'Chaos Dwarfs',color:'#b63229',bright:'#ff3f39',base:25,equipment:'Hand weapons · heavy armour · shields',profile:PROFILE,heavy:true,shield:true,shieldwall:true,resolute:true},orc:{name:'Orc Mob',army:'Orc & Goblin Tribes',color:'#418248',bright:'#54ef53',base:30,equipment:'Hand weapons · light armour',profile:{M:4,WS:3,BS:3,S:3,T:4,W:1,I:3,A:1,Ld:6,save:6},choppas:true,furious:true,warband:true,impetuous:true},empire:{name:'State Troops',army:'Empire of Man',color:'#286a9a',bright:'#32aaff',base:25,equipment:'Hand weapons · light armour · shields',profile:{M:4,WS:3,BS:3,S:3,T:3,W:1,I:3,A:1,Ld:7,save:5},shield:true}};
+// Regiments with their own profile, base and rules, apart from their army's standard regiment
+// (FACTIONS), keyed by the unit's kind (Orc & Goblin Tribes, newrecruit revision 192). champion: the
+// champion's characteristic changes. Fear of Elves and Hatred (Dwarfs) never apply here: no Elves or
+// Dwarfen Mountain Holds take part (Chaos Dwarfs are not Dwarfs for Hatred, by the user's ruling).
+export const REGIMENTS={
+ nightGoblin:{name:'Night Goblins',short:'Night Goblins',base:25,equipment:'Hand weapons',profile:{M:4,WS:2,BS:3,S:3,T:3,W:1,I:3,A:1,Ld:4,save:7},champion:{A:1,Ld:1},warband:true,horde:true,rules:['fearOfElves','hatredDwarfs']},
+};
+const NO_TROOP_RULES={};
+// A unit's regiment rules: its kind's, or its army's standard regiment's (none for characters and war machines).
+const troopRules=u=>REGIMENTS[u?.kind]??(isCharacter(u)||u?.role==='warmachine'?NO_TROOP_RULES:FACTIONS[u?.faction??'chaos']);
+export const hasWarband=u=>!!troopRules(u).warband;
 export const MISSILE={chaos:{name:'Blunderbuss Decimators',equipment:'Hand weapons · blunderbusses · heavy armour',profile:{M:3,WS:3,BS:3,S:3,T:4,W:1,I:2,A:1,Ld:9,save:5},weapon:{name:'Hailshot blunderbuss',range:12,strength:3,ap:1,multiple:'D3',volley:true,ignoreLong:true,ignoreStand:true,hailshot:true}},empire:{name:'State Missile Troops',equipment:'Hand weapons · crossbows',profile:{M:4,WS:3,BS:3,S:3,T:3,W:1,I:3,A:1,Ld:7,save:7},weapon:{name:'Crossbow',range:30,strength:4,ap:0,armourBane:2,ponderous:true}},orc:{name:'Orc Mob · Warbows',equipment:'Hand weapons · warbows · light armour',profile:{M:4,WS:3,BS:3,S:3,T:4,W:1,I:3,A:1,Ld:6,save:6},weapon:{name:'Warbow',range:24,strength:3,ap:0,volley:true}}};
-export const WIZARDS={chaos:{name:'Daemonsmith Sorcerer',equipment:'Hand weapon · heavy armour · Blackshard armour · Ensorcelled weapon',profile:{M:3,WS:4,BS:4,S:4,T:4,W:2,I:2,A:2,Ld:9,save:5},lore:'daemonology',rules:['loreOfHashut']},empire:{name:'Master Mage (Battlemage)',equipment:'Hand weapon',profile:{M:4,WS:3,BS:3,S:3,T:3,W:2,I:3,A:1,Ld:7,save:7},lore:'battle'}};
+export const WIZARDS={chaos:{name:'Daemonsmith Sorcerer',equipment:'Hand weapon · heavy armour · Blackshard armour · Ensorcelled weapon',profile:{M:3,WS:4,BS:4,S:4,T:4,W:2,I:2,A:2,Ld:9,save:5},lore:'daemonology',rules:['loreOfHashut']},empire:{name:'Master Mage (Battlemage)',equipment:'Hand weapon',profile:{M:4,WS:3,BS:3,S:3,T:3,W:2,I:3,A:1,Ld:7,save:7},lore:'battle'},orc:{name:'Goblin Oddgit',equipment:'Hand weapon',profile:{M:4,WS:3,BS:3,S:3,T:3,W:2,I:3,A:1,Ld:6,save:7},lore:'elementalism',base:25}};
 export const CHARACTERS={empireCaptain:{name:'Captain of the Empire',profile:{M:4,WS:5,BS:5,S:4,T:4,W:2,I:4,A:2,Ld:9},equipment:'Hand weapon'}};
 const ARMOUR_SAVE={fullPlate:4,heavy:5,light:6};
 export const isCharacter=u=>u?.role==='wizard'||u?.role==='character';
@@ -46,16 +57,16 @@ function mounted(u,p){if(!u?.mount||!p)return p;const m=MOUNTS[u.mount];if(!m)re
 // The mount striking for itself: the rider's state, the mount's characteristics, no weapon of the rider's.
 export const mountProxy=u=>({...u,mountAttack:true,weapon:null,role:'mount'});
 export const baseProfile=u=>mounted(u,riderProfile(u));
-const riderProfile=u=>u?.role==='character'||u?.role==='mount'&&u.kind?{...CHARACTERS[u.kind].profile,save:ARMOUR_SAVE[u.armour]??7}:u?.role==='warmachine'?{...WAR_MACHINE_CREW[u.faction].profile,A:Math.max(0,u.crew)}:u?.role==='wizard'?{...WIZARDS[u.faction].profile,T:WIZARDS[u.faction].profile.T+(u.petrified??0)}:u?.role==='missile'?MISSILE[u.faction].profile:FACTIONS[u?.faction??'chaos'].profile;
+const riderProfile=u=>u?.role==='character'||u?.role==='mount'&&u.kind?{...CHARACTERS[u.kind].profile,save:ARMOUR_SAVE[u.armour]??7}:u?.role==='warmachine'?{...WAR_MACHINE_CREW[u.faction].profile,A:Math.max(0,u.crew)}:u?.role==='wizard'?{...WIZARDS[u.faction].profile,T:WIZARDS[u.faction].profile.T+(u.petrified??0)}:u?.role==='missile'?MISSILE[u.faction].profile:troopRules(u).profile;
 export const profile=u=>withEffects(u,baseProfile(u));
 export const equipment=u=>[riderEquipment(u),u?.mount&&MOUNTS[u.mount]?`${MOUNTS[u.mount].name} (WS${MOUNTS[u.mount].profile.WS} S${MOUNTS[u.mount].profile.S} I${MOUNTS[u.mount].profile.I} A${MOUNTS[u.mount].profile.A}${MOUNTS[u.mount].barding?', barding':''}${MOUNTS[u.mount].fly?', Fly '+MOUNTS[u.mount].fly:''})`:null].filter(Boolean).join(' · ');
-const riderEquipment=u=>u?.role==='character'?[CHARACTERS[u.kind].equipment,u.weapon==='greatWeapon'?'great weapon':null,{fullPlate:'full plate armour',heavy:'heavy armour',light:'light armour'}[u.armour]].filter(Boolean).join(' · '):u?.role==='wizard'?WIZARDS[u.faction].equipment:u?.role==='missile'?MISSILE[u.faction].equipment:FACTIONS[u?.faction??'chaos'].equipment;
+const riderEquipment=u=>u?.role==='character'?[CHARACTERS[u.kind].equipment,u.weapon==='greatWeapon'?'great weapon':null,{fullPlate:'full plate armour',heavy:'heavy armour',light:'light armour'}[u.armour]].filter(Boolean).join(' · '):u?.role==='wizard'?WIZARDS[u.faction].equipment:u?.role==='missile'?MISSILE[u.faction].equipment:REGIMENTS[u?.kind]?`${REGIMENTS[u.kind].equipment}${u.shields?' · shields':''}`:FACTIONS[u?.faction??'chaos'].equipment;
 export const missileWeapon=u=>u?.role==='missile'?MISSILE[u.faction].weapon:null;
 // A regiment's block is its files wide and as many ranks deep as its starting models need.
 // A regiment joined by characters has a place in its block for each of them (u.charSlots).
 export const startingModels=u=>u?.models??20,filesOf=u=>u?.files??5,ranksOf=u=>Math.ceil((startingModels(u)+(u?.charSlots?.length??0))/filesOf(u));
-export const size=u=>{if(u?.role==='warmachine')return {w:ROCKET_BASE.w,h:ROCKET_BASE.h};const b=FACTIONS[u?.faction??'chaos'].base/25.4;return isCharacter(u)?(MOUNTS[u.mount]?{w:MOUNTS[u.mount].base.w/25.4,h:MOUNTS[u.mount].base.h/25.4}:{w:b,h:b}):{w:filesOf(u)*b,h:ranksOf(u)*b};};
-export const baseSize=u=>FACTIONS[u?.faction??'chaos'].base;
+export const size=u=>{if(u?.role==='warmachine')return {w:ROCKET_BASE.w,h:ROCKET_BASE.h};const b=baseSize(u)/25.4;return isCharacter(u)?(MOUNTS[u.mount]?{w:MOUNTS[u.mount].base.w/25.4,h:MOUNTS[u.mount].base.h/25.4}:{w:b,h:b}):{w:filesOf(u)*b,h:ranksOf(u)*b};};
+export const baseSize=u=>REGIMENTS[u?.kind]?.base??(u?.role==='wizard'?WIZARDS[u?.faction]?.base:null)??FACTIONS[u?.faction??'chaos'].base;
 export const COMMAND_SLOTS={1:'M',2:'S',3:'C'};
 // A model's armour save before any attack: its armour, and its shield when it carries one. An
 // infantry regiment's printed save already counts its army's usual shields (Chaos Dwarf Warriors
@@ -71,21 +82,21 @@ export function screenedCharacter(s,from,t){
  const d=gap(from,t);return combatants(s).some(v=>v.team===t.team&&v.id!==t.id&&v.x!==null&&aliveCount(v)>0&&gap(from,v)<d-EPS);
 }
 // A spell that worsens an armour value (Plague of Rust) adds to the save after shields; 7+ is none.
-export function armourSave(u){const p=profile(u).save,worse=armourPenalty(u);if(u?.role==='infantry'&&FACTIONS[u.faction??'chaos']?.shield)return Math.min(7,(u.shields===false?p+1:p)+worse);return Math.min(7,(hasShield(u)?Math.max(2,p-1):p)+worse);}
-export function hasShield(u){return u?.shields??(u?.role==='infantry'&&!!FACTIONS[u?.faction??'chaos'].shield);}
+export function armourSave(u){const p=profile(u).save,worse=armourPenalty(u);if(u?.role==='infantry'&&troopRules(u)?.shield)return Math.min(7,(u.shields===false?p+1:p)+worse);return Math.min(7,(hasShield(u)?Math.max(2,p-1):p)+worse);}
+export function hasShield(u){return u?.shields??(u?.role==='infantry'&&!!troopRules(u).shield);}
 // Purchased command stand in the middle of the front rank: musician, standard at the centre, champion.
 export function commandSlots(u){const c=Math.floor(filesOf(u)/2),bought=u?.command??{M:true,S:true,C:true},slots={};for(const [role,col]of [['M',c-1],['S',c],['C',c+1]])if(bought[role]&&col>=0&&col<filesOf(u)&&col<startingModels(u))slots[col]=role;return slots;}
 export function commandAlive(u,role){if(isCharacter(u)||u?.role==='warmachine')return false;const entry=Object.entries(commandSlots(u)).find(([,r])=>r===role);return !!entry&&aliveCount(u)>0&&!(u.deadModels??[]).includes(Number(entry[0]));}
 // Unit Strength = models x Unit Strength per model for the troop type (war machines: starting Wounds).
 export const TROOP_TYPES={regular:{name:'Regular Infantry',perModel:1,perRank:5},heavy:{name:'Heavy Infantry',perModel:1,perRank:4},character:{name:'Infantry character',perModel:1},warmachine:{name:'War Machine',perModel:'wounds'},lightCavalry:{name:'Light Cavalry',perModel:2,perRank:5,cavalry:true},heavyCavalry:{name:'Heavy Cavalry',perModel:2,perRank:4,cavalry:true},monstrousCavalry:{name:'Monstrous Cavalry',perModel:3,perRank:3,cavalry:true}};
 export const isCavalry=u=>!!TROOP_TYPES[troopType(u)]?.cavalry;
-export function troopType(u){return u?.role==='warmachine'?'warmachine':isCharacter(u)?(MOUNTS[u.mount]?.troop??'character'):u?.troop??(FACTIONS[u?.faction??'chaos'].heavy?'heavy':'regular');}
+export function troopType(u){return u?.role==='warmachine'?'warmachine':isCharacter(u)?(MOUNTS[u.mount]?.troop??'character'):u?.troop??(troopRules(u).heavy?'heavy':'regular');}
 export function startingWounds(u){return u?.role==='warmachine'||isCharacter(u)?(u.startingWounds??(isCharacter(u)?profile(u).W:3)):startingModels(u)*(profile(u).W??1);}
 export function unitStrength(u){if(!u||aliveCount(u)===0||u.x===null&&!u.offBoardPursuit)return 0;const per=TROOP_TYPES[troopType(u)].perModel;return per==='wounds'?startingWounds(u):aliveCount(u)*per;}
 export function startingUnitStrength(u){const per=TROOP_TYPES[troopType(u)].perModel;return per==='wounds'?startingWounds(u):isCharacter(u)?per:startingModels(u)*per;}
 // The champion's own characteristics, then the same temporary effects as the rest of the unit.
-export function championProfile(u){const b=baseProfile(u);return withEffects(u,{...b,A:u.role==='missile'&&u.faction==='empire'?1:2,BS:u.role==='missile'&&u.faction==='empire'?4:b.BS,Ld:u.faction==='orc'?7:b.Ld});}
-export function setOpponent(s,faction){if(s.stage!=='deployment')throw Error('Choose the opposing army before battle starts.');if(!['orc','empire','chaos'].includes(faction))throw Error('Unknown army.');s.units=s.units.filter(u=>u.id!=='I7');for(const u of s.units.filter(u=>u.team==='iron')){u.faction=faction;u.name=u.role==='missile'?MISSILE[faction].name:FACTIONS[faction].name;u.x=null;u.y=null;}if(faction==='empire')s.units.push(createWizard('iron','empire'));s.cannons=createCannons(faction);return faction;}
+export function championProfile(u){const b=baseProfile(u),mods=REGIMENTS[u?.kind]?.champion;if(mods)return withEffects(u,{...b,...Object.fromEntries(Object.entries(mods).map(([k,v])=>[k,b[k]+v]))});return withEffects(u,{...b,A:u.role==='missile'&&u.faction==='empire'?1:2,BS:u.role==='missile'&&u.faction==='empire'?4:b.BS,Ld:u.faction==='orc'?7:b.Ld});}
+export function setOpponent(s,faction){if(s.stage!=='deployment')throw Error('Choose the opposing army before battle starts.');if(s.format?.id==='battle-march')throw Error('A Battle March opponent is an army list: start a new battle with it.');if(!['orc','empire','chaos'].includes(faction))throw Error('Unknown army.');s.units=s.units.filter(u=>u.id!=='I7');for(const u of s.units.filter(u=>u.team==='iron')){u.faction=faction;u.name=u.role==='missile'?MISSILE[faction].name:FACTIONS[faction].name;u.x=null;u.y=null;}if(faction==='empire')s.units.push(createWizard('iron','empire'));s.cannons=createCannons(faction);return faction;}
 export const PHASES=['strategy','movement','shooting','combat'];
 export const armyName=(team,s)=>team==='ash'?'Chaos Dwarfs · Red':`${FACTIONS[s?.units.find(u=>u.team==='iron')?.faction??'chaos'].army} · ${s?.units.find(u=>u.team==='iron')?.faction==='orc'?'Green':'Blue'}`;
 const EPS=1e-8,rad=d=>d*Math.PI/180;
@@ -101,7 +112,7 @@ function armyFromRoster(team,roster){
   if(e.role==='wizard'){if(units.some(u=>u.role==='wizard'))throw Error('This engine supports one wizard per army.');const m=MOUNTS[item.mount];units.push({...createWizard(team,faction,{lore:item.lore??e.lores?.default}),name:e.name,...paid,...(m?{mount:item.mount,wounds:WIZARDS[faction].profile.W+(m.wounds??0),rules:[...m.rules]}:{})});}
   else if(e.role==='warmachine'&&team==='ash'&&item.entry==='deathshrieker'){if(rocket)throw Error('This engine supports one Deathshrieker per army.');rocket={...paid};}
   else if(e.role==='warmachine'&&team==='iron'&&item.entry==='greatCannon'){if(cannons.length>=2)throw Error('This engine supports at most two Great Cannons.');cannons.push({id:'I'+(5+cannons.length),name:'Great Cannon '+'AB'[cannons.length],...machineFields('iron','empire'),x:null,y:null,heading:180,wounds:3,crew:3,shot:false,disabledUntil:0,lastShot:null,...paid});}
-  else if(e.role==='infantry'||e.role==='missile'){const id=REGIMENT_IDS[team][regiments++];if(!id)throw Error('Too many regiments for this engine.');units.push({id,team,faction,role:e.role,name:e.name,models:item.models,files:item.files??5,command:{C:!!item.command?.C,S:!!item.command?.S,M:!!item.command?.M},troop:e.troop,shields:!!(e.options?.shields&&(e.options.shields.required||item.options?.shields)),spears:!!item.options?.spears,...paid,rules:[...(e.rules??[])],heading:team==='ash'?0:180,...runtime()});}
+  else if(e.role==='infantry'||e.role==='missile'){const id=REGIMENT_IDS[team][regiments++];if(!id)throw Error('Too many regiments for this engine.');const kind=e.kind&&REGIMENTS[e.kind]?e.kind:null,letter=kind?'ABCDEFGH'[units.filter(v=>v.kind===kind).length]:null;units.push({id,team,faction,role:e.role,name:e.name,...(kind?{kind,short:REGIMENTS[kind].short,letter}:{}),models:item.models,files:item.files??5,command:{C:!!item.command?.C,S:!!item.command?.S,M:!!item.command?.M},troop:e.troop,shields:!!(e.options?.shields&&(e.options.shields.required||item.options?.shields)),spears:!!item.options?.spears,...paid,rules:[...(e.rules??[])],heading:team==='ash'?0:180,...runtime()});}
   else if(e.role==='character'){const id=CHARACTER_IDS[team][units.filter(u=>u.role==='character').length];if(!id)throw Error('Too many characters for this engine.');units.push({id,team,faction,role:'character',kind:e.kind,name:e.name,weapon:item.options?.greatWeapon?'greatWeapon':null,armour:item.options?.fullPlate?'fullPlate':null,wounds:CHARACTERS[e.kind].profile.W+(MOUNTS[item.mount]?.wounds??0),mount:MOUNTS[item.mount]?item.mount:null,...paid,rules:[...(e.rules??[]),...(MOUNTS[item.mount]?.rules??[])],heading:team==='ash'?0:180,...runtime()});}
   else throw Error(`${e.name} cannot be fielded by this engine for this side.`);
  }
@@ -1611,7 +1622,7 @@ export function hitTarget(attacker,defender){const a=profile(attacker).WS,d=prof
 export function woundTarget(attacker,defender){return Math.max(2,Math.min(6,4+profile(defender).T-profile(attacker).S-(attacker.weapon==='greatWeapon'?2:0)));}
 // Parry: in close combat a regiment's hand weapons and shields improve its save by one more, to 3+ at best.
 const parry=u=>u?.role==='infantry'&&hasShield(u)&&armourSave(u)>3?1:0;
-export function saveTarget(defender,attacker){let target=armourSave(defender)-parry(defender)+apBonus(attacker)+(attacker.weapon==='greatWeapon'?2:0)+(FACTIONS[attacker.faction??'chaos'].choppas&&attacker.charge?.status==='success'?1:0)+(attacker.role==='wizard'&&attacker.faction==='chaos'?1:0);return Math.max(2,Math.min(7,target));}
+export function saveTarget(defender,attacker){let target=armourSave(defender)-parry(defender)+apBonus(attacker)+(attacker.weapon==='greatWeapon'?2:0)+(troopRules(attacker).choppas&&attacker.charge?.status==='success'?1:0)+(attacker.role==='wizard'&&attacker.faction==='chaos'?1:0);return Math.max(2,Math.min(7,target));}
 // ---- Difficult ground and Disruption ----
 // Terrain features are circles {x,y,r} or polygons {points}; movement is 'open', 'difficult',
 // 'dangerous' or 'impassable' (older records say impassable:true). Every vortex template in play
@@ -1719,11 +1730,11 @@ export function disruption(s,u){const out=[];if(!u||u.x===null)return out;
 export const isDisrupted=(s,u)=>disruption(s,u).length>0;
 // Ranks behind the first count when they hold at least the troop type's models per rank
 // (5 regular, 4 heavy infantry); casualties come off the rear, so the front ranks stay full.
-function rankBonus(u){const alive=aliveCount(u),files=filesOf(u),full=Math.floor(alive/files),partial=alive%files,need=Math.min(files,TROOP_TYPES[troopType(u)].perRank??files);return full<1?0:Math.min(2,full-1+(partial>=need?1:0));}
+function rankBonus(u){const alive=aliveCount(u),files=filesOf(u),full=Math.floor(alive/files),partial=alive%files,need=Math.min(files,TROOP_TYPES[troopType(u)].perRank??files);return full<1?0:Math.min(2+(troopRules(u).horde?1:0),full-1+(partial>=need?1:0));}
 // Leadership for a test: the unit's own (or its champion's), or the General's through Inspiring
 // Presence when s is given, then a Warband's rank bonus and a musician's +1 to march and rally.
 // A unit tests on the highest Leadership among its models: its champion's, a joined character's.
-export function leadership(u,kind='normal',s=null){const own=Math.max(commandAlive(u,'C')&&!u.championRetired?Math.max(profile(u).Ld,championProfile(u).Ld):profile(u).Ld,...(s?joinedCharacters(s,u).filter(c=>!c.retired).map(c=>profile(c).Ld):[])),base=Math.max(own,inspiringPresence(s,u)??0);return Math.min(10,base+(FACTIONS[u.faction??'chaos'].warband&&kind!=='restraint'&&!u.fleeing&&!(s&&isDisrupted(s,u))?rankBonus(u):0)+(commandAlive(u,'M')&&(kind==='march'||kind==='rally')?1:0));}
+export function leadership(u,kind='normal',s=null){const own=Math.max(commandAlive(u,'C')&&!u.championRetired?Math.max(profile(u).Ld,championProfile(u).Ld):profile(u).Ld,...(s?joinedCharacters(s,u).filter(c=>!c.retired).map(c=>profile(c).Ld):[])),base=Math.max(own,inspiringPresence(s,u)??0);return Math.min(10,base+(troopRules(u).warband&&kind!=='restraint'&&!u.fleeing&&!(s&&isDisrupted(s,u))?rankBonus(u):0)+(commandAlive(u,'M')&&(kind==='march'||kind==='rally')?1:0));}
 // Casualties already suffered in this combat count against the first fighting rank, then the
 // second (never the champion); the models that stepped forward from the rear cannot attack.
 function stepForward(models,lost){let drop=lost;return [...models].sort((a,b)=>(a.rank??0)-(b.rank??0)).filter(m=>{if(drop>0&&m.command!=='C'){drop--;return false;}return true;});}
@@ -1744,7 +1755,7 @@ export function attackAllocation(s,u,lost=0){
  return out;
 }
 function attackStage(s,attacker,defender,random,lost=0,{models=null,cap=null}={}){
- const fighting=models??stepForward(modelSquares(s,attacker).filter(m=>m.fighting&&(!m.targets||m.targets.includes(defender.id))),isCharacter(attacker)||attacker.role==='warmachine'?0:lost),faction=FACTIONS[attacker.faction??'chaos'],chopping=faction.choppas&&attacker.charge?.status==='success',dice={hit:[],wound:[],reroll:[],save:[]};
+ const fighting=models??stepForward(modelSquares(s,attacker).filter(m=>m.fighting&&(!m.targets||m.targets.includes(defender.id))),isCharacter(attacker)||attacker.role==='warmachine'?0:lost),faction=troopRules(attacker),chopping=faction.choppas&&attacker.charge?.status==='success',dice={hit:[],wound:[],reroll:[],save:[]};
  const furious=(faction.furious&&attacker.charge?.status==='success'&&attacker.charge.distance>=3?1:0)+(hasRule(attacker,'frenzy')&&attacker.charge?.status==='success'?1:0);
  const attacks=fighting.reduce((total,model)=>total+(model.command==='C'?championProfile(attacker).A:profile(attacker).A)+furious,0);dice.hit=combatDice(attacks,random);
  const toHit=Math.min(6,hitTarget(attacker,defender)+stormPenalty(s,attacker)),toWound=woundTarget(attacker,defender),toSave=saveTarget(defender,attacker);
@@ -2154,7 +2165,7 @@ function endOfMove(s,u,random=Math.random){
  for(const v of phantasms(s,u)){if(u.x===null||u.fleeing)break;const test=panicTest(s,u,{away:{x:v.x,y:v.y},cause:SPELLS[v.spell].name,random});if(!test||test.passed)u.phantasm=v.id;if(test)out.push({...test,vortex:v.id});}
  return out.length?out:null;}
 // Impetuous: an Orc Mob always; any unit made so by a Phantasmagoria while within 12″ of it.
-export function isImpetuous(s,u){if(!u)return false;if(FACTIONS[u.faction??'chaos']?.impetuous)return true;return !!u.phantasm&&phantasms(s,u).some(v=>v.id===u.phantasm);}
+export function isImpetuous(s,u){if(!u)return false;if(troopRules(u)?.impetuous)return true;return !!u.phantasm&&phantasms(s,u).some(v=>v.id===u.phantasm);}
 // ---- Panic (the user's Panic brief of 2 October 2026; rulebook: Panic Tests, No Need for
 // Hysterics, Leadership Tests, Heavy Casualties, Nearby Friend Destroyed, Nearby Friend Flees
 // Combat, Fled Through, Fall Back in Good Order) ----

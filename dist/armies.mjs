@@ -27,13 +27,16 @@ export const ENTRIES={
  },
  orc:{
   orcMob:{name:'Orc Mob',category:'core',role:'infantry',troop:'regular',perModel:5,minModels:5,command:{C:{name:'Boss',cost:7},S:{name:'Standard Bearer',cost:5},M:{name:'Musician',cost:5}}},
+  // Night Goblins: shields are free (a shortbow or thrusting spear is 1 point a model); Fanatics are 25 points each.
+  oddgit:{name:'Goblin Oddgit',category:'characters',role:'wizard',base:60,options:{level2:{name:'Wizard Level 2',cost:30,required:true},rubyRing:{name:'Ruby Ring of Ruin',cost:35,notModelled:true}},general:true,lores:{options:['elementalism','waaagh'],default:'elementalism'}},
+  nightGoblins:{name:'Night Goblins',category:'core',role:'infantry',kind:'nightGoblin',troop:'regular',perModel:3,minModels:10,options:{shields:{name:'Shields',perModel:0}},command:{C:{name:'Boss',cost:7},S:{name:'Standard Bearer',cost:5},M:{name:'Musician',cost:5}},extras:{fanatics:{name:'Fanatic',cost:25,notModelled:true}}},
  },
 };
 // Rules of these armies not modelled yet, shown to the player instead of guessing.
 export const NOT_MODELLED={chaos:['The Daemonsmith’s ridden monsters (Great Taurus, Bale Taurus, Lammasu) are not modelled: a Level 2 Daemonsmith on one is over the 25% character allowance at 500–750 points anyway.'],empire:['Counter Charge (Barded Warhorse, Pegasus) is not modelled.','A Pegasus flies when it moves; its charges are made on the ground.','A mounted character cannot join an infantry regiment here (it would stand on the flank).']};
 // Gaps this engine cannot yet represent; shown to the player instead of guessing.
 export const GAPS={
- orc:['No Orc character (Orc Bigboss, 55 points) is modelled yet, so an Orc army cannot field the General Battle March requires.','Orc Mob warbows have no points cost in the source data (revision 192), so warbow mobs are not offered.'],
+ orc:['Orc Mob warbows have no points cost in the source data (revision 192), so warbow mobs are not offered.'],
 };
 
 const US_PER_MODEL={regular:1,heavy:1};
@@ -43,6 +46,7 @@ export function entryCost(faction,item){
  for(const [k,o]of Object.entries(e.options??{}))if(o.required||item.options?.[k])cost+=(o.cost??0)+(o.perModel??0)*models;
  for(const [k,c]of Object.entries(e.command??{}))if(item.command?.[k])cost+=c.cost;
  if(item.mount)cost+=e.mounts?.[item.mount]?.cost??0;
+ for(const [k,x]of Object.entries(e.extras??{}))cost+=(item[k]??0)*x.cost;
  return cost;
 }
 export function entryUnitStrength(faction,item){const e=entryOf(faction,item.entry);return e.role==='warmachine'?3:e.role==='wizard'||e.role==='character'?(e.mounts?.[item.mount]?.us??1):item.models*(US_PER_MODEL[e.troop]??1);}
@@ -54,7 +58,7 @@ export const BATTLE_MARCH_LIMITS={entry:{characters:25,core:35,special:30,rare:2
 const CATEGORY_NAME={characters:'character',core:'Core unit',special:'Special unit',rare:'Rare unit',mercenaries:'Mercenary unit'};
 const fmt=n=>Number.isInteger(n)?String(n):n.toFixed(1);
 // Lores of Magic by key; the engine implements all four a Daemonsmith may know.
-export const LORE_NAMES={battle:'Battle Magic',daemonology:'Daemonology',darkMagic:'Dark Magic',elementalism:'Elementalism'};
+export const LORE_NAMES={battle:'Battle Magic',daemonology:'Daemonology',darkMagic:'Dark Magic',elementalism:'Elementalism',waaagh:'Waaagh! Magic'};
 export const LORES_IMPLEMENTED=['battle','daemonology','darkMagic','elementalism'];
 export function validateRoster(roster,points,{format='battle-march'}={}){
  const errors=[],faction=roster.faction,entries=roster.entries,total=rosterCost(roster),L=BATTLE_MARCH_LIMITS;
@@ -65,6 +69,8 @@ export function validateRoster(roster,points,{format='battle-march'}={}){
   if(PREFERENCES.excluded.some(x=>x.name===e.name))errors.push(`${e.name} is excluded by player preference.`);
   if(e.perModel&&(!Number.isInteger(item.models)||item.models<e.minModels))errors.push(`${label} needs at least ${e.minModels} models; it has ${item.models}.`);
   if(item.mount&&!e.mounts?.[item.mount])errors.push(`${label} cannot ride that mount.`);
+  for(const [k,o]of Object.entries(e.options??{}))if(o.notModelled&&item.options?.[k])errors.push(`${label}: ${o.name} is not modelled yet.`);
+  for(const [k,x]of Object.entries(e.extras??{}))if(x.notModelled&&item[k])errors.push(`${label}: ${x.name}s are not modelled yet.`);
   if(e.maxModels&&item.models>e.maxModels)errors.push(`${label} may have at most ${e.maxModels} models; it has ${item.models}.`);
   if(e.lores){const lore=item.lore??e.lores.default;if(!e.lores.options.includes(lore))errors.push(`${label} cannot use ${LORE_NAMES[lore]??lore}.`);else if(!LORES_IMPLEMENTED.includes(lore))errors.push(`${LORE_NAMES[lore]} is not implemented yet.`);}
   if(format!=='battle-march')continue;
@@ -104,8 +110,13 @@ export const LISTS={
   {entry:'missileTroops',models:10,command:{M:true}},
   {entry:'greatCannon'},
  ]},
- 'orc-500':{name:'Orc & Goblin Tribes · 500 (squigs)',faction:'orc',points:500,entries:[],playable:false,
-  missing:['Night Goblin Warboss on Giant Cave Squig (General)','Night Goblin Oddgit, Level 2 (Lore of Illusion)','20 Night Goblins with shields, full command and a Fanatic','Night Goblin Squig Herd (5 Cave Squigs, 1 Herder)','6 Night Goblin Squig Hoppers with cavalry spears','Mangler Squig']},
+ // The user's squig list of 2 October 2026 (748 points), built a unit at a time: what is not modelled
+ // yet is left out and listed in `missing`.
+ 'orc-squig-750':{name:'Orc & Goblin Tribes · 750 (squigs, partly built)',faction:'orc',points:750,entries:[
+  {entry:'oddgit',general:true,lore:'elementalism'},
+  {entry:'nightGoblins',models:30,options:{shields:true},command:{C:true,S:true,M:true}},
+  {entry:'nightGoblins',models:20,options:{shields:true},command:{C:true,S:true,M:true}},
+ ],missing:['Ruby Ring of Ruin on the Goblin Oddgit (35 points)','2 Fanatics with the 30 Night Goblins (50 points)','Night Goblin Warboss with great weapon, light armour, Giant Cave Squig, Charmed Shield and Potion of Foolhardiness (97 points)','2 Night Goblin Squig Herds, 5 Cave Squigs and 1 Herder each (53 points each)','7 Night Goblin Squig Hoppers with cavalry spears (91 points)','Mangler Squig (95 points)']},
 };
 // Every roster offered for a faction, best match for the points limit first.
 export function rostersFor(faction,points){const all=[...Object.entries(LISTS).filter(([,l])=>l.faction===faction).map(([id,l])=>({id,...l})),...Object.entries(PRESETS).filter(([,l])=>l.faction===faction).map(([id,l])=>({id:'sample-'+id,points:750,...l,name:l.name+' · 750 sample'}))];return all.sort((x,y)=>(x.points<=points?0:1)-(y.points<=points?0:1)||Math.abs(points-x.points)-Math.abs(points-y.points));}

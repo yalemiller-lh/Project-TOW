@@ -22,14 +22,16 @@ export function unitName(unit){
  if(unit.role==='warmachine')return unit.name;
  if(unit.role==='wizard')return unit.name;
  if(unit.role==='missile')return unit.name;
+ if(unit.letter)return `${unit.name} ${unit.letter}`;
  return `${unit.name} ${'ABC'[Number(unit.id.slice(1))-1]??unit.id}`;
 }
 export function shortName(unit){
  if(!unit)return '';
  if(unit.role==='character')return unit.kind==='empireCaptain'?'Captain':unit.name;
  if(unit.role==='warmachine')return unit.faction==='chaos'?'Deathshrieker':unit.name;
- if(unit.role==='wizard')return unit.faction==='chaos'?'Daemonsmith':unit.name==='Master Mage'?'Master Mage':'Battlemage';
+ if(unit.role==='wizard')return unit.faction==='chaos'?'Daemonsmith':unit.faction==='orc'?'Oddgit':unit.name==='Master Mage'?'Master Mage':'Battlemage';
  if(unit.role==='missile')return unit.faction==='chaos'?'Decimators':unit.faction==='empire'?'Missile Troops':'Warbows';
+ if(unit.short)return `${unit.short} ${unit.letter??''}`.trim();
  return `${unit.faction==='chaos'?'Warriors':unit.faction==='empire'?'State Troops':'Orc Mob'} ${'ABC'[Number(unit.id.slice(1))-1]??''}`;
 }
 // A rocket's direct casualties, unit by unit (anything lost retreating afterwards is the Panic log's).
