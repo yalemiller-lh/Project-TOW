@@ -24,7 +24,7 @@ export function points(u){return (u.cost??(u.role==='warmachine'?110:G.isCharact
 let scoring=false;
 function lossOf(u,ref){const full=points(ref)+(G.commandAlive(ref,'S')?25:0);if(u.destroyed||u.x===null&&!u.offBoardPursuit)return full;const left=G.remainingWounds(u)/Math.max(1,G.startingWounds(u));let v=points(ref)*(1-left);if(u.fleeing)v=Math.max(v,full*.6);if(!scoring)return v;const vp=u.fleeing||left<=.25+1e-9?points(ref)/2:0;return (v+vp)/2;}
 // Enemy losses minus the bot's own, from one state to another.
-export function swing(before,after){scoring=!!before.objectives;let v=0;for(const b of G.combatants(before)){const a=G.getUnit(after,b.id);if(!a)continue;const d=lossOf(a,b)-lossOf(b,b);v+=b.team===ME?-d:d;}return v;}
+export function swing(before,after){scoring=!!before.objectives;let v=0;for(const b of G.allPieces(before)){const a=G.getUnit(after,b.id);if(!a)continue;const d=lossOf(a,b)-lossOf(b,b);v+=b.team===ME?-d:d;}return v;}
 const asList=v=>Array.isArray(v)?v:v?[v]:[];
 // A fight played out: each charger set in contact as a successful charger (with any already in
 // the fight), then every Initiative step, the result, the Break test, the flight and the pursuit.
@@ -61,7 +61,7 @@ function frontal(e,u){const a=G.heading(u)*Math.PI/180,d=(G.size(u).h+G.size(e).
 // What a charge by `a` on `b` is worth to the bot, played out once per turn and remembered.
 function matchup(s,a,b){const m=recall(s),fights=m.fights,turn=`${s.round}:${s.team}`;if(m.fightTurn!==turn){fights.clear();m.fightTurn=turn;}const key=`${a.id}>${b.id}:${G.aliveCount(a)}:${G.aliveCount(b)}`;if(!fights.has(key)){const plan=G.chargePlan(s,a,b);fights.set(key,playFight(s,[{u:a,t:b,plan:plan.error?frontal(a,b):plan}],a.id,a.team,12).value);}return fights.get(key);}
 // The enemy regiments that could charge, and are worth worrying about.
-const chargers=s=>s.units.filter(e=>e.team===THEM&&alive(e)&&!e.fleeing&&!e.engaged&&e.role!=='warmachine');
+const chargers=s=>s.units.filter(e=>e.team===THEM&&alive(e)&&!e.fleeing&&!e.engaged&&!e.joined&&e.role!=='warmachine');
 // How a spot looks for a unit: the fights enemies could start against it next turn (each weighed
 // by the chance its charge arrives) and the fights it could start itself.
 // At the end of the battle there is no turn to come: the enemy cannot answer the bot's last

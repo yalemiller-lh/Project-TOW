@@ -440,7 +440,7 @@ function renderOrders(){
   const u=G.getUnit(state),deploy=state.stage==='deployment',active=G.canAct(state,u);
   renderMovementBar(u);$('unitBadge').textContent=u.team==='ash'?'CHAOS DWARFS':armyName('iron').toUpperCase();$('unitName').textContent=P.unitName(u);$('unitSubtitle').textContent=`${armyName(u.team)} · ${G.isCharacter(u)?u.wounds+' / '+G.startingWounds(u)+' W'+(u.role==='wizard'?', Level 2 wizard':'')+(u.general?', General':''):G.aliveCount(u)+' / '+G.startingModels(u)+' surviving'} · facing ${Math.round(G.heading(u))}°`;
   const p=G.profile(u),f=G.FACTIONS[u.faction],keys=['M','WS','BS','S','T','W','I','A','Ld'];$('profileTitle').textContent=u.name+' profile';$('profileSave').textContent=p.save<=6?p.save+'+ armour':'No armour';$('profileStats').replaceChildren();keys.forEach(k=>{const cell=document.createElement('td');cell.textContent=statText(u,k);$('profileStats').append(cell);});$('profileEquipment').textContent=`${G.equipment(u)} · ${f.base} × ${f.base} mm base${u.role==='wizard'?' · one character':'s · 5 files × 4 ranks'}`;
-  const vanguardMove=deploy&&state.vanguard?.active===u.id;$('deployControls').hidden=!deploy||vanguardMove;$('moveControls').hidden=!vanguardMove&&(state.stage!=='movement'||state.movementStep!=='remaining');renderSpecialDeploy(u);renderArrival(u);renderChargeControls(u);renderShootingControls(u);renderCombatControls(u);renderMagicControls(u);renderDispelControls(u);renderRaidControls(u);
+  const vanguardMove=deploy&&state.vanguard?.active===u.id;$('deployControls').hidden=!deploy||vanguardMove;$('moveControls').hidden=!vanguardMove&&(state.stage!=='movement'||state.movementStep!=='remaining');renderSpecialDeploy(u);renderArrival(u);renderJoinControls(u);renderChargeControls(u);renderShootingControls(u);renderCombatControls(u);renderMagicControls(u);renderDispelControls(u);renderRaidControls(u);
   const strip=$('unitOrders').querySelector('.move-step-strip');strip.hidden=state.stage!=='movement';for(const [i,cell]of [...strip.children].entries()){const active={declare:0,reactions:1,charges:2,remaining:3}[state.movementStep]??3;cell.className=i===active?'active':i<active?'complete':'';}
   $('rallyControls').hidden=state.stage!=='strategy'||u.team!==state.team||u.x===null||!u.fleeing;
   $('rallyButton').disabled=!!u.rallyAttempted;
@@ -609,6 +609,20 @@ function renderSpecialDeploy(u){
  const v=G.vanguardPending(state)?G.vanguardState(state):null;
  if(v&&G.vanguardUnits(state,v.next).some(w=>w.id===u.id)&&!(v.both&&!v.rollOff)){if(v.active===u.id)note('Vanguard move: an ordinary move (it may manoeuvre, not march). Finish it from the main button.');else if(!v.active){add('Make a Vanguard move',()=>{G.beginVanguard(state,u.id);ordersOpen=true;resetOrder();notify(`${P.shortName(u)} makes its Vanguard move: move it, then finish.`);},true);add('No Vanguard move',()=>{G.endVanguard(state,u.id,false);notify(`${P.shortName(u)} stays where it was deployed.`);});}}
 }
+// A character joins a friendly regiment (in deployment, or by moving into contact in Remaining
+// Moves) and can leave it again in Remaining Moves before the regiment moves.
+function renderJoinControls(u){
+ let box=$('joinControls');if(!box){$('deployControls').insertAdjacentHTML('beforebegin','<div id="joinControls" class="special-deploy"></div>');box=$('joinControls');}
+ box.replaceChildren();const mine=!!u&&G.isCharacter(u)&&humanSide(u.team)&&u.team===(state.stage==='deployment'?u.team:state.team);box.hidden=!mine;if(!mine)return;
+ const note=text=>{const p=document.createElement('p');p.className='control-help';p.textContent=text;box.append(p);};
+ if(u.joined){const host=G.getUnit(state,u.joined);note(`Joined to ${P.shortName(host)}: it stands in the front rank and moves, flees and pursues with the unit, which tests on the highest Leadership among its models. Enemy shooting cannot pick it out while five or more rank and file remain.`);
+  if(state.stage==='movement'&&state.movementStep==='remaining'){const spot=G.leaveSpot(state,u.id),why=spot?null:G.leaveError(state,u.id,{x:u.x,y:u.y});const b=document.createElement('button');b.className='quiet wide';b.textContent='Leave the unit';b.disabled=!spot;b.title=why??'';b.onclick=()=>safely(()=>{G.leaveUnit(state,u.id,spot);notify(`${P.shortName(u)} steps out of ${P.shortName(host)}.`);});box.append(b);if(!spot&&why)note(why);}
+  return;}
+ const can=(state.stage==='deployment'&&!u.deployed)||(state.stage==='movement'&&state.movementStep==='remaining'&&G.canAct(state,u));if(!can)return;
+ const hosts=state.units.filter(v=>v.team===u.team&&!G.isCharacter(v)&&v.x!==null).map(v=>({v,why:G.joinError(state,u.id,v.id)}));if(!hosts.length)return;
+ const pick=document.createElement('select');pick.setAttribute('aria-label','Unit to join');for(const {v,why}of hosts){const o=new Option(P.unitName(v)+(why?' · '+why:''),v.id);o.disabled=!!why;pick.append(o);}const first=hosts.find(h=>!h.why);if(first)pick.value=first.v.id;
+ const b=document.createElement('button');b.className='secondary wide';b.textContent=state.stage==='deployment'?'Deploy it with this unit':'Join this unit';b.disabled=!first;b.onclick=()=>safely(()=>{const out=G.joinUnit(state,u.id,pick.value);notify(`${P.shortName(u)} joins ${pieceName(out.unit)}${state.stage==='movement'?'; that unit cannot move again this phase':''}.`);});
+ box.append(pick,b);}
 // An arriving unit of Ambushers: choose the battlefield edge and where along it, or let the game find a place.
 function renderArrival(u){
  let box=$('arrivalControls');if(!box){$('moveControls').insertAdjacentHTML('beforebegin','<div id="arrivalControls" class="special-deploy"></div>');box=$('arrivalControls');}

@@ -51,12 +51,13 @@ export function placeObjective(s,id,x,y){const error=objectivePlacementError(s,i
 // ---- Control ----------------------------------------------------------------------------------
 // Rules measurement: from the unit's footprint to the objective's footprint.
 export function objectiveDistance(u,obj){return G.circleGap(G.corners(u),obj);}
-export function canControl(u){return !!u&&u.x!==null&&G.aliveCount(u)>0&&!u.fleeing&&!u.stupid&&G.unitStrength(u)>=MIN_CONTROL_US;}
+// A unit's Unit Strength here counts the characters who have joined it.
+export function canControl(u,s=null){return !!u&&u.x!==null&&G.aliveCount(u)>0&&!u.fleeing&&!u.stupid&&!u.joined&&(s?G.unitStrengthWith(s,u):G.unitStrength(u))>=MIN_CONTROL_US;}
 // Closest eligible unit controls; equally close, higher Unit Strength; still tied between the
 // armies, the objective is contested.
 export function controlOf(s,obj){
  if(obj.removed)return {controller:null,unit:null,contested:false,reason:`Burned by ${label(G.getUnit(s,obj.removed.unit))} (Raid & Burn).`};
- const eligible=G.combatants(s).filter(canControl).map(u=>({u,d:objectiveDistance(u,obj),us:G.unitStrength(u)})).filter(e=>e.d<=CONTROL_RANGE+TOLERANCE);
+ const eligible=G.combatants(s).filter(u=>canControl(u,s)).map(u=>({u,d:objectiveDistance(u,obj),us:G.unitStrengthWith(s,u)})).filter(e=>e.d<=CONTROL_RANGE+TOLERANCE);
  if(!eligible.length)return {controller:null,unit:null,contested:false,reason:'No eligible unit within 3″ (Unit Strength 5+, not fleeing).'};
  const closest=Math.min(...eligible.map(e=>e.d)),near=eligible.filter(e=>e.d<=closest+TOLERANCE),top=Math.max(...near.map(e=>e.us)),best=near.filter(e=>e.us===top).sort((a,b)=>a.d-b.d||a.u.id.localeCompare(b.u.id));
  if(new Set(best.map(e=>e.u.team)).size>1){const a=best.find(e=>e.u.team==='ash'),b=best.find(e=>e.u.team==='iron');return {controller:null,unit:null,contested:true,reason:`Contested: ${label(a.u)} and ${label(b.u)} are equally close (${fmt(closest)}″) with equal Unit Strength ${top}.`};}
@@ -90,7 +91,7 @@ export function endOfTurn(s,team){
 export function raidAllowed(s){return !!s.format?.optional?.raidAndBurn&&!!s.objectives?.items.some(o=>o.kind==='trove');}
 // Troves this unit can start destroying: it moved into base contact in Remaining Moves.
 export function raidOptions(s,u){
- if(!raidAllowed(s)||!u||s.stage!=='movement'||s.movementStep!=='remaining'||u.team!==s.team||u.raiding||u.engaged||u.charge?.status==='success'||!((u.spent??0)>0)||!canControl(u))return [];
+ if(!raidAllowed(s)||!u||s.stage!=='movement'||s.movementStep!=='remaining'||u.team!==s.team||u.raiding||u.engaged||u.charge?.status==='success'||!((u.spent??0)>0)||!canControl(u,s))return [];
  return s.objectives.items.filter(o=>o.kind==='trove'&&!o.removed&&!G.combatants(s).some(v=>v.raiding?.trove===o.id)&&objectiveDistance(u,o)<=TOLERANCE);
 }
 export function startRaid(s,unitId,troveId){
@@ -127,7 +128,7 @@ export function score(s,{final=s.stage==='finished'}={}){
  const lines={ash:[],iron:[]};
  for(const e of s.scoring?.ledger??[])lines[e.team].push({kind:e.kind==='raid'?'raid':'objective',vp:e.vp,detail:e.detail,round:e.round,committed:true});
  for(const t of s.trophies??[])lines[t.team].push({kind:'standard',vp:BONUS_VP.standard,detail:`Captured the standard of ${label(G.getUnit(s,t.unit))}`,round:t.round,committed:true});
- for(const u of G.combatants(s)){
+ for(const u of G.allPieces(s)){
   const scorer=other(u.team),c=casualtyVP(u);if(c.vp)lines[scorer].push({kind:'casualty',vp:c.vp,detail:`${label(u)} ${c.reason} (${c.vp===u.cost?'full':'half of'} ${u.cost} pts)`,committed:final});
   const gone=u.destroyed?(u.leftBoard==='fled'?'fled off the battlefield':'slain'):u.fleeing?'fleeing':null;
   if(u.general&&gone)lines[scorer].push({kind:'general',vp:BONUS_VP.general,detail:`Enemy General ${label(u)} ${gone}`,committed:final});

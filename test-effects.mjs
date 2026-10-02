@@ -50,7 +50,7 @@ test('Inspiring Presence: within the General\'s Command range a unit uses the Ge
  Object.assign(g,{x:20,y:10,heading:180});Object.assign(u,{x:20,y:10+G.size(g).h/2+2+G.size(u).h/2,heading:180});assert.ok(Math.abs(G.gap(g,u)-2)<1e-6);
  assert.equal(G.leadership(u,'normal',s),9);assert.equal(G.leadership(u),7,'without the battle state, its own');
  G.addEffect(s,[u],effect([{stat:'Ld',add:-2,min:2}],{rules:[{block:'inspiringPresence'}]}));assert.equal(G.leadership(u,'normal',s),5,'Gathering Darkness: Ld -2 and no Inspiring Presence');u.effects=[];
- u.y=10+G.size(g).h/2+12+G.size(u).h/2;assert.equal(G.leadership(u,'normal',s),7,'12″ away: outside Ld 9″');
+ u.y=10+G.size(g).h/2+12+G.size(u).h/2;assert.equal(G.leadership(u,'normal',s),9,'12″ away: the General’s Command range is 12″, whatever its Leadership');u.y+=.5;assert.equal(G.leadership(u,'normal',s),7,'beyond 12″');
  u.y=10+G.size(g).h/2+2+G.size(u).h/2;g.fleeing=true;assert.equal(G.leadership(u,'normal',s),7,'a fleeing General inspires no one');
 });
 test('spells on a unit are listed with their caster and exact expiry',()=>{
