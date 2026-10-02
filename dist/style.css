@@ -272,3 +272,6 @@ input[type=range]{accent-color:var(--army-primary)}.charge-step{background:var(-
 .spell-shape{fill:#b07cff38;stroke:#d7b8ff;stroke-width:2px;pointer-events:none}
 .vortex-elementalSpirit{fill:#8fb9c6aa}
 .vortex-phantasmagoria{fill:#6d3fa8aa}
+/* Save / Load */
+.save-dialog .save-note{margin:6px 0 10px;color:var(--muted,#b9b2a3);font-size:13px}
+.save-resume{display:grid;gap:4px;margin:0 0 12px}.save-resume small{color:var(--muted,#b9b2a3)}
