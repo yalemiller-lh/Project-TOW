@@ -19,7 +19,7 @@ test('a rocket on a war machine hits machine and crew as one model: Toughness 6,
 });
 test('a cannonball through the Deathshrieker wounds it once on 2+; grapeshot needs 6s',()=>{
  const s=duel('iron');const report=G.fireCannon(s,'I5','A5','ball',{strike:6,bounce:2},()=>.99,{aimShort:6});
- const hit=report.affected.find(a=>a.unit==='A5');assert.ok(hit,'the ball strikes the launcher');assert.equal(hit.toWound,2);assert.equal(s.rocket.wounds,2);assert.equal(s.rocket.crew,2);
+ const hit=report.affected.find(a=>a.unit==='A5');assert.ok(hit,'the ball strikes the launcher');assert.equal(hit.toWound,2);assert.ok(hit.multiple>=2&&hit.multiple<=4,'Multiple Wounds (D3+1)');assert.equal(s.rocket.wounds,Math.max(0,3-hit.wounds));assert.equal(s.rocket.crew,Math.min(3,s.rocket.wounds));
  const g=duel('iron');Object.assign(G.getUnit(g,'I5'),{y:32});const shot=G.fireCannon(g,'I5','A5','grape',{strike:6},()=>.99);
  assert.equal(shot.affected[0].toWound,6,'S4 against Toughness 6');assert.equal(g.rocket.wounds,0);assert.equal(g.rocket.x,null);assert.equal(shot.unsaved,3,'no more wounds than it has');
 });

@@ -21,7 +21,7 @@ for(const [faction,name,range] of [['empire','State Missile Troops',30],['orc','
  const blocked=duel();G.getUnit(blocked,'A4').movementMode='march';G.nextPhase(blocked);assert.equal(blocked.stage,'combat');
 }
 {
- const s=duel('empire');G.nextPhase(s);s.team='iron';const u=G.getUnit(s,'I4'),t=G.getUnit(s,'A4');let p=G.shootingPlan(s,u,t);assert.equal(p.half,15);assert.equal(p.toHit,4);u.spent=2;p=G.shootingPlan(s,u,t);assert.equal(p.toHit,5);assert.ok(p.modifiers.some(m=>m.label==='Moved'&&m.value===-1));u.movementMode='march';assert.match(G.shootingPlan(s,u,t).error,/cannot shoot/);
+ const s=duel('empire');G.nextPhase(s);s.team='iron';const u=G.getUnit(s,'I4'),t=G.getUnit(s,'A4');let p=G.shootingPlan(s,u,t);assert.equal(p.half,15);assert.equal(p.toHit,4);u.spent=2;p=G.shootingPlan(s,u,t);assert.equal(p.toHit,6,'crossbows are Ponderous: −2 after moving');assert.ok(p.modifiers.some(m=>m.label==='Moved (Ponderous)'&&m.value===-2));u.movementMode='march';assert.match(G.shootingPlan(s,u,t).error,/cannot shoot/);
  assert.equal(G.canShoot(s,u),false);assert.throws(()=>G.shoot(s,u.id,t.id),/cannot shoot/);
  u.movementMode='advance';u.fleeing=true;assert.equal(G.canShoot(s,u),false);assert.throws(()=>G.shoot(s,u.id,t.id),/cannot shoot/);
 }

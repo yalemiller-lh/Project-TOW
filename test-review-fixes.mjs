@@ -104,3 +104,12 @@ test('Panic: one test a phase for each unit; a Frenzied unit passes',()=>{
  assert.ok(G.panicTest(s,t,{random:()=>0}));assert.equal(G.panicTest(s,t,{random:()=>0}),null,'No Need for Hysterics');
  const f=G.getUnit(s,'A2');f.effects=[{rule:'frenzy',source:'test'}];assert.equal(G.panicTest(s,f,{random:()=>.99}).passed,true);
 });
+test('weapon rules: crossbows have Armour Bane (2), and a cannonball stops at impassable terrain',()=>{
+ const s=G.createGame('empire');G.autoDeploy(s);G.begin(s,()=>0,{firstPlayer:'iron'});Object.assign(s,{stage:'shooting',team:'iron'});const u=G.getUnit(s,'I4'),t=G.getUnit(s,'A1');clearExcept(s,['I4','A1']);
+ Object.assign(u,{x:30,y:10,heading:180,moved:false,shot:false});Object.assign(t,{x:30,y:24,heading:0});
+ // Every die a 6 but the saves (5s): Chaos Dwarfs save 4+ (5 holds), but a 6 to wound makes it 6+ (5 fails).
+ let i=0;const r=G.shoot(s,'I4','A1',()=>i++<10?.99:.7);assert.equal(r.toSave,4);assert.equal(r.unsaved,5,'every save of 5 fails against Armour Bane (2)');
+ const c=G.createGame('empire');G.autoDeploy(c);G.begin(c,()=>0,{firstPlayer:'iron'});Object.assign(c,{stage:'shooting',team:'iron'});const can=c.cannons[0],a=G.getUnit(c,'A1');clearExcept(c,[can.id,'A1']);
+ Object.assign(can,{x:30,y:4,heading:180});Object.assign(a,{x:30,y:44,heading:0});c.terrain=[{x:30,y:40,r:1,impassable:true,blocksSight:false}];
+ const out=G.fireCannon(c,can.id,'A1','ball',{strike:4,bounce:10},()=>.5,{aimShort:10});assert.ok(out.strike.y<39,'it lands short of the terrain');assert.equal(out.stoppedByTerrain,true);assert.ok(out.end.y<=39+1e-6,'the bounce ends at the terrain edge');
+});
