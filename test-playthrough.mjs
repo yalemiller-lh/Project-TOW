@@ -48,6 +48,8 @@ function redStep(s,r){
 // off for the first turn; the bot makes its own choices when it wins.
 function deploy(s,r){
  if(!s.deployOrder?.alternate){G.autoDeploy(s,{team:'ash',random:r});AI.deployOpponent(s,r);return G.begin(s,r);}
+ // Terrain first: the bot takes its own turns, Red places at random legal spots (or passes).
+ for(let g=0;g<40&&G.terrainPending(s);g++){const ts=s.terrainSetup;if(AI.deploymentChoice(s)==='terrain'){AI.takeDeploymentStep(s,r);continue;}if(ts.scatter){if(ts.scatter.count===null)G.scatterTerrainCount(s,r);else G.scatterTerrain(s,ts.scatter.by,ts.placed.slice(0,ts.scatter.count),r);continue;}if(ts.method!=='free'&&!ts.rollOff){G.terrainRollOff(s,r);continue;}if(!G.autoPlaceTerrain(s,ts.method==='free'?'ash':ts.next,r))G.passTerrain(s,ts.method==='free'?'ash':ts.next);}
  const d=s.deployOrder;if(AI.deploymentChoice(s)==='zone')AI.takeDeploymentStep(s,r);else G.chooseDeploymentZone(s,G.deploymentZoneChooser(s),r()<.5?'A':'B');G.deploymentRollOff(s,r);
  for(let guard=0;guard<40&&!d.complete;guard++){if(AI.deploymentChoice(s)==='deploy')AI.takeDeploymentStep(s,r);else G.autoDeploy(s,{team:'ash',random:r});}
  assert.ok(d.complete,'deployment finishes');
@@ -75,6 +77,6 @@ function play(seed,options){
  return s;
 }
 const SEEDS=Number(process.env.SEEDS??2);let games=0;
-for(const [opponent,format,points,extra]of [['empire','battle-march',500],['empire','battle-march',750,{objectives:'landmark'}],['empire','battle-march',600,{objectives:'troves3',optional:{raidAndBurn:true}}],['empire','battle-march',500,{deployment:{map:'mountain-pass'}}],['empire','battle-march',750,{deployment:{map:'opposed-flanks',mirrored:true},objectives:'troves2'}],['orc','classic',null],['empire','classic',null]])
+for(const [opponent,format,points,extra]of [['empire','battle-march',500],['empire','battle-march',750,{objectives:'landmark',terrain:{method:'alternate'}}],['empire','battle-march',600,{objectives:'troves3',optional:{raidAndBurn:true},terrain:{method:'scatter',pieces:['hill','darkWood','hedge','rocks']}}],['empire','battle-march',500,{deployment:{map:'mountain-pass'},terrain:{method:'alternate',pieces:['steepHill','wood','highWall','building']}}],['empire','battle-march',750,{deployment:{map:'opposed-flanks',mirrored:true},objectives:'troves2'}],['orc','classic',null],['empire','classic',null]])
  for(let seed=1;seed<=SEEDS;seed++){if(process.env.ONLY&&String(seed*97+(points??1))!==process.env.ONLY||process.env.OPP&&opponent!==process.env.OPP||process.env.FORMAT&&format!==process.env.FORMAT)continue;play(seed*97+(points??1),{opponent,format,points,...extra});games++;}
 console.log(`PASS ${games} seeded games played with no overlaps, stalls or idle bot turns`);

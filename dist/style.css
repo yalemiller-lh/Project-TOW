@@ -280,3 +280,21 @@ input[type=range]{accent-color:var(--army-primary)}.charge-step{background:var(-
 .reform-turns{display:flex;flex-wrap:wrap;gap:4px}
 .reform-turns button{flex:1 1 auto;min-width:64px}
 .challenge-controls{display:grid;gap:6px;margin:6px 0}
+/* Terrain */
+.terrain{pointer-events:visiblePainted}
+.terrain-area{stroke-width:1.5px}
+.terrain-hill .terrain-area{fill:#8a7a4f;fill-opacity:.55;stroke:#c9b37a}
+.terrain-hill.terrain-difficult .terrain-area{fill:#7a6a49;stroke-dasharray:4 3}
+.terrain-contour{fill:#9d8c5a;fill-opacity:.45;stroke:#d6c48d;stroke-width:1px;stroke-dasharray:3 3}
+.terrain-top{fill:#f3e3a8;stroke:#5b4a26}
+.terrain-wood .terrain-area{fill:#25452a;fill-opacity:.7;stroke:#5f8f4f;stroke-dasharray:5 3}
+.terrain-wood.terrain-dangerous .terrain-area{fill:#2d2533;stroke:#a067c0}
+.terrain-tree{fill:#3c6b35;stroke:#1d331b;stroke-width:1px}
+.terrain-building .terrain-area,.terrain-rocks .terrain-area{fill:#5e5d5a;fill-opacity:.9;stroke:#2c2b29}
+.terrain-line{fill:none;stroke:#b7a98a;stroke-width:6px;stroke-linecap:round}
+.terrain-line.high{stroke:#4b4a47;stroke-width:9px}
+.terrain-label{font:600 10px/1 system-ui,sans-serif;fill:#f6efd9;paint-order:stroke;stroke:#00000099;stroke-width:3px;pointer-events:none}
+.terrain-exclusion{fill:#ff66661a;stroke:#ff8a80;stroke-width:1.5px;stroke-dasharray:6 6;pointer-events:none}
+.terrain-ghost{fill-opacity:.35}
+polyline.terrain-ghost{fill:none;stroke-width:6px}
+.terrain-choice,.scatter-choice{display:grid;gap:4px;margin:4px 0}

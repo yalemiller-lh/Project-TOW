@@ -36,13 +36,13 @@ export function setupObjectives(s,{choice='roll',random=Math.random}={}){
  s.scoring={ledger:[]};
  return s.objectives;
 }
-export function canPlaceObjectives(s){return s.stage==='deployment'&&s.objectives?.kind!=='landmark'&&!!s.objectives&&!G.combatants(s).some(p=>p.x!==null)&&!s.deployOrder?.log?.length;}
+export function canPlaceObjectives(s){return s.stage==='deployment'&&!G.terrainPending(s)&&s.objectives?.kind!=='landmark'&&!!s.objectives&&!G.combatants(s).some(p=>p.x!==null)&&!s.deployOrder?.log?.length;}
 // Where a treasure trove may stand: wholly on the battlefield, 3″ clear of terrain, not on another trove.
 export function objectivePlacementError(s,id,x,y){
  const obj=s.objectives?.items.find(o=>o.id===id);if(!obj)return 'Unknown objective.';
  if(obj.kind!=='trove')return 'The strategic landmark stays at the centre of the battlefield.';
  if(!Number.isFinite(x)||!Number.isFinite(y)||x-obj.r<0||y-obj.r<0||x+obj.r>s.board.width||y+obj.r>s.board.height)return 'Keep the whole treasure trove on the battlefield.';
- if((s.terrain??[]).some(t=>Math.hypot(t.x-x,t.y-y)-t.r-obj.r<TERRAIN_CLEARANCE-TOLERANCE))return 'A treasure trove cannot be within 3″ of a terrain feature.';
+ if((s.terrain??[]).some(t=>G.featureDistance(t,{x,y})-obj.r<TERRAIN_CLEARANCE-TOLERANCE))return 'A treasure trove cannot be within 3″ of a terrain feature (or straddle a low obstacle).';
  if(s.objectives.items.some(o=>o.id!==id&&Math.hypot(o.x-x,o.y-y)<o.r+obj.r))return 'Treasure troves cannot overlap.';
  return null;
 }

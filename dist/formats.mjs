@@ -38,6 +38,37 @@ const flip=(poly,b)=>poly.map(p=>({x:b.width-p.x,y:p.y}));
 export function mapZones(m,board,{depth=null,mirrored=false}={}){const z=m.adjustable?m.zones(board,depth):m.zones(board);return mirrored&&!m.symmetric?{A:flip(z.A,board),B:flip(z.B,board)}:z;}
 export function deploymentMap(id){const m=DEPLOYMENT_MAPS.find(m=>m.id===id);if(!m)throw Error(`Unknown deployment map "${id}".`);return m;}
 
+// ---- Terrain (the Battle March terrain brief of 1 October 2026) ----
+// A piece's movement class (open, difficult, dangerous, impassable) and its effect on line of sight
+// are separate: 'wood' blocks sight across it between two models outside it and gives partial cover
+// to a unit mostly inside; 'hill' blocks sight across it between models off it and lifts those
+// wholly on it; 'blocks' is opaque (buildings, rocks, high walls); 'obscures' gives cover only (low
+// walls and hedges). Sizes are inches; a line is a linear obstacle of that length. The starter
+// collection is the brief's suggested digital set, not an official layout.
+export const TERRAIN_PIECES={
+ hill:{name:'Gentle hill',kind:'hill',shape:{type:'ellipse',w:8,h:6},movement:'open',sight:'hill'},
+ steepHill:{name:'Steep, rocky hill (difficult)',kind:'hill',shape:{type:'ellipse',w:8,h:6},movement:'difficult',sight:'hill'},
+ wood:{name:'Woodland (difficult)',kind:'wood',shape:{type:'ellipse',w:7,h:5},movement:'difficult',sight:'wood'},
+ darkWood:{name:'Dark woodland (dangerous)',kind:'wood',shape:{type:'ellipse',w:7,h:5},movement:'dangerous',sight:'wood'},
+ wall:{name:'Low wall',kind:'lowWall',shape:{type:'line',length:6},movement:'difficult',sight:'obscures',low:true},
+ hedge:{name:'Hedge',kind:'lowWall',shape:{type:'line',length:6},movement:'difficult',sight:'obscures',low:true},
+ highWall:{name:'High wall',kind:'highWall',shape:{type:'line',length:6},movement:'impassable',sight:'blocks',high:true},
+ building:{name:'Building (impassable)',kind:'building',shape:{type:'rect',w:5,h:4},movement:'impassable',sight:'blocks'},
+ rocks:{name:'Rock formation (impassable)',kind:'rocks',shape:{type:'rect',w:5,h:4},movement:'impassable',sight:'blocks'},
+};
+export const STARTER_COLLECTION=['hill','wood','wall','building'];
+// How the terrain is set up. 'free' is an agreed or organiser layout: no placement restrictions.
+export const TERRAIN_METHODS={
+ alternate:{name:'Normal placement: roll off, then alternate one feature each',official:true},
+ scatter:{name:'Scattered: the roll-off winner places all, the loser scatters D3',official:true},
+ free:{name:'Agreed layout: place freely (organiser or custom, not the rulebook method)',official:false},
+ none:{name:'No terrain',official:true},
+};
+// One feature per 12″ of the longest edge, rounding up. A piece counts by its widest extent:
+// under 2″ is a decoration (0), up to 8″ one feature, up to 12″ two, beyond three (avoid in Battle
+// March). A piece exactly 8″ or 12″ counts as the smaller: an agreed reading of the boundary.
+export const terrainAllowance=board=>Math.ceil(Math.max(board.width,board.height)/12);
+export const terrainSizeClass=w=>w<2?0:w<=8?1:w<=12?2:3;
 export const FORMATS={
  classic:{
   id:'classic',name:'Classic battle',rulesVersion:'Old World prototype',

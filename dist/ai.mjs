@@ -192,6 +192,8 @@ export function deployOpponent(s,random=null){
 // takes the first turn when it wins that roll-off.
 export function deploymentChoice(s){
  const d=s.deployOrder;if(s.stage!=='deployment'||!d?.alternate)return null;
+ // Terrain comes first: the bot places its features in turn, and chooses the scatter when it lost the roll-off.
+ if(G.terrainPending(s)){const ts=s.terrainSetup;if(ts.scatter)return ts.scatter.by===ME?'terrain':null;if(ts.method==='free'||!ts.rollOff)return null;return ts.next===ME?'terrain':null;}
  if(!d.zonesChosen&&G.deploymentZoneChooser(s)===ME)return 'zone';
  if(d.rollOff&&!d.first&&d.rollOff.winner===ME)return 'deploy-order';
  if(s.firstTurn&&!s.firstTurn.chosen&&s.firstTurn.winner===ME)return 'first-turn';
@@ -208,12 +210,21 @@ export function takeDeploymentStep(s,random=null){
  if(choice==='deploy-order'){G.chooseDeploymentOrder(s,ME,THEM);return {message:'The bot won the deployment roll-off and has you deploy first.'};}
  if(choice==='first-turn'){G.chooseFirstTurn(s,ME,ME);return {message:'The bot won the roll-off and takes the first turn.'};}
  if(choice==='deploy'){const out=deployNext(s,random),names=(out.ids??[out.id]).map(id=>G.getUnit(s,id).name);return {message:`The bot deploys ${names.join(' and ')}.`,id:out.id,...out};}
+ if(choice==='terrain')return terrainStep(s,random??Math.random);
  if(choice==='scout-roll'){const r=G.scoutRollOff(s,random??Math.random);return {message:`Scouts roll-off: ${r.winner===ME?'the bot':'you'} deploy Scouts first.`};}
  if(choice==='vanguard-roll'){const r=G.vanguardRollOff(s,random??Math.random);return {message:`Vanguard roll-off: ${r.winner===ME?'the bot':'you'} move first.`};}
  // The bot keeps its Vanguard units where it deployed them (it does not plan Vanguard moves yet).
  if(choice==='vanguard'){const u=G.vanguardUnits(s,ME)[0];G.endVanguard(s,u.id,false);return {message:`The bot keeps ${u.name} where it was deployed (no Vanguard move).`};}
  return null;
 }
+// Terrain: hills near its own zone (where its guns and shooters stand), the rest away from its own
+// lines; scattering, it moves the features nearest its own zone.
+function terrainStep(s,random){
+ const ts=s.terrainSetup,z=G.zoneOf(s,ME),zone={x:z.reduce((n,p)=>n+p.x,0)/z.length,y:z.reduce((n,p)=>n+p.y,0)/z.length},near=t=>Math.hypot(t.x-zone.x,t.y-zone.y);
+ if(ts.scatter){if(ts.scatter.count===null){const n=G.scatterTerrainCount(s,random);return {message:`The bot rolls to scatter: ${n} feature${n===1?'':'s'}.`};}
+  const ids=ts.placed.map(id=>s.terrain.find(t=>t.id===id)).sort((a,b)=>near(a)-near(b)).slice(0,ts.scatter.count).map(t=>t.id),out=G.scatterTerrain(s,ME,ids,random);return {message:`The bot scatters ${out.length} feature${out.length===1?'':'s'}: ${out.map(r=>`${s.terrain.find(t=>t.id===r.id).name} ${r.hit?'stays':'moves '+Math.round(r.moved*10)/10+'″'}`).join(', ')}.`};}
+ const f=G.autoPlaceTerrain(s,ME,random,{score:(k,x,y)=>(G.makeFeature(k,0,0).kind==='hill'?-1:1)*Math.hypot(x-zone.x,y-zone.y)+random()*2});
+ if(f)return {message:`The bot places ${f.name}.`};G.passTerrain(s,ME);return {message:'The bot places no more terrain.'};}
 // The bot plans its whole remaining deployment against what is on the table now, then places
 // the first unit of that plan: war machines and shooters first for a gun line, blocks first
 // otherwise, characters and wizards last.

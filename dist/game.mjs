@@ -106,10 +106,10 @@ function armyFromRoster(team,roster){
 const WIZARD_ENTRY={chaos:'daemonsmith',empire:'masterMage'};
 function loreFor(faction,entry,lore){const options=A.ENTRIES[faction]?.[entry]?.lores?.options??['battle'];if(!options.includes(lore))throw Error(`${A.ENTRIES[faction]?.[entry]?.name??'This wizard'} cannot use ${A.LORE_NAMES[lore]??lore}.`);return lore;}
 function withLores(lores,s){for(const [team,lore]of Object.entries(lores??{})){if(!lore)continue;for(const w of s.units.filter(u=>u.team===team&&u.role==='wizard'))w.lore=loreFor(w.faction,w.entry??WIZARD_ENTRY[w.faction],lore);}return s;}
-export function createGame(opponent='chaos',{format='classic',board=null,points=null,deployment=null,rosters=null,objectives=null,optional=null,lores=null,random=Math.random}={}){if(!FACTIONS[opponent])throw Error('Unknown army.');const fmt=F.format(format),field=F.boardFor(fmt,{board,points}),setup=deployment??(fmt.deployment?.map?{map:fmt.deployment.map,depth:fmt.deployment.depth}:null);
- if(fmt.id==='battle-march')return withLores(lores,createRosterGame(opponent,fmt,field,setup,points,rosters,{objectives,optional,random}));const units=Array.from({length:8},(_,i)=>{const faction=i<4?'chaos':opponent,role=i%4===3?'missile':'infantry';return {id:(i<4?'A':'I')+(i%4+1),team:i<4?'ash':'iron',faction,role,name:role==='missile'?MISSILE[faction].name:FACTIONS[faction].name,x:null,y:null,heading:i<4?0:180,moved:false,shot:false,spent:0,movementMode:null,marchRequired:null,marchTest:null,engaged:null,charge:null,impetuousTest:null,combatResolved:false,fleeing:false,rallyAttempted:false,rallied:false,shieldwallUsed:false,deadModels:[]};});units.push(createWizard('ash','chaos'));if(opponent==='empire')units.push(createWizard('iron','empire'));return withLores(lores,{stage:'deployment',team:'ash',round:1,selected:'A1',rocket:{id:'A5',name:'Deathshrieker Rocket Launcher',...machineFields('ash','chaos'),x:null,y:null,heading:0,wounds:3,crew:3,shot:false,disabledUntil:0,lastShot:null},cannons:createCannons(opponent),units,history:[],vortices:[],fatedDispelUsed:{ash:false,iron:false},format:{id:fmt.id,name:fmt.name,rulesVersion:fmt.rulesVersion,points:fmt.points?(points??fmt.points.default):null,rounds:fmt.rounds,deployment:setup,resultPolicy:fmt.resultPolicy??null,optional:{...(fmt.optional??{})}},board:field,zones:F.deploymentZones(fmt,field,setup??{}),firstPlayer:'ash',turnLog:[]});}
+export function createGame(opponent='chaos',{format='classic',board=null,points=null,deployment=null,rosters=null,objectives=null,optional=null,lores=null,terrain=null,random=Math.random}={}){if(!FACTIONS[opponent])throw Error('Unknown army.');const fmt=F.format(format),field=F.boardFor(fmt,{board,points}),setup=deployment??(fmt.deployment?.map?{map:fmt.deployment.map,depth:fmt.deployment.depth}:null);
+ if(fmt.id==='battle-march')return withLores(lores,createRosterGame(opponent,fmt,field,setup,points,rosters,{objectives,optional,random,terrain}));const units=Array.from({length:8},(_,i)=>{const faction=i<4?'chaos':opponent,role=i%4===3?'missile':'infantry';return {id:(i<4?'A':'I')+(i%4+1),team:i<4?'ash':'iron',faction,role,name:role==='missile'?MISSILE[faction].name:FACTIONS[faction].name,x:null,y:null,heading:i<4?0:180,moved:false,shot:false,spent:0,movementMode:null,marchRequired:null,marchTest:null,engaged:null,charge:null,impetuousTest:null,combatResolved:false,fleeing:false,rallyAttempted:false,rallied:false,shieldwallUsed:false,deadModels:[]};});units.push(createWizard('ash','chaos'));if(opponent==='empire')units.push(createWizard('iron','empire'));return withLores(lores,{stage:'deployment',team:'ash',round:1,selected:'A1',rocket:{id:'A5',name:'Deathshrieker Rocket Launcher',...machineFields('ash','chaos'),x:null,y:null,heading:0,wounds:3,crew:3,shot:false,disabledUntil:0,lastShot:null},cannons:createCannons(opponent),units,history:[],vortices:[],fatedDispelUsed:{ash:false,iron:false},format:{id:fmt.id,name:fmt.name,rulesVersion:fmt.rulesVersion,points:fmt.points?(points??fmt.points.default):null,rounds:fmt.rounds,deployment:setup,resultPolicy:fmt.resultPolicy??null,optional:{...(fmt.optional??{})}},board:field,zones:F.deploymentZones(fmt,field,setup??{}),firstPlayer:'ash',turnLog:[]});}
 function optionalRules(fmt,chosen){const rules={...fmt.optional};for(const [key,on]of Object.entries(chosen??{})){const rule=F.OPTIONAL_RULES[key];if(!(key in rules)||!rule)throw Error(`Unknown optional rule "${key}".`);if(on&&!rule.available)throw Error(`${rule.name} is not available yet: ${rule.reason}.`);rules[key]=!!on;}return rules;}
-function createRosterGame(opponent,fmt,field,setup,points,rosters,{objectives=null,optional=null,random=Math.random}={}){
+function createRosterGame(opponent,fmt,field,setup,points,rosters,{objectives=null,optional=null,random=Math.random,terrain=null}={}){
  // The deployment map is chosen or rolled on a D6. Red sets up the game, so Red counts as the map
  // selector (shown to the players) and the opponent chooses its zone.
  if(setup?.map==='roll'){const roll=rollD6(1,random)[0];setup={...setup,map:F.DEPLOYMENT_MAPS.find(m=>m.roll===roll).id,roll};}
@@ -127,6 +127,8 @@ function createRosterGame(opponent,fmt,field,setup,points,rosters,{objectives=nu
  for(const p of combatants(s))p.heading=deploymentFacing(s,p.team);
  // The format's own rules (objectives for Battle March) set up the battlefield before deployment.
  FORMAT_RULES[fmt.id]?.setup?.(s,{choice:s.format.objectives,random});
+ // Terrain is set up next, before the objectives settle and the armies deploy (startTerrain).
+ if(terrain)startTerrain(s,terrain);
  return s;
 }
 export function getUnit(s,id=s.selected){return s.units.find(u=>u.id===id)??(id!==undefined&&id!==null?combatants(s).find(u=>u.id===id):undefined);}
@@ -159,8 +161,9 @@ function hull(points){const p=[...points].sort((a,b)=>a.x-b.x||a.y-b.y);const ha
 export function gap(a,b){return polygonGap(corners(a),corners(b));}
 // Distance from a footprint to a circle (0 when they touch or overlap).
 export function circleGap(poly,c){if(inside({x:c.x,y:c.y},poly))return 0;let best=Infinity;for(let i=0;i<poly.length;i++)best=Math.min(best,pointSegment({x:c.x,y:c.y},poly[i],poly[(i+1)%poly.length]));return Math.max(0,best-c.r);}
-export function terrainBlocks(s,poly){return (s?.terrain??[]).some(t=>t.impassable&&circleGap(poly,t)<EPS);}
-function terrainBlocksSight(s,a,b){return (s?.terrain??[]).some(t=>t.blocksSight&&pointSegment({x:t.x,y:t.y},a,b)<t.r-EPS);}
+// Impassable terrain a footprint (or the area a move sweeps) overlaps; touching its edge is allowed.
+export function terrainBlocks(s,poly){const inner=shrink(poly,.01);return (s?.terrain??[]).some(t=>featureMovement(t)==='impassable'&&featureGap(t,inner)<EPS);}
+function terrainBlocksSight(s,a,b){return (s?.terrain??[]).some(t=>(t.blocksSight||t.sight==='blocks')&&(t.points||t.line?polygonGap(shrink(t.points??t.line,.01),[a,b])<EPS&&!(t.points&&(inside(a,t.points)||inside(b,t.points))):pointSegment({x:t.x,y:t.y},a,b)<t.r-EPS));}
 // ---- Temporary effects: a spell's or a landmark's, kept on the units they affect. ----
 // A record: {id, spell or property, source:{kind,caster,team}, mods:[{stat,add,min?,max?}], ap,
 // rules:[{rule,value} or {block}], stack, created:{round,team}, expiry:{kind,at}}. An older
@@ -281,7 +284,7 @@ export function placeRocket(s,x,y){if(s.stage!=='deployment')throw Error('Deploy
 export function placeCannon(s,id,x,y){if(s.stage!=='deployment')throw Error('Deploy cannons before battle.');const cannon=s.cannons.find(c=>c.id===id);if(!cannon)throw Error('Choose an Empire cannon.');deployGate(s,cannon);if(!Number.isFinite(x)||!Number.isFinite(y))throw Error('Enter valid coordinates.');const error=machinePlacementError(s,cannon,x,y);if(error)throw Error(error);Object.assign(cannon,{x,y});deployPlaced(s,cannon);return cannon;}
 // Quick deploy. Battle March always uses the deployment plan below; a classic game does too when
 // given a random source (the game's Quick deploy), otherwise it keeps its fixed test layout.
-export function autoDeploy(s,{team=null,random=null}={}){if(s.stage!=='deployment')throw Error('Deployment is finished.');if((s.format?.id??'classic')!=='classic'||random)return alternating(s)?alternateAutoDeploy(s,team,random):searchDeploy(s,team,random);s.units.forEach((u,i)=>{if(!team||u.team===team)Object.assign(u,{x:u.id==='A6'?3.5:u.id==='I7'?70:[18,36,54,64][i%4],y:u.team==='ash'?42:6});});if(!team||team==='ash')placeRocket(s,8,42);if(!team||team==='iron')for(const [i,c]of s.cannons.entries())placeCannon(s,c.id,[8,45][i],6);}
+export function autoDeploy(s,{team=null,random=null}={}){if(s.stage!=='deployment')throw Error('Deployment is finished.');if(terrainPending(s)){if(team)throw Error('Set up the terrain first.');quickTerrain(s,random??Math.random);}if((s.format?.id??'classic')!=='classic'||random)return alternating(s)?alternateAutoDeploy(s,team,random):searchDeploy(s,team,random);s.units.forEach((u,i)=>{if(!team||u.team===team)Object.assign(u,{x:u.id==='A6'?3.5:u.id==='I7'?70:[18,36,54,64][i%4],y:u.team==='ash'?42:6});});if(!team||team==='ash')placeRocket(s,8,42);if(!team||team==='iron')for(const [i,c]of s.cannons.entries())placeCannon(s,c.id,[8,45][i],6);}
 // Spread each army across the middle of its zone, trying the nearest legal spots.
 // Regiments, war machines, characters, then Scouts; a unit held in reserve is not deployed.
 function deployOrderOf(s,side){const mine=v=>v.team===side&&!inReserve(v);return [...s.units.filter(u=>mine(u)&&!isCharacter(u)&&!isScout(u)),...combatants(s).filter(m=>m.role==='warmachine'&&mine(m)),...s.units.filter(u=>mine(u)&&isCharacter(u)&&!isScout(u)),...s.units.filter(u=>mine(u)&&isScout(u))];}
@@ -341,7 +344,7 @@ export function deploymentTurn(s){return alternating(s)&&s.deployOrder.first&&!s
 // A unit with Scouts deploys on its own, after every other unit of both armies.
 export function deploymentBatch(s,p){const kind=p.role==='warmachine'?'machines':isScout(p)?'scout':isCharacter(p)?'characters':'unit';return {kind,team:p.team,ids:kind==='unit'||kind==='scout'?[p.id]:deploymentPieces(s,p.team).filter(q=>!q.deployed&&!inReserve(q)&&(kind==='machines'?q.role==='warmachine':isCharacter(q)&&!isScout(q))).map(q=>q.id)};}
 const charactersWait=(s,p)=>isCharacter(p)&&!isScout(p)&&deploymentPieces(s,p.team).some(q=>!q.deployed&&!inReserve(q)&&!isCharacter(q)&&!isScout(q));
-function deployGate(s,p){const d=s.deployOrder;if(inReserve(p))throw Error(`${p.name} is held in reserve; bring it back to deploy it.`);if(!alternating(s)||d.auto)return;if(!d.zonesChosen)throw Error('Choose the deployment zones first.');if(!d.first)throw Error('Roll off first: the winner deploys the first unit.');if(d.complete||p.deployed)throw Error(`${p.name} is already deployed; deployed units stay where they are.`);if(isScout(p)&&!scoutPhase(s))throw Error('Scouts deploy after every other unit of both armies.');if(scoutPhase(s)&&d.scouts?.both&&!d.scouts.rollOff)throw Error('Both armies have Scouts: roll off to see who deploys them first.');if(p.team!==d.next)throw Error(`${armyName(d.next,s)} deploys the next unit.`);if(charactersWait(s,p))throw Error('Characters deploy last, all together, once every other unit of the army is down.');}
+function deployGate(s,p){const d=s.deployOrder;if(terrainPending(s))throw Error('Set up the terrain first.');if(inReserve(p))throw Error(`${p.name} is held in reserve; bring it back to deploy it.`);if(!alternating(s)||d.auto)return;if(!d.zonesChosen)throw Error('Choose the deployment zones first.');if(!d.first)throw Error('Roll off first: the winner deploys the first unit.');if(d.complete||p.deployed)throw Error(`${p.name} is already deployed; deployed units stay where they are.`);if(isScout(p)&&!scoutPhase(s))throw Error('Scouts deploy after every other unit of both armies.');if(scoutPhase(s)&&d.scouts?.both&&!d.scouts.rollOff)throw Error('Both armies have Scouts: roll off to see who deploys them first.');if(p.team!==d.next)throw Error(`${armyName(d.next,s)} deploys the next unit.`);if(charactersWait(s,p))throw Error('Characters deploy last, all together, once every other unit of the army is down.');}
 function deployPlaced(s,p){const d=s.deployOrder;if(!alternating(s)||d.auto)return;
  // Starting a different batch puts back what the unconfirmed one had placed.
  if(d.batch&&!d.batch.ids.includes(p.id))for(const id of d.batch.ids){const q=getUnit(s,id);if(q&&!q.deployed)Object.assign(q,{x:null,y:null});}
@@ -350,7 +353,7 @@ function deployPlaced(s,p){const d=s.deployOrder;if(!alternating(s)||d.auto)retu
 // takes the other zone. The facing defaults follow.
 export const deploymentZoneChooser=s=>{const sel=s.format?.deployment?.selector??'ash';return sel==='ash'?'iron':'ash';};
 export function chooseDeploymentZone(s,team,zone){
- const d=s.deployOrder,setup=s.format.deployment;if(!alternating(s))throw Error('This game has no deployment zone choice.');if(d.zonesChosen)throw Error('The deployment zones have been chosen.');
+ const d=s.deployOrder,setup=s.format.deployment;if(!alternating(s))throw Error('This game has no deployment zone choice.');if(d.zonesChosen)throw Error('The deployment zones have been chosen.');if(terrainPending(s))throw Error('Set up the terrain first.');
  if(team!==deploymentZoneChooser(s))throw Error(`${armyName(deploymentZoneChooser(s),s)} chooses the deployment zone.`);if(!['A','B'].includes(zone))throw Error('Choose zone A or zone B.');
  setup.sides={[team]:zone,[team==='ash'?'iron':'ash']:zone==='A'?'B':'A'};s.zones=F.deploymentZones(s.format.id,s.board,setup);s.facing=F.deploymentFacing(s.format.id,setup);
  for(const p of combatants(s))if(p.x===null)p.heading=deploymentFacing(s,p.team);d.zonesChosen=true;return {...setup.sides};
@@ -1457,7 +1460,83 @@ export function saveTarget(defender,attacker){let target=armourSave(defender)-pa
 // 'dangerous' or 'impassable' (older records say impassable:true). Every vortex template in play
 // is difficult terrain as well.
 export const featureMovement=t=>t?.movement??(t?.impassable?'impassable':'open');
-export function featureGap(t,poly){return t.points?polygonGap(poly,t.points):circleGap(poly,t);}
+export function featureGap(t,poly){return t.points||t.line?polygonGap(poly,t.points??t.line):circleGap(poly,t);}
+// ---- Terrain features ----
+// A feature: {id, key, name, kind, x, y, heading, points (an area) or line (a linear obstacle),
+// width (its widest extent), movement, sight, top (a hill's highest point), owner (the side that
+// placed it)}. The Battle March landmark is a circle {x, y, r}.
+export function terrainGeometry(piece,x,y,heading=0){const sh=piece.shape,a=rad(heading),pt=(lx,ly)=>({x:x+lx*Math.cos(a)-ly*Math.sin(a),y:y+lx*Math.sin(a)+ly*Math.cos(a)});
+ if(sh.type==='line')return {line:[pt(-sh.length/2,0),pt(sh.length/2,0)],width:sh.length};
+ if(sh.type==='rect')return {points:[pt(-sh.w/2,-sh.h/2),pt(sh.w/2,-sh.h/2),pt(sh.w/2,sh.h/2),pt(-sh.w/2,sh.h/2)],width:Math.max(sh.w,sh.h)};
+ const n=24;return {points:Array.from({length:n},(_,k)=>pt(sh.w/2*Math.cos(2*Math.PI*k/n),sh.h/2*Math.sin(2*Math.PI*k/n))),width:Math.max(sh.w,sh.h)};}
+export function makeFeature(key,x,y,heading=0,extra={}){const piece=F.TERRAIN_PIECES[key];if(!piece)throw Error(`Unknown terrain piece "${key}".`);return {key,name:piece.name,kind:piece.kind,x,y,heading:normalize(heading),movement:piece.movement,sight:piece.sight,...(piece.low?{low:true}:{}),...(piece.high?{high:true}:{}),...terrainGeometry(piece,x,y,heading),...(piece.kind==='hill'?{top:{x,y}}:{}),...extra};}
+// Distance from a feature to a point, and between two features (footprint to footprint).
+export function featureDistance(t,p){return t.points||t.line?circleGap(t.points??t.line,{x:p.x,y:p.y,r:0}):Math.max(0,Math.hypot(t.x-p.x,t.y-p.y)-t.r);}
+export function featuresGap(a,b){const pa=a.points??a.line,pb=b.points??b.line;if(pa&&pb)return polygonGap(pa,pb);if(pa)return circleGap(pa,b);if(pb)return circleGap(pb,a);return Math.max(0,Math.hypot(a.x-b.x,a.y-b.y)-a.r-b.r);}
+const featureOnBoard=(s,f)=>{const b=boardOf(s),pts=f.points??f.line;return pts?pts.every(p=>p.x>=-EPS&&p.y>=-EPS&&p.x<=b.width+EPS&&p.y<=b.height+EPS):f.x-f.r>=-EPS&&f.y-f.r>=-EPS&&f.x+f.r<=b.width+EPS&&f.y+f.r<=b.height+EPS;};
+// ---- Terrain setup (the brief's steps 2–3: terrain, then objectives, then deployment) ----
+// Normal placement: a roll-off; the winner places first and the players alternate, each from the
+// combined selection, none within 12″ of the centre or within 12″ of a feature the other player
+// placed, until the allowance is placed (or neither can place more). Scattered: the winner places
+// every feature (centre rule only); the loser picks D3 to scatter 2D6″ on the scatter die, each
+// stopping as it touches another feature or the battlefield edge. Free: an agreed layout.
+export function startTerrain(s,{method='alternate',pieces=F.STARTER_COLLECTION}={}){
+ if(!F.TERRAIN_METHODS[method])throw Error(`Unknown terrain method "${method}".`);s.terrain=(s.terrain??[]).filter(t=>t.kind==='landmark'||t.scenario);
+ const allowance=F.terrainAllowance(boardOf(s)),pool=[...pieces];for(const k of pool)if(!F.TERRAIN_PIECES[k])throw Error(`Unknown terrain piece "${k}".`);
+ s.terrainSetup={method,pool,allowance,used:0,placed:[],rollOff:null,next:null,passed:[],scatter:null,done:method==='none'||!pool.length};
+ if(s.terrainSetup.done)finishTerrain(s);return s.terrainSetup;}
+export const terrainPending=s=>!!s.terrainSetup&&!s.terrainSetup.done;
+export function terrainRollOff(s,random=Math.random){const ts=s.terrainSetup;if(!terrainPending(s)||ts.rollOff)throw Error('No terrain roll-off is needed.');if(ts.method==='free')throw Error('An agreed layout needs no roll-off.');ts.rollOff=rollOff(random);ts.next=ts.rollOff.winner;return ts.rollOff;}
+// Why this piece cannot be placed here by this side (null when it can).
+export function terrainPlacementError(s,team,key,x,y,heading=0){
+ const ts=s.terrainSetup;if(!terrainPending(s))return 'The terrain is set up.';if(ts.scatter)return 'Scatter the chosen features first.';
+ if(ts.method!=='free'&&!ts.rollOff)return 'Roll off first: the winner places the first feature.';if(ts.method!=='free'&&team!==ts.next)return `${armyName(ts.next,s)} places the next feature.`;
+ if(!ts.pool.includes(key))return 'That piece is not in the selection still to place.';
+ if(ts.used+F.terrainSizeClass(F.TERRAIN_PIECES[key].shape.length??Math.max(F.TERRAIN_PIECES[key].shape.w,F.TERRAIN_PIECES[key].shape.h))>ts.allowance)return `It would take the terrain past the allowance of ${ts.allowance}.`;
+ if(!Number.isFinite(x)||!Number.isFinite(y))return 'Choose where it goes.';const f=makeFeature(key,x,y,heading),b=boardOf(s);
+ if(!featureOnBoard(s,f))return 'The whole feature must be on the battlefield.';
+ if(ts.method!=='free'&&featureDistance(f,{x:b.width/2,y:b.height/2})<=12+EPS)return 'Terrain cannot be placed within 12″ of the centre of the battlefield.';
+ if(ts.method==='alternate'&&(s.terrain??[]).some(t=>t.owner&&t.owner!==team&&featuresGap(t,f)<=12+EPS))return 'It cannot be placed within 12″ of a feature the other player placed.';
+ if((s.terrain??[]).some(t=>featuresGap(t,f)<EPS))return 'Terrain features cannot overlap.';
+ return null;}
+export function placeTerrain(s,team,key,x,y,heading=0){
+ const error=terrainPlacementError(s,team,key,x,y,heading);if(error)throw Error(error);const ts=s.terrainSetup;s.terrainSeq=(s.terrainSeq??0)+1;
+ const f=makeFeature(key,x,y,heading,{id:'T'+s.terrainSeq,owner:ts.method==='free'?null:team});s.terrain=[...(s.terrain??[]),f];
+ ts.pool.splice(ts.pool.indexOf(key),1);ts.used+=F.terrainSizeClass(f.width);ts.placed.push(f.id);ts.passed=[];
+ if(ts.method==='alternate')ts.next=team==='ash'?'iron':'ash';advanceTerrain(s);return f;}
+// A side that cannot (or will not) place more passes; when both have passed in turn, or the pool or
+// allowance is used up, placement ends (unused pieces are set aside).
+export function passTerrain(s,team){const ts=s.terrainSetup;if(!terrainPending(s)||ts.scatter)throw Error('No terrain is being placed.');if(ts.method!=='free'&&team!==ts.next)throw Error(`${armyName(ts.next,s)} places the next feature.`);ts.passed=[...new Set([...ts.passed,team])];if(ts.method==='alternate'&&ts.passed.length<2)ts.next=team==='ash'?'iron':'ash';else ts.pool=[];advanceTerrain(s);return ts;}
+function advanceTerrain(s){const ts=s.terrainSetup,fits=k=>ts.used+F.terrainSizeClass(F.TERRAIN_PIECES[k].shape.length??Math.max(F.TERRAIN_PIECES[k].shape.w,F.TERRAIN_PIECES[k].shape.h))<=ts.allowance;
+ if(ts.pool.some(fits))return;
+ if(ts.method==='scatter'&&ts.placed.length&&!ts.scatter){ts.scatter={by:ts.rollOff.winner==='ash'?'iron':'ash',count:null,chosen:null,reports:[]};return;}
+ finishTerrain(s);}
+// Scattered placement, the loser's part: roll D3 for how many, choose that many, then each scatters.
+export function scatterTerrainCount(s,random=Math.random){const sc=s.terrainSetup?.scatter;if(!sc||sc.count!==null)throw Error('No scatter roll is due.');sc.count=Math.min(s.terrainSetup.placed.length,Math.ceil(rollD6(1,random)[0]/2));return sc.count;}
+export function scatterTerrain(s,team,ids,random=Math.random){
+ const ts=s.terrainSetup,sc=ts?.scatter;if(!sc||sc.count===null)throw Error('Roll for how many features scatter first.');if(team!==sc.by)throw Error(`${armyName(sc.by,s)} chooses which features scatter.`);
+ if(!Array.isArray(ids)||new Set(ids).size!==sc.count||ids.some(id=>!ts.placed.includes(id)))throw Error(`Choose ${sc.count} placed feature${sc.count===1?'':'s'} to scatter.`);
+ sc.chosen=[...ids];for(const id of ids){const f=s.terrain.find(t=>t.id===id),{hit,angle}=rollScatter(random),dice=rollD6(2,random),dist=hit?0:dice[0]+dice[1],a=rad(angle),from={x:f.x,y:f.y};let moved=0,stop=null;
+  // In ⅛″ steps, so the feature never jumps through another one: it stops as it touches one, or the edge.
+  for(let d=.125;d<=dist+EPS;d+=.125){const g=makeFeature(f.key,from.x+Math.sin(a)*d,from.y-Math.cos(a)*d,f.heading);if(!featureOnBoard(s,g)){stop='edge';break;}if(s.terrain.some(t=>t.id!==id&&featuresGap(t,g)<EPS)){stop='feature';break;}moved=d;}
+  Object.assign(f,makeFeature(f.key,from.x+Math.sin(a)*moved,from.y-Math.cos(a)*moved,f.heading,{id:f.id,owner:f.owner}));sc.reports.push({id,hit,angle,dice,distance:dist,moved,stop});}
+ finishTerrain(s);return sc.reports;}
+// Terrain done: treasure troves keep 3″ from terrain (ordinary terrain is shifted the least distance
+// needed, directly away from the trove), then deployment can begin.
+function finishTerrain(s){const ts=s.terrainSetup;if(ts)ts.done=true;for(const o of s.objectives?.items??[]){if(o.kind!=='trove')continue;for(const f of (s.terrain??[]).filter(t=>t.kind!=='landmark'&&!t.scenario)){const gapNow=()=>featureDistance(f,o)-o.r;if(gapNow()>=3-EPS)continue;const dx=f.x-o.x,dy=f.y-o.y,l=Math.hypot(dx,dy)||1;for(let d=.05;d<=12&&gapNow()<3-EPS;d+=.05){Object.assign(f,makeFeature(f.key,f.x+dx/l*.05,f.y+dy/l*.05,f.heading,{id:f.id,owner:f.owner,shifted:true}));}}}}
+// Quick terrain: every remaining step made for both sides, at random legal places.
+export function quickTerrain(s,random=Math.random){
+ for(let guard=0;guard<40&&terrainPending(s);guard++){const ts=s.terrainSetup;
+  if(ts.scatter){if(ts.scatter.count===null)scatterTerrainCount(s,random);const ids=[...ts.placed].sort(()=>random()-.5).slice(0,ts.scatter.count);scatterTerrain(s,ts.scatter.by,ids,random);continue;}
+  if(ts.method!=='free'&&!ts.rollOff){terrainRollOff(s,random);continue;}
+  const team=ts.method==='free'?'ash':ts.next;if(!autoPlaceTerrain(s,team,random))passTerrain(s,team);}
+ return s.terrain;}
+// One piece placed for a side at a random legal spot (the first piece in its selection that fits).
+export function autoPlaceTerrain(s,team,random=Math.random,{key=null,score=null}={}){
+ const ts=s.terrainSetup,b=boardOf(s),keys=key?[key]:[...new Set(ts.pool)];
+ for(const k of keys){const options=[];for(let x=1;x<b.width;x+=1)for(let y=1;y<b.height;y+=1)for(const h of [0,90,45,135])if(!terrainPlacementError(s,team,k,x,y,h))options.push({x,y,h,v:score?score(k,x,y,h):random()});
+  if(options.length){const o=options.sort((p,q)=>q.v-p.v)[0];return placeTerrain(s,team,k,o.x,o.y,o.h);}}
+ return null;}
 export function difficultGround(s){return [...(s?.terrain??[]).filter(t=>['difficult','dangerous'].includes(featureMovement(t))).map(t=>({kind:'terrain',id:t.id,name:t.name,shape:t})),...(s?.vortices??[]).filter(v=>getUnit(s,v.caster)?.x!=null).map(v=>({kind:'vortex',id:v.id??v.caster,name:SPELLS[v.spell??'pillar']?.name??'Vortex',shape:{x:v.x,y:v.y,r:v.radius??1.5}}))];}
 // A model is within difficult ground when part of its base overlaps it (only touching is not enough).
 export function modelsInDifficult(s,u){const ground=difficultGround(s),total=aliveCount(u);if(!ground.length||!u||u.x===null)return {within:0,total,features:[]};
@@ -1599,7 +1678,10 @@ export function cannonPlan(s,id,target,{mode='ball',aimShort=6}={}){
 export function cannonTargets(s,id,options={}){if(!canFireCannon(s,id))return [];return combatants(s).filter(u=>u.team==='ash'&&u.x!==null&&aliveCount(u)>0).map(unit=>({unit,...cannonPlan(s,id,unit,options)}));}
 function cannonMisfire(s,c,random){const result=rollD6(1,random)[0];if(result===1){c.wounds=0;c.crew=0;c.x=null;c.y=null;}else if(result<=4){c.wounds--;c.crew=Math.min(c.crew,c.wounds);c.disabledUntil=s.round+1;if(c.wounds<=0){c.crew=0;c.x=null;c.y=null;}}return result;}
 // A cannonball's bounce stops at the first impassable terrain in its path (Cannon Fire).
-function stopAtTerrain(s,a,b){let t=1;for(const k of (s.terrain??[]).filter(k=>k.impassable)){const dx=b.x-a.x,dy=b.y-a.y,fx=a.x-k.x,fy=a.y-k.y,A=dx*dx+dy*dy,B=2*(fx*dx+fy*dy),C=fx*fx+fy*fy-k.r*k.r;if(C<=0){t=0;break;}if(A<EPS)continue;const disc=B*B-4*A*C;if(disc<0)continue;const t1=(-B-Math.sqrt(disc))/(2*A);if(t1>=0&&t1<t)t=t1;}return {x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t,stopped:t<1};}
+function stopAtTerrain(s,a,b){let t=1;
+ // Polygon and line features: hills, impassable terrain and high walls stop the ball where it meets them.
+ for(const k of (s.terrain??[]).filter(k=>(k.points||k.line)&&(featureMovement(k)==='impassable'||k.kind==='hill'||k.high))){const pts=k.points??k.line;if(k.points&&inside(a,k.points)){t=0;break;}for(let i=0;i<(k.line?1:pts.length);i++){const p=pts[i],q=pts[(i+1)%pts.length],r={x:b.x-a.x,y:b.y-a.y},e={x:q.x-p.x,y:q.y-p.y},den=r.x*e.y-r.y*e.x;if(Math.abs(den)<1e-12)continue;const u1=((p.x-a.x)*e.y-(p.y-a.y)*e.x)/den,u2=((p.x-a.x)*r.y-(p.y-a.y)*r.x)/den;if(u1>=0&&u1<t&&u2>=-1e-9&&u2<=1+1e-9)t=u1;}}
+ for(const k of (s.terrain??[]).filter(k=>k.impassable&&k.r!==undefined)){const dx=b.x-a.x,dy=b.y-a.y,fx=a.x-k.x,fy=a.y-k.y,A=dx*dx+dy*dy,B=2*(fx*dx+fy*dy),C=fx*fx+fy*fy-k.r*k.r;if(C<=0){t=0;break;}if(A<EPS)continue;const disc=B*B-4*A*C;if(disc<0)continue;const t1=(-B-Math.sqrt(disc))/(2*A);if(t1>=0&&t1<t)t=t1;}return {x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t,stopped:t<1};}
 function cannonballCells(s,start,end,direction){const length=Math.hypot(end.x-start.x,end.y-start.y),hits=[];
  for(const unit of allPieces(s).filter(u=>u.x!==null&&aliveCount(u)>0))for(const model of unit.role==='warmachine'?[{index:0,row:0,col:0,x:-size(unit).w/2,y:-size(unit).h/2,size:size(unit).w}]:modelSquares(s,unit).filter(m=>!m.dead)){
   const poly=unit.role==='warmachine'||MOUNTS[unit.mount]?corners(unit):[[model.x,model.y],[model.x+model.size,model.y],[model.x+model.size,model.y+model.size],[model.x,model.y+model.size]].map(([x,y])=>localPoint(unit,x,y));
