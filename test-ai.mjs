@@ -17,7 +17,7 @@ for(const faction of ['empire','orc']){
 }
 
 {
- const s=deploy('empire');s.team='iron';s.stage='movement';s.movementStep='declare';for(const u of s.units)if(!['A1','I1'].includes(u.id)){u.x=null;u.y=null;}const attacker=G.getUnit(s,'I1'),defender=G.getUnit(s,'A1');attacker.x=defender.x=35;attacker.y=20;defender.y=28;
+ const s=deploy('empire');s.team='iron';s.stage='movement';s.movementStep='declare';for(const u of s.units)if(!['A1','I1'].includes(u.id)){u.x=null;u.y=null;}const attacker=G.getUnit(s,'I1'),defender=G.getUnit(s,'A1');attacker.x=defender.x=35;attacker.y=20;defender.y=28;defender.deadModels=G.modelSquares(s,defender).map(m=>m.index).slice(4);// a worn-down regiment the bot should charge
  assert.equal(G.chargePlan(s,attacker,defender).error,undefined);AI.takeStep(s,()=>.5);assert.equal(attacker.charge.reaction,'pending');assert.equal(AI.humanDecision(s),null,'no reaction until the bot has declared every charge');AI.takeStep(s,()=>.5);assert.equal(s.movementStep,'reactions');assert.equal(AI.humanDecision(s).kind,'reaction');assert.equal(AI.shouldAct(s),false);
  G.chargeReaction(s,attacker.id,'hold');assert.equal(AI.shouldAct(s),true);
 }
