@@ -420,7 +420,9 @@ export function planMove(u,order){const kind=order.kind??'advance',mode=order.mo
 function movePoses(plan){const {start,kind,angle}=plan,steps=[1,2,3,4,5,6];return [start,...(kind==='wheel'?steps.map(k=>wheelPose(start,angle*k/6)):kind==='pivot'?steps.map(k=>({...start,heading:normalize(heading(start)+angle*k/6)})):[]),plan.afterWheel??start,plan.end];}
 // The vortices a unit passes through or ends in, moving through these poses. A Pillar of Fire
 // troubles only its caster's enemies; a Vortex of Chaos, every unit.
-function sweptVortices(s,u,poses){const out=new Set();for(let i=0;i+1<poses.length;i++){const poly=hull([...corners(poses[i]),...corners(poses[i+1])]);for(const v of s.vortices??[])if(!out.has(v)&&getUnit(s,v.caster)?.x!=null&&vortexVictim(s,v,u)&&circleGap(poly,{x:v.x,y:v.y,r:v.radius??1.5})<EPS)out.add(v);}return [...out];}
+// all: every vortex in the way, for its difficult terrain (each template is difficult terrain for
+// every unit, whomever its hits strike).
+function sweptVortices(s,u,poses,{all=false}={}){const out=new Set();for(let i=0;i+1<poses.length;i++){const poly=hull([...corners(poses[i]),...corners(poses[i+1])]);for(const v of s.vortices??[])if(!out.has(v)&&getUnit(s,v.caster)?.x!=null&&(all||vortexVictim(s,v,u))&&circleGap(poly,{x:v.x,y:v.y,r:v.radius??1.5})<EPS)out.add(v);}return [...out];}
 // The hits for each vortex crossed, once per vortex in each movement (all of a unit's Remaining
 // Moves are one movement; Arcane Urgency starts another).
 function vortexMoveHits(s,u,vortices,random=Math.random,poses=null){const out=[],event=`${s.round}:${s.team}:${s.stage}:${u.moveEvent??0}`;for(const v of vortices){if(u.x===null||aliveCount(u)===0)break;const ref=v.id??v.caster;u.vortexHits??={};if(u.vortexHits[ref]===event)continue;u.vortexHits[ref]=event;const rule=VORTEX_RULES[v.spell??'pillar']??VORTEX_RULES.pillar;out.push({vortex:ref,spell:v.spell??'pillar',caster:v.caster,unit:u.id,...(rule.dangerous?dangerousTests(s,u,{x:v.x,y:v.y,r:v.radius??1.5},poses,random):magicDamage(s,u,rule.hits(random),rule.strength,rule.ap,random,{flaming:rule.flaming}))});}return out;}
@@ -445,7 +447,7 @@ export function orderError(s,u,order){
   const plan=planMove(u,order);
   // A vortex is difficult terrain: Movement −1 for the whole move once the unit enters it; a
   // flyer only when it takes off from or lands in one.
-  const difficult=!!u.difficultThisMove||(medium==='fly'?vortexUnder(s,u,plan.start)||vortexUnder(s,u,plan.end):sweptVortices(s,u,movePoses(plan)).length>0),allowance=moveAllowance(u,{mode,medium,fly,difficult});
+  const difficult=!!u.difficultThisMove||(medium==='fly'?vortexUnder(s,u,plan.start)||vortexUnder(s,u,plan.end):sweptVortices(s,u,movePoses(plan),{all:true}).length>0),allowance=moveAllowance(u,{mode,medium,fly,difficult});
   if(u.movementMode&&u.movementMode!==mode)return 'Movement mode is locked after the first step. Undo all steps to change it.';
   if(mode==='march'&&hasRule(u,'noMarch'))return 'Earthen Ramparts: this unit cannot march.';
   if(kind==='pivot'&&(u.spent??0)>EPS)return 'A reform requires the whole unused movement allowance.';
@@ -473,10 +475,10 @@ export function orderError(s,u,order){
   if(distance>EPS&&medium!=='fly')return forwardError(s,u,plan.afterWheel,plan.end);
   return null;
 }
-const vortexUnder=(s,u,pose)=>sweptVortices(s,u,[pose,pose]).length>0;
+const vortexUnder=(s,u,pose)=>sweptVortices(s,u,[pose,pose],{all:true}).length>0;
 function remember(s,u){s.history.push({id:u.id,x:u.x,y:u.y,heading:heading(u),moved:u.moved,spent:u.spent??0,movementMode:u.movementMode??null,movementMedium:u.movementMedium??null,movementFly:u.movementFly??null,difficultThisMove:!!u.difficultThisMove,movedThisTurn:!!u.movedThisTurn,marchRequired:u.marchRequired??null});}
 // A flyer that crosses a vortex is struck by it as well; its Movement suffers only for landing in it.
-export function commitOrder(s,id,order,random=Math.random){const u=getUnit(s,id);const error=orderError(s,u,order);if(error)throw Error(error);const medium=order.medium??u.movementMedium??'ground',fly=medium==='fly'?(order.fly??u.movementFly??flyValues(u)[0]):null,plan=planMove(u,order),vortices=sweptVortices(s,u,movePoses(plan)),entered=medium==='fly'?vortexUnder(s,u,plan.start)||vortexUnder(s,u,plan.end):vortices.length>0,difficult=!!u.difficultThisMove||entered;enterRemaining(s,random);remember(s,u);
+export function commitOrder(s,id,order,random=Math.random){const u=getUnit(s,id);const error=orderError(s,u,order);if(error)throw Error(error);const medium=order.medium??u.movementMedium??'ground',fly=medium==='fly'?(order.fly??u.movementFly??flyValues(u)[0]):null,plan=planMove(u,order),vortices=sweptVortices(s,u,movePoses(plan)),entered=medium==='fly'?vortexUnder(s,u,plan.start)||vortexUnder(s,u,plan.end):sweptVortices(s,u,movePoses(plan),{all:true}).length>0,difficult=!!u.difficultThisMove||entered;enterRemaining(s,random);remember(s,u);
  // A flyer suffers dangerous terrain only where it takes off or lands.
  const lands=v=>[plan.start,plan.end].some(p=>circleGap(corners(p),{x:v.x,y:v.y,r:v.radius??1.5})<EPS),struck=medium==='fly'?vortices.filter(v=>!VORTEX_RULES[v.spell]?.dangerous||lands(v)):vortices;const marchRequired=medium==='fly'?false:needsMarchTest(s,u),spent=(u.spent??0)+plan.cost,allowance=moveAllowance(u,{mode:plan.mode,medium,fly,difficult});Object.assign(u,{x:plan.end.x,y:plan.end.y,heading:plan.end.heading,spent,movementMode:plan.mode,movementMedium:medium,movementFly:fly,marchRequired,moved:plan.kind==='pivot'||spent>=allowance-EPS,movedThisTurn:true});if(entered)u.difficultThisMove=true;s.lastVortexHits=vortexMoveHits(s,u,struck,random,medium==='fly'?[plan.end]:movePoses(plan));
  // A unit that has finished moving may have to test against a Phantasmagoria.
@@ -1251,7 +1253,7 @@ export function resolveCharge(s,id,dice,random=Math.random){
  if(u.charge.reaction==='pending')throw Error('Choose the defender’s reaction first.');
  const t=getUnit(s,u.charge.target),fled=u.charge.reaction==='flee',p=t?.x!==null?chargePlan(s,u,t):{error:'Target fled off the table.'},route=p.error?u.charge.initialPlan:p;
  // Charging through a vortex (difficult terrain): Movement −1, and the lower die counts.
- const difficult=!!route?.end&&sweptVortices(s,u,[u,...(route.angle?[wheelPose(u,route.angle)]:[]),route.end]).length>0,roll=difficult?Math.min(...dice):Math.max(...dice),range=Math.max(1,profile(u).M-(difficult?1:0))+roll,success=!p.error&&range+EPS>=p.cost;
+ const difficult=!!route?.end&&sweptVortices(s,u,[u,...(route.angle?[wheelPose(u,route.angle)]:[]),route.end],{all:true}).length>0,roll=difficult?Math.min(...dice):Math.max(...dice),range=Math.max(1,profile(u).M-(difficult?1:0))+roll,success=!p.error&&range+EPS>=p.cost;
  let end={...u},travel=0,disordered=null;
  // Charging a unit behind a defended obstacle (Earthen Ramparts) is a disordered charge, unless the charger has Fly.
  if(success){end=p.end;travel=p.cost;if(fled){claimStandard(s,t,u.team);destroyUnit(s,t,'RUN_DOWN',random);}else{engage(u,t);if(hasRule(t,'defendedObstacle')&&!flyValues(u).length)disordered='Earthen Ramparts';}}
@@ -1298,12 +1300,32 @@ export function woundTarget(attacker,defender){return Math.max(2,Math.min(6,4+pr
 // Parry: in close combat a regiment's hand weapons and shields improve its save by one more, to 3+ at best.
 const parry=u=>u?.role==='infantry'&&hasShield(u)&&armourSave(u)>3?1:0;
 export function saveTarget(defender,attacker){let target=armourSave(defender)-parry(defender)+apBonus(attacker)+(attacker.weapon==='greatWeapon'?2:0)+(FACTIONS[attacker.faction??'chaos'].choppas&&attacker.charge?.status==='success'?1:0)+(attacker.role==='wizard'&&attacker.faction==='chaos'?1:0);return Math.max(2,Math.min(7,target));}
+// ---- Difficult ground and Disruption ----
+// Terrain features are circles {x,y,r} or polygons {points}; movement is 'open', 'difficult',
+// 'dangerous' or 'impassable' (older records say impassable:true). Every vortex template in play
+// is difficult terrain as well.
+export const featureMovement=t=>t?.movement??(t?.impassable?'impassable':'open');
+export function featureGap(t,poly){return t.points?polygonGap(poly,t.points):circleGap(poly,t);}
+export function difficultGround(s){return [...(s?.terrain??[]).filter(t=>['difficult','dangerous'].includes(featureMovement(t))).map(t=>({kind:'terrain',id:t.id,name:t.name,shape:t})),...(s?.vortices??[]).filter(v=>getUnit(s,v.caster)?.x!=null).map(v=>({kind:'vortex',id:v.id??v.caster,name:SPELLS[v.spell??'pillar']?.name??'Vortex',shape:{x:v.x,y:v.y,r:v.radius??1.5}}))];}
+// A model is within difficult ground when part of its base overlaps it (only touching is not enough).
+export function modelsInDifficult(s,u){const ground=difficultGround(s),total=aliveCount(u);if(!ground.length||!u||u.x===null)return {within:0,total,features:[]};
+ const squares=isCharacter(u)||u.role==='warmachine'?[corners(u)]:modelSquares(s,u).filter(m=>!m.dead).map(m=>[[m.x,m.y],[m.x+m.size,m.y],[m.x+m.size,m.y+m.size],[m.x,m.y+m.size]].map(([x,y])=>localPoint(u,x,y)));
+ const names=new Set();let within=0;for(const sq of squares){const inner=shrink(sq,.01),under=ground.filter(g=>featureGap(g.shape,inner)<EPS);if(under.length){within++;for(const g of under)names.add(g.name);}}
+ return {within,total:squares.length,features:[...names]};}
+// Disrupted (it cannot claim a Rank Bonus): engaged in its flank or rear by an enemy unit of Unit
+// Strength 5 or more, or with a quarter or more of its models within difficult ground. It is
+// judged where the units stand when the combat result is worked out. Returns the reasons.
+export function disruption(s,u){const out=[];if(!u||u.x===null)return out;
+ for(const e of opponents(s,u)){const face=chargeFace(e,u);if(unitStrength(e)>=5&&['left flank','right flank','rear'].includes(face))out.push({kind:'flank',unit:e.id,text:`engaged in the ${face} by ${e.name}`});}
+ const g=modelsInDifficult(s,u);if(g.total&&g.within*4>=g.total)out.push({kind:'terrain',within:g.within,total:g.total,features:g.features,text:`${g.within} of ${g.total} models in ${g.features.join(' and ')}`});
+ return out;}
+export const isDisrupted=(s,u)=>disruption(s,u).length>0;
 // Ranks behind the first count when they hold at least the troop type's models per rank
 // (5 regular, 4 heavy infantry); casualties come off the rear, so the front ranks stay full.
 function rankBonus(u){const alive=aliveCount(u),files=filesOf(u),full=Math.floor(alive/files),partial=alive%files,need=Math.min(files,TROOP_TYPES[troopType(u)].perRank??files);return full<1?0:Math.min(2,full-1+(partial>=need?1:0));}
 // Leadership for a test: the unit's own (or its champion's), or the General's through Inspiring
 // Presence when s is given, then a Warband's rank bonus and a musician's +1 to march and rally.
-export function leadership(u,kind='normal',s=null){const own=commandAlive(u,'C')?Math.max(profile(u).Ld,championProfile(u).Ld):profile(u).Ld,base=Math.max(own,inspiringPresence(s,u)??0);return Math.min(10,base+(FACTIONS[u.faction??'chaos'].warband&&kind!=='restraint'&&!u.fleeing?rankBonus(u):0)+(commandAlive(u,'M')&&(kind==='march'||kind==='rally')?1:0));}
+export function leadership(u,kind='normal',s=null){const own=commandAlive(u,'C')?Math.max(profile(u).Ld,championProfile(u).Ld):profile(u).Ld,base=Math.max(own,inspiringPresence(s,u)??0);return Math.min(10,base+(FACTIONS[u.faction??'chaos'].warband&&kind!=='restraint'&&!u.fleeing&&!(s&&isDisrupted(s,u))?rankBonus(u):0)+(commandAlive(u,'M')&&(kind==='march'||kind==='rally')?1:0));}
 // Casualties already suffered in this combat count against the first fighting rank, then the
 // second (never the champion); the models that stepped forward from the rear cannot attack.
 function stepForward(models,lost){let drop=lost;return [...models].sort((a,b)=>(a.rank??0)-(b.rank??0)).filter(m=>{if(drop>0&&m.command!=='C'){drop--;return false;}return true;});}
@@ -1456,11 +1478,12 @@ function profileOfSave(u){return armourSave(u);}
 // adds up the wounds its units caused. Only its highest rank bonus counts (a unit engaged in its
 // flank or rear by an enemy unit of 10 or more models has none), one standard, flank and rear
 // attacks once per enemy unit, Close Order for every unit that has it, and Massed Infantry once,
-// for the side with the higher Unit Strength. A musician breaks a tie.
+// for the side with the higher Unit Strength. A musician breaks a tie. A Disrupted unit (see
+// disruption) claims no Rank Bonus; the reasons are kept with the score.
 function sideScores(s,units,stages){
  const unit=id=>getUnit(s,id),live=u=>!!u&&u.x!==null&&aliveCount(u)>0,side=team=>units.map(unit).filter(u=>u?.team===team);
  const strength=team=>side(team).filter(live).reduce((n,u)=>n+unitStrength(u),0);
- const disrupted=u=>opponents(s,u).some(e=>aliveCount(e)>=10&&['left flank','right flank','rear'].includes(chargeFace(e,u)));
+ const disrupted=u=>isDisrupted(s,u);
  const score={};
  for(const team of ['ash','iron']){
   const other=team==='ash'?'iron':'ash',alive=side(team).filter(live),foes=side(other);
@@ -1470,7 +1493,7 @@ function sideScores(s,units,stages){
   let flank=0;
   for(const e of foes.filter(e=>e.role!=='warmachine')){const faces=alive.filter(u=>u.role!=='warmachine'&&engagedWith(u,e)).map(u=>chargeFace(u,e));if(faces.some(f=>f==='left flank'||f==='right flank'))flank+=1;if(faces.includes('rear'))flank+=2;}
   const massed=strength(team)>strength(other)?1:0,standard=alive.some(u=>commandAlive(u,'S'))?1:0;
-  score[team]={wounds,ranks,closeOrder,flank,massed,standard,musician:0,total:wounds+ranks+closeOrder+flank+massed+standard};
+  score[team]={wounds,ranks,closeOrder,flank,massed,standard,musician:0,total:wounds+ranks+closeOrder+flank+massed+standard,disrupted:alive.filter(u=>rankBonus(u)>0&&disrupted(u)).map(u=>({unit:u.id,reasons:disruption(s,u).map(r=>r.text)}))};
  }
  if(score.ash.total===score.iron.total){const music=team=>side(team).filter(live).some(u=>commandAlive(u,'M'));if(music('ash')!==music('iron')){const team=music('ash')?'ash':'iron';score[team].musician=1;score[team].total++;}}
  return score;
