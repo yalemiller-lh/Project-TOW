@@ -109,7 +109,7 @@ function armyFromRoster(team,roster){
  const faction=roster.faction,units=[],cannons=[];let rocket=null,regiments=0;
  for(const item of roster.entries){
   const e=A.entryOf(faction,item.entry),paid={cost:A.entryCost(faction,item),category:e.category,entry:item.entry,general:!!item.general};
-  if(e.role==='wizard'){if(units.some(u=>u.role==='wizard'))throw Error('This engine supports one wizard per army.');const m=MOUNTS[item.mount];units.push({...createWizard(team,faction,{lore:item.lore??e.lores?.default}),name:e.name,...paid,...(m?{mount:item.mount,wounds:WIZARDS[faction].profile.W+(m.wounds??0),rules:[...m.rules]}:{})});}
+  if(e.role==='wizard'){if(units.some(u=>u.role==='wizard'))throw Error('This engine supports one wizard per army.');const m=MOUNTS[item.mount];const bound=Object.entries(BOUND_ITEMS).filter(([k])=>item.options?.[k]&&e.options?.[k]).map(([,b])=>({key:b.spell,power:b.power,item:b.name}));units.push({...createWizard(team,faction,{lore:item.lore??e.lores?.default}),name:e.name,...paid,...(bound.length?{bound}:{}),...(m?{mount:item.mount,wounds:WIZARDS[faction].profile.W+(m.wounds??0),rules:[...m.rules]}:{})});}
   else if(e.role==='warmachine'&&team==='ash'&&item.entry==='deathshrieker'){if(rocket)throw Error('This engine supports one Deathshrieker per army.');rocket={...paid};}
   else if(e.role==='warmachine'&&team==='iron'&&item.entry==='greatCannon'){if(cannons.length>=2)throw Error('This engine supports at most two Great Cannons.');cannons.push({id:'I'+(5+cannons.length),name:'Great Cannon '+'AB'[cannons.length],...machineFields('iron','empire'),x:null,y:null,heading:180,wounds:3,crew:3,shot:false,disabledUntil:0,lastShot:null,...paid});}
   else if(e.role==='infantry'||e.role==='missile'){const id=REGIMENT_IDS[team][regiments++];if(!id)throw Error('Too many regiments for this engine.');const kind=e.kind&&REGIMENTS[e.kind]?e.kind:null,letter=kind?'ABCDEFGH'[units.filter(v=>v.kind===kind).length]:null;units.push({id,team,faction,role:e.role,name:e.name,...(kind?{kind,short:REGIMENTS[kind].short,letter}:{}),models:item.models,files:item.files??5,command:{C:!!item.command?.C,S:!!item.command?.S,M:!!item.command?.M},troop:e.troop,shields:!!(e.options?.shields&&(e.options.shields.required||item.options?.shields)),spears:!!item.options?.spears,...paid,rules:[...(e.rules??[])],heading:team==='ash'?0:180,...runtime()});}
@@ -683,7 +683,7 @@ export function phaseHasActions(s){
  // A reform still to choose keeps the phase open.
  if((s.reformOffers??[]).some(o=>reformOffer(s,o.unit)))return true;
  const active=s.units.filter(u=>u.team===s.team&&u.x!==null&&aliveCount(u)>0);
- const spells=phase=>active.some(u=>u.role==='wizard'&&u.spells.some(key=>SPELLS[key]?.phase===phase&&spellTargets(s,u.id,key).some(t=>canCast(s,u.id,key,t.id))));
+ const spells=phase=>active.some(u=>u.role==='wizard'&&u.spells.some(key=>SPELLS[key]?.phase===phase&&spellTargets(s,u.id,key).some(t=>canCast(s,u.id,key,t.id)))||(u.bound??[]).some(b=>SPELLS[b.key]?.phase===phase&&spellTargets(s,u.id,b.key).some(t=>canCast(s,u.id,b.key,t.id,{bound:true}))));
  if(s.stage==='strategy')return active.some(u=>u.fleeing&&!u.rallyAttempted)||spells('strategy')||active.some(u=>canExchangeSignature(s,u)||u.role==='wizard'&&canDispelAVortex(s,u));
  if(s.stage==='movement'&&s.movementStep==='reactions')return s.units.some(u=>u.charge?.reaction==='pending');
  if(s.stage==='movement')return s.movementStep==='declare'?active.some(u=>u.charge?.status==='declared'||canAct(s,u)&&availableCharges(s,u).length):s.movementStep==='charges'?active.some(u=>u.charge?.status==='declared'):active.some(u=>canAct(s,u))||spells('movement')||!!s.movementReopened;
@@ -820,9 +820,16 @@ const targetless=spell=>spell?.reach==='self'||!!spell?.template;
 export function spellRangeLabel(key){const spell=SPELLS[key];return !spell?'':spell.range?spell.range+'″':spell.reach==='combat'?'Combat':'Self';}
 // Why this wizard cannot attempt this spell now (null when it can), before any target is chosen.
 // The checks run in a fixed order, so the reason shown is the first that applies.
-export function castBlockReason(s,id,key){
+// Bound spells (rulebook, Bound Spells): a magic item's spell, cast in the usual manner with the
+// item's Power Level added to 2D6, no Miscast or Perfect Invocation, at most one a phase for each
+// model; dispelled as usual, but the dispeller cannot be Outclassed in the Art. This build does not
+// count a bound spell against the wizard's own casting attempts (the rule does not say it does).
+export const BOUND_ITEMS={rubyRing:{name:'Ruby Ring of Ruin',spell:'fireball',power:1}};
+export const boundSpell=(u,key)=>(u?.bound??[]).find(b=>b.key===key)??null;
+export function castBlockReason(s,id,key,{bound=false}={}){
  const u=getUnit(s,id),spell=SPELLS[key];
  if(s.pendingSpell)return 'Resolve the dispel of the spell just cast first.';
+ if(bound){const b=boundSpell(u,key);if(!b||!spell)return 'No bound spell of that name.';if(u.x===null||aliveCount(u)===0)return 'Not on the battlefield.';if(u.fleeing)return 'Fleeing models cannot cast.';if(u.team!==s.team)return 'Cast in your own turn.';if(s.stage!==spell.phase)return `Cast in the ${spell.phase[0].toUpperCase()+spell.phase.slice(1)} phase.`;if(u.engaged?.length&&spell.reach!=='self')return 'Engaged in combat.';if(u.boundCast===`${s.round}:${s.team}:${s.stage}`)return 'A bound spell has been cast this phase.';return null;}
  if(!u||u.role!=='wizard'||!spell||!u.spells?.includes(key))return 'This wizard does not know that spell.';
  if(u.x===null||aliveCount(u)===0)return 'The wizard is not on the battlefield.';
  if(u.fleeing)return 'Fleeing wizards cannot cast.';
@@ -872,7 +879,7 @@ export function targetReason(s,id,key,t){
 // Every unit and war machine on the battlefield with the reason it cannot be targeted (null when it can).
 export function spellTargetOptions(s,id,key){const u=getUnit(s,id),spell=SPELLS[key];if(!u||!spell)return [];if(targetless(spell))return [{unit:u,reason:targetReason(s,id,key,u)}];return combatants(s).filter(t=>t.x!==null&&aliveCount(t)>0).map(t=>({unit:t,reason:targetReason(s,id,key,t)}));}
 export function spellTargets(s,id,key){return spellTargetOptions(s,id,key).filter(o=>!o.reason).map(o=>o.unit);}
-export function canCast(s,id,key,targetId){return !castBlockReason(s,id,key)&&!targetReason(s,id,key,getUnit(s,targetId));}
+export function canCast(s,id,key,targetId,{bound=false}={}){return !castBlockReason(s,id,key,{bound})&&!targetReason(s,id,key,getUnit(s,targetId));}
 // Where a template spell may go: its centre within range of the wizard (measured from its base),
 // the whole template on the battlefield, and touching no model's base.
 export function templatePlacementError(s,id,key,point){
@@ -962,26 +969,29 @@ function useFated(s,team){if(!s.fatedDispelUsed||typeof s.fatedDispelUsed!=='obj
 export function fatedDispelAvailable(s,team){return !fatedUsed(s,team)&&!s.dispelBlocked?.[team];}
 function wizardDispellers(s,caster,targetId){return s.units.filter(v=>v.role==='wizard'&&v.team!==caster.team&&v.x!==null&&aliveCount(v)>0&&!v.fleeing&&!v.dispelExhausted&&!s.dispelBlocked?.[v.team]&&gap(v,caster)<=(v.level>=3?24:18)+EPS&&(!v.engaged||v.id===targetId));}
 export function dispelOptions(s){const p=s.pendingSpell;if(!p)return null;const caster=getUnit(s,p.caster),team=caster.team==='ash'?'iron':'ash';return {caster:p.caster,spell:p.key,team,casting:p.report.casting,wizards:wizardDispellers(s,caster,p.target).map(v=>({id:v.id,bonus:Math.ceil(v.level/2),distance:gap(v,caster)})),fated:fatedDispelAvailable(s,team)};}
-export function castSpell(s,id,key,targetId,random=Math.random,{dispel='none',dispeller=null,point=null}={}){
+export function castSpell(s,id,key,targetId,random=Math.random,{dispel='none',dispeller=null,point=null,bound=false}={}){
  if(!['none','wizard','fated'].includes(dispel))throw Error('Choose a legal dispel.');const u=getUnit(s,id);
  if(u&&dispel==='wizard'&&!wizardDispellers(s,u,targetId).some(v=>!dispeller||v.id===dispeller))throw Error('No opposing wizard is in dispel range.');
  if(u&&dispel==='fated'&&!fatedDispelAvailable(s,u.team==='ash'?'iron':'ash'))throw Error('The Fated Dispel was already used this turn.');
- const report=attemptSpell(s,id,key,targetId,random,{point});if(!report.pending)return report;
+ const report=attemptSpell(s,id,key,targetId,random,{point,bound});if(!report.pending)return report;
  return resolveDispel(s,dispel==='wizard'?dispeller??dispelOptions(s).wizards[0].id:dispel,random);
 }
 // The casting roll: 2D6 plus half the wizard's level (rounded up), less the Magic Resistance of an
 // enemy target; it must equal or beat the casting value. The natural dice and every modifier are
 // kept apart in the report. A natural double 6 always succeeds and cannot be dispelled at once;
 // a natural double 1 miscasts.
-export function attemptSpell(s,id,key,targetId,random=Math.random,{point=null}={}){
- panicGate(s);const spell=SPELLS[key],block=castBlockReason(s,id,key);if(block)throw Error(block);
+export function attemptSpell(s,id,key,targetId,random=Math.random,{point=null,bound=false}={}){
+ panicGate(s);const spell=SPELLS[key],block=castBlockReason(s,id,key,{bound});if(block)throw Error(block);
  if(targetless(spell))targetId??=id;
  const u=getUnit(s,id),t=getUnit(s,targetId),why=targetReason(s,id,key,t);if(why)throw Error(why);
  if(spell.template){const bad=templatePlacementError(s,id,key,point);if(bad)throw Error(bad);}
  if(spell.relocate){const bad=relocationError(s,id,key,targetId,point);if(bad)throw Error(bad);}
- const dice=rollD6(2,random),modifiers=[{label:'Level '+u.level,value:Math.ceil(u.level/2)}],resistance=t.team!==u.team?magicResistance(t):0;
+ const item=bound?boundSpell(u,key):null,dice=rollD6(2,random),modifiers=item?(item.power?[{label:`${item.item}: Power Level ${item.power}`,value:item.power}]:[]):[{label:'Level '+u.level,value:Math.ceil(u.level/2)}],resistance=t.team!==u.team?magicResistance(t):0;
  if(resistance)modifiers.push({label:'Magic Resistance',value:-resistance});
- const casting=dice[0]+dice[1]+modifiers.reduce((n,m)=>n+m.value,0),report={caster:id,spell:key,target:targetId,dice,modifiers,casting,cast:false,dispel:null,effect:null};u.castThisTurn.push(key);
+ const casting=dice[0]+dice[1]+modifiers.reduce((n,m)=>n+m.value,0),report={caster:id,spell:key,target:targetId,dice,modifiers,casting,cast:false,dispel:null,effect:null,...(item?{bound:item.item}:{})};
+ // A bound spell: no Miscast or Perfect Invocation, one a phase.
+ if(item){u.boundCast=`${s.round}:${s.team}:${s.stage}`;if(casting<spell.cast)return report;report.cast=true;report.perfect=false;s.pendingSpell={caster:id,key,target:targetId,point,report};const options=dispelOptions(s);if(options.wizards.length||options.fated){report.pending=true;return report;}s.pendingSpell=null;applySpell(s,{caster:id,key,target:targetId,point,report},random);return report;}
+ u.castThisTurn.push(key);
  // Attempting a Remains in Play spell again ends the caster's earlier one at once, whatever the result.
  if(spell.remainsInPlay){const old=s.vortices.filter(v=>v.caster===id&&(v.spell??'pillar')===key);if(old.length){s.vortices=s.vortices.filter(v=>!old.includes(v));report.ended=old.map(v=>v.id??v.caster);}}
  if(dice[0]===1&&dice[1]===1){report.miscast=miscast(s,u,random);if(!report.miscast.cast)return report;report.casting=spell.cast;}else if(casting<spell.cast&&!(dice[0]===6&&dice[1]===6))return report;report.cast=true;
@@ -1002,7 +1012,7 @@ export function resolveDispel(s,choice='none',random=Math.random){
   if(!wizard)useFated(s,options.team);
   const dice=rollD6(2,random),double1=dice[0]===1&&dice[1]===1,total=dice[0]+dice[1]+(wizard?wizard.bonus:0);
   report.dispel={kind:wizard?'wizard':'fated',by:wizard?.id??null,dice,total,success:!double1&&(dice[0]===6&&dice[1]===6||total>report.casting)};
-  if(double1&&wizard){report.dispel.miscast=miscast(s,getUnit(s,wizard.id),random,{dispel:true});if(report.dispel.miscast.dispelled)report.dispel.success=true;}
+  if(double1&&wizard&&!report.bound){report.dispel.miscast=miscast(s,getUnit(s,wizard.id),random,{dispel:true});if(report.dispel.miscast.dispelled)report.dispel.success=true;}
  }
  s.pendingSpell=null;report.pending=false;
  if(report.dispel?.success){report.cast=false;return report;}

@@ -28,7 +28,7 @@ export const ENTRIES={
  orc:{
   orcMob:{name:'Orc Mob',category:'core',role:'infantry',troop:'regular',perModel:5,minModels:5,command:{C:{name:'Boss',cost:7},S:{name:'Standard Bearer',cost:5},M:{name:'Musician',cost:5}}},
   // Night Goblins: shields are free (a shortbow or thrusting spear is 1 point a model); Fanatics are 25 points each.
-  oddgit:{name:'Goblin Oddgit',category:'characters',role:'wizard',base:60,options:{level2:{name:'Wizard Level 2',cost:30,required:true},rubyRing:{name:'Ruby Ring of Ruin',cost:35,notModelled:true}},general:true,lores:{options:['elementalism','waaagh'],default:'elementalism'}},
+  oddgit:{name:'Goblin Oddgit',category:'characters',role:'wizard',base:60,options:{level2:{name:'Wizard Level 2',cost:30,required:true},rubyRing:{name:'Ruby Ring of Ruin',cost:35}},general:true,lores:{options:['elementalism','waaagh'],default:'elementalism'}},
   nightGoblins:{name:'Night Goblins',category:'core',role:'infantry',kind:'nightGoblin',troop:'regular',perModel:3,minModels:10,options:{shields:{name:'Shields',perModel:0}},command:{C:{name:'Boss',cost:7},S:{name:'Standard Bearer',cost:5},M:{name:'Musician',cost:5}},extras:{fanatics:{name:'Fanatic',cost:25,notModelled:true}}},
  },
 };
@@ -113,10 +113,10 @@ export const LISTS={
  // The user's squig list of 2 October 2026 (748 points), built a unit at a time: what is not modelled
  // yet is left out and listed in `missing`.
  'orc-squig-750':{name:'Orc & Goblin Tribes · 750 (squigs, partly built)',faction:'orc',points:750,entries:[
-  {entry:'oddgit',general:true,lore:'elementalism'},
+  {entry:'oddgit',general:true,lore:'elementalism',options:{rubyRing:true}},
   {entry:'nightGoblins',models:30,options:{shields:true},command:{C:true,S:true,M:true}},
   {entry:'nightGoblins',models:20,options:{shields:true},command:{C:true,S:true,M:true}},
- ],missing:['Ruby Ring of Ruin on the Goblin Oddgit (35 points)','2 Fanatics with the 30 Night Goblins (50 points)','Night Goblin Warboss with great weapon, light armour, Giant Cave Squig, Charmed Shield and Potion of Foolhardiness (97 points)','2 Night Goblin Squig Herds, 5 Cave Squigs and 1 Herder each (53 points each)','7 Night Goblin Squig Hoppers with cavalry spears (91 points)','Mangler Squig (95 points)']},
+ ],missing:['2 Fanatics with the 30 Night Goblins (50 points)','Night Goblin Warboss with great weapon, light armour, Giant Cave Squig, Charmed Shield and Potion of Foolhardiness (97 points)','2 Night Goblin Squig Herds, 5 Cave Squigs and 1 Herder each (53 points each)','7 Night Goblin Squig Hoppers with cavalry spears (91 points)','Mangler Squig (95 points)']},
 };
 // Every roster offered for a faction, best match for the points limit first.
 export function rostersFor(faction,points){const all=[...Object.entries(LISTS).filter(([,l])=>l.faction===faction).map(([id,l])=>({id,...l})),...Object.entries(PRESETS).filter(([,l])=>l.faction===faction).map(([id,l])=>({id:'sample-'+id,points:750,...l,name:l.name+' · 750 sample'}))];return all.sort((x,y)=>(x.points<=points?0:1)-(y.points<=points?0:1)||Math.abs(points-x.points)-Math.abs(points-y.points));}

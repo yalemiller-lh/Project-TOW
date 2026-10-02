@@ -484,7 +484,7 @@ export function takeStep(s,random=Math.random){
 
 // The bot casts the spell and target worth most: damage and flight played out, lasting spells by
 // what they are for; spells with nothing to gain are not cast.
-function spellValue(s,w,key,target,point){
+function spellValue(s,w,key,target,point,bound=false){
  const spell=G.SPELLS[key];
  if(spell.type==='assailment')return 20;
  if(key==='shield')return w.engaged||danger(s,w,w)<-20?10:3;
@@ -503,11 +503,12 @@ function spellValue(s,w,key,target,point){
  if(key==='battleLust')return target.role==='infantry'&&!target.engaged&&s.units.some(t=>t.team===THEM&&alive(t)&&!t.fleeing&&G.gap(target,t)<=G.profile(target).M+6)?8:0;
  if(G.SPELLS[key].relocate)return 0;
  if(spell.template)return point?10:0;
- let v=0;for(let i=0;i<6;i++){const c=sim(s);try{G.castSpell(c,w.id,key,target.id,seeded(i+21),{point,dispel:'none'});v+=swing(s,c)/6;}catch{}}
+ let v=0;for(let i=0;i<6;i++){const c=sim(s);try{G.castSpell(c,w.id,key,target.id,seeded(i+21),{point,dispel:'none',bound});v+=swing(s,c)/6;}catch{}}
  return v;
 }
-function aiSpell(s,random){const wizard=s.units.find(u=>u.team===ME&&u.role==='wizard'&&alive(u));if(!wizard)return null;let pick=null;for(const key of wizard.spells){const spell=G.SPELLS[key];if(G.castBlockReason(s,wizard.id,key))continue;const point=spell.template?templatePoint(s,wizard,key):null;if(spell.template&&!point)continue;for(const t of G.spellTargets(s,wizard.id,key)){const value=spellValue(s,wizard,key,t,point);if(value>1&&(!pick||value>pick.value))pick={key,spell,target:t,point,value};}}
- if(!pick)return null;const {key,spell,target,point}=pick;{const report=G.attemptSpell(s,wizard.id,key,target.id,random,{point});s.selected=wizard.id;return {message:`${wizard.name} casts ${spell.name}: ${report.dice.join('+')} = ${report.casting} · ${report.pending?'cast — choose a dispel':report.cast?'cast':'failed'}.`,roll:{label:`${wizard.id} · ${spell.name} casting`,dice:report.dice,team:ME},spell:true,report,point:point??{x:target.x,y:target.y}};}return null;}
+// Its wizard's spells, and any bound spell (a magic item's, such as the Ruby Ring of Ruin's Fireball).
+function aiSpell(s,random){const wizard=s.units.find(u=>u.team===ME&&u.role==='wizard'&&alive(u));if(!wizard)return null;let pick=null;for(const {key,bound}of [...wizard.spells.map(key=>({key,bound:false})),...(wizard.bound??[]).map(b=>({key:b.key,bound:true}))]){const spell=G.SPELLS[key];if(G.castBlockReason(s,wizard.id,key,{bound}))continue;const point=spell.template?templatePoint(s,wizard,key):null;if(spell.template&&!point)continue;for(const t of G.spellTargets(s,wizard.id,key)){const value=spellValue(s,wizard,key,t,point,bound);if(value>1&&(!pick||value>pick.value))pick={key,spell,target:t,point,value,bound};}}
+ if(!pick)return null;const {key,spell,target,point,bound}=pick;{const report=G.attemptSpell(s,wizard.id,key,target.id,random,{point,bound});s.selected=wizard.id;return {message:`${wizard.name} casts ${spell.name}${bound?` (bound, ${G.boundSpell(wizard,key).item})`:''}: ${report.dice.join('+')} = ${report.casting} · ${report.pending?'cast — choose a dispel':report.cast?'cast':'failed'}.`,roll:{label:`${wizard.id} · ${spell.name} casting`,dice:report.dice,team:ME},spell:true,report,point:point??{x:target.x,y:target.y}};}return null;}
 // A legal centre for a template spell, as near the closest enemy as the rules allow: along the
 // line to it, then a little to either side; null when none is legal.
 function templatePoint(s,wizard,key){const spell=G.SPELLS[key],foe=nearest(s,wizard);if(!foe)return null;const d=distance(wizard,foe);if(!d)return null;const ux=(foe.x-wizard.x)/d,uy=(foe.y-wizard.y)/d;
