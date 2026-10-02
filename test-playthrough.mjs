@@ -70,13 +70,15 @@ function play(seed,options){
   const now=fingerprint(s);same=now===last?same+1:0;last=now;assert.ok(same<25,`${where()}: nothing changed for 25 steps (last: ${who} ${what})`);
  }
  if(s.format.id==='battle-march'){
-  assert.equal(s.stage,'finished',`seed ${seed}: the Battle March game reaches its end`);assert.equal(s.turnLog.length,10);
+  assert.equal(s.stage,'finished',`seed ${seed}: the Battle March game reaches its end`);assert.ok(s.turnLog.length===10||G.armyDestroyed(s,'ash')||G.armyDestroyed(s,'iron'),`seed ${seed}: ten turns, unless an army was wiped out`);
   const keys=s.scoring.ledger.filter(e=>e.kind!=='raid').map(e=>`${e.round}:${e.turn}:${e.objective}`);assert.equal(new Set(keys).size,keys.length,'each objective scores at most once per turn end');
   assert.ok(Number.isFinite(s.result.totals.ash)&&Number.isFinite(s.result.totals.iron));
  }
  return s;
 }
 const SEEDS=Number(process.env.SEEDS??2);let games=0;
-for(const [opponent,format,points,extra]of [['empire','battle-march',500],['empire','battle-march',750,{objectives:'landmark',terrain:{method:'alternate'}}],['empire','battle-march',600,{objectives:'troves3',optional:{raidAndBurn:true},terrain:{method:'scatter',pieces:['hill','darkWood','hedge','rocks']}}],['empire','battle-march',500,{deployment:{map:'mountain-pass'},terrain:{method:'alternate',pieces:['steepHill','wood','highWall','building']}}],['empire','battle-march',750,{deployment:{map:'opposed-flanks',mirrored:true},objectives:'troves2'}],['orc','battle-march',500,{terrain:{method:'alternate'}}],['orc','classic',null],['empire','classic',null]])
- for(let seed=1;seed<=SEEDS;seed++){if(process.env.ONLY&&String(seed*97+(points??1))!==process.env.ONLY||process.env.OPP&&opponent!==process.env.OPP||process.env.FORMAT&&format!==process.env.FORMAT)continue;play(seed*97+(points??1),{opponent,format,points,...extra});games++;}
+// CONFIG=2,5 plays only those configurations (by position), so a fuzz run can be split across processes.
+const CONFIGS=process.env.CONFIG?process.env.CONFIG.split(',').map(Number):null;
+for(const [index,[opponent,format,points,extra]]of [['empire','battle-march',500],['empire','battle-march',750,{objectives:'landmark',terrain:{method:'alternate'}}],['empire','battle-march',600,{objectives:'troves3',optional:{raidAndBurn:true},terrain:{method:'scatter',pieces:['hill','darkWood','hedge','rocks']}}],['empire','battle-march',500,{deployment:{map:'mountain-pass'},terrain:{method:'alternate',pieces:['steepHill','wood','highWall','building']}}],['empire','battle-march',750,{deployment:{map:'opposed-flanks',mirrored:true},objectives:'troves2'}],['orc','battle-march',500,{terrain:{method:'alternate'}}],['orc','classic',null],['empire','classic',null]].entries())
+ for(let seed=1;seed<=SEEDS;seed++){if(CONFIGS&&!CONFIGS.includes(index))continue;if(process.env.ONLY&&String(seed*97+(points??1))!==process.env.ONLY||process.env.OPP&&opponent!==process.env.OPP||process.env.FORMAT&&format!==process.env.FORMAT)continue;play(seed*97+(points??1),{opponent,format,points,...extra});games++;}
 console.log(`PASS ${games} seeded games played with no overlaps, stalls or idle bot turns`);
