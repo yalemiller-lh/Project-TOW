@@ -41,7 +41,7 @@ const troopRules=u=>REGIMENTS[u?.kind]??(isCharacter(u)||u?.role==='warmachine'?
 export const hasWarband=u=>!!troopRules(u).warband;
 export const MISSILE={chaos:{name:'Blunderbuss Decimators',equipment:'Hand weapons · blunderbusses · heavy armour',profile:{M:3,WS:3,BS:3,S:3,T:4,W:1,I:2,A:1,Ld:9,save:5},weapon:{name:'Hailshot blunderbuss',range:12,strength:3,ap:1,multiple:'D3',volley:true,ignoreLong:true,ignoreStand:true,hailshot:true}},empire:{name:'State Missile Troops',equipment:'Hand weapons · crossbows',profile:{M:4,WS:3,BS:3,S:3,T:3,W:1,I:3,A:1,Ld:7,save:7},weapon:{name:'Crossbow',range:30,strength:4,ap:0,armourBane:2,ponderous:true}},orc:{name:'Orc Mob · Warbows',equipment:'Hand weapons · warbows · light armour',profile:{M:4,WS:3,BS:3,S:3,T:4,W:1,I:3,A:1,Ld:6,save:6},weapon:{name:'Warbow',range:24,strength:3,ap:0,volley:true}}};
 export const WIZARDS={chaos:{name:'Daemonsmith Sorcerer',equipment:'Hand weapon · heavy armour · Blackshard armour · Ensorcelled weapon',profile:{M:3,WS:4,BS:4,S:4,T:4,W:2,I:2,A:2,Ld:9,save:5},lore:'daemonology',rules:['loreOfHashut']},empire:{name:'Master Mage (Battlemage)',equipment:'Hand weapon',profile:{M:4,WS:3,BS:3,S:3,T:3,W:2,I:3,A:1,Ld:7,save:7},lore:'battle'},orc:{name:'Goblin Oddgit',equipment:'Hand weapon',profile:{M:4,WS:3,BS:3,S:3,T:3,W:2,I:3,A:1,Ld:6,save:7},lore:'elementalism',base:25}};
-export const CHARACTERS={empireCaptain:{name:'Captain of the Empire',profile:{M:4,WS:5,BS:5,S:4,T:4,W:2,I:4,A:2,Ld:9},equipment:'Hand weapon'}};
+export const CHARACTERS={empireCaptain:{name:'Captain of the Empire',profile:{M:4,WS:5,BS:5,S:4,T:4,W:2,I:4,A:2,Ld:9},equipment:'Hand weapon'},ngWarboss:{name:'Night Goblin Warboss',profile:{M:4,WS:5,BS:3,S:4,T:4,W:3,I:5,A:4,Ld:6},equipment:'Hand weapon',base:25}};
 const ARMOUR_SAVE={fullPlate:4,heavy:5,light:6};
 export const isCharacter=u=>u?.role==='wizard'||u?.role==='character';
 // A model's printed characteristics; profile() applies any temporary effects on top.
@@ -52,6 +52,8 @@ export const MOUNTS={
  warhorse:{name:'Empire Warhorse',troop:'lightCavalry',base:{w:30,h:60},profile:{M:8,WS:3,S:3,I:3,A:1},rules:['fastCavalry','swiftstride']},
  barded:{name:'Barded Warhorse',troop:'heavyCavalry',base:{w:30,h:60},profile:{M:7,WS:3,S:3,I:3,A:1},barding:true,rules:['counterCharge','firstCharge','swiftstride']},
  pegasus:{name:'Pegasus',troop:'monstrousCavalry',base:{w:40,h:60},profile:{M:8,WS:3,S:4,I:4,A:2},wounds:1,fly:10,rules:['counterCharge','firstCharge','fly','swiftstride']},
+ // Orc & Goblin Tribes: Movement 3D6 (Random Movement), W +1.
+ giantCaveSquig:{name:'Giant Cave Squig',troop:'monstrousCavalry',base:{w:50,h:50},profile:{M:0,WS:4,S:5,I:3,A:3},wounds:1,random:3,rules:['randomMovement']},
 };
 function mounted(u,p){if(!u?.mount||!p)return p;const m=MOUNTS[u.mount];if(!m)return p;if(u.mountAttack)return {...p,...m.profile,BS:0,save:7};return {...p,M:m.profile.M,W:p.W+(m.wounds??0),save:m.barding?Math.max(2,(p.save??7)-1):p.save};}
 // The mount striking for itself: the rider's state, the mount's characteristics, no weapon of the rider's.
@@ -113,7 +115,7 @@ function armyFromRoster(team,roster){
   else if(e.role==='warmachine'&&team==='ash'&&item.entry==='deathshrieker'){if(rocket)throw Error('This engine supports one Deathshrieker per army.');rocket={...paid};}
   else if(e.role==='warmachine'&&team==='iron'&&item.entry==='greatCannon'){if(cannons.length>=2)throw Error('This engine supports at most two Great Cannons.');cannons.push({id:'I'+(5+cannons.length),name:'Great Cannon '+'AB'[cannons.length],...machineFields('iron','empire'),x:null,y:null,heading:180,wounds:3,crew:3,shot:false,disabledUntil:0,lastShot:null,...paid});}
   else if(e.role==='infantry'||e.role==='missile'){const id=REGIMENT_IDS[team][regiments++];if(!id)throw Error('Too many regiments for this engine.');const kind=e.kind&&REGIMENTS[e.kind]?e.kind:null,letter=kind?'ABCDEFGH'[units.filter(v=>v.kind===kind).length]:null;units.push({id,team,faction,role:e.role,name:e.name,...(kind?{kind,short:REGIMENTS[kind].short,letter}:{}),models:item.models,files:item.files??5,command:{C:!!item.command?.C,S:!!item.command?.S,M:!!item.command?.M},troop:e.troop,shields:!!(e.options?.shields&&(e.options.shields.required||item.options?.shields)),spears:!!item.options?.spears,...paid,rules:[...(e.rules??[])],heading:team==='ash'?0:180,...runtime()});}
-  else if(e.role==='character'){const id=CHARACTER_IDS[team][units.filter(u=>u.role==='character').length];if(!id)throw Error('Too many characters for this engine.');units.push({id,team,faction,role:'character',kind:e.kind,name:e.name,weapon:item.options?.greatWeapon?'greatWeapon':null,armour:item.options?.fullPlate?'fullPlate':null,wounds:CHARACTERS[e.kind].profile.W+(MOUNTS[item.mount]?.wounds??0),mount:MOUNTS[item.mount]?item.mount:null,...paid,rules:[...(e.rules??[]),...(MOUNTS[item.mount]?.rules??[])],heading:team==='ash'?0:180,...runtime()});}
+  else if(e.role==='character'){const id=CHARACTER_IDS[team][units.filter(u=>u.role==='character').length];if(!id)throw Error('Too many characters for this engine.');units.push({id,team,faction,role:'character',kind:e.kind,name:e.name,weapon:item.options?.greatWeapon?'greatWeapon':null,armour:item.options?.fullPlate?'fullPlate':item.options?.lightArmour?'light':null,wounds:CHARACTERS[e.kind].profile.W+(MOUNTS[item.mount]?.wounds??0),mount:MOUNTS[item.mount]?item.mount:null,...paid,rules:[...(e.rules??[]),...(MOUNTS[item.mount]?.rules??[])],heading:team==='ash'?0:180,...runtime()});}
   else throw Error(`${e.name} cannot be fielded by this engine for this side.`);
  }
  return {units,cannons,rocket};
@@ -227,11 +229,38 @@ export function generalOf(s,team){return s?.units.find(u=>u.team===team&&u.gener
 // Fly values a unit has (from Steed of Shadows): separate options, never added together.
 export function flyValues(u){return [...new Set([...liveEffects(u).flatMap(e=>(e.rules??[]).filter(r=>r.rule==='fly').map(r=>r.value)),...(MOUNTS[u?.mount]?.fly?[MOUNTS[u.mount].fly]:[])])].sort((a,b)=>b-a);}
 // Swiftstride: 3″ more charge range, and +D6 to every Charge, Flee and Pursuit roll (always taken here).
-export const chargeReach=u=>profile(u).M+6+(unitHasRule(u,'swiftstride')?3:0);
+export const chargeReach=u=>isRandomMover(u)?(u.randomRoll?.total??6*randomDice(u)):profile(u).M+6+(unitHasRule(u,'swiftstride')?3:0);
 const swift=(u,random)=>unitHasRule(u,'swiftstride')?rollD6(1,random)[0]:0;
 // The Movement a move uses: on foot, M; flying, the Fly value. Marching doubles it; difficult
 // terrain takes 1 off first (never below 1).
-export function moveValue(u,medium='ground',fly=null){return medium==='fly'?(fly??flyValues(u)[0]??0):profile(u).M;}
+export function moveValue(u,medium='ground',fly=null){return medium==='fly'?(fly??flyValues(u)[0]??0):isRandomMover(u)?(u.randomRoll?.total??0):profile(u).M;}
+// ---- Random Movement (rulebook, Random Movement) ----
+// No Movement characteristic: dice instead (3D6 for a Giant Cave Squig). The mover rolls them in
+// Compulsory Moves, before any other unit of its army moves, and may then wheel and move forward
+// up to the total (Movement −1 in difficult terrain), or move into contact with an enemy the roll
+// reaches (randomCharge): that counts as a charge, and the enemy must Hold. It never marches or
+// declares a charge.
+export const randomDice=u=>MOUNTS[u?.mount]?.random??REGIMENTS[u?.kind]?.random??null;
+export const isRandomMover=u=>!!randomDice(u);
+const movementKey=s=>`${s.round}:${s.team}`;
+function rollRandomMovers(s,random){const out=[];for(const u of s.units.filter(u=>u.team===s.team&&isRandomMover(u)&&u.x!==null&&aliveCount(u)>0&&!u.engaged&&!u.fleeing&&!u.joined)){const dice=rollD6(randomDice(u),random);u.randomRoll={key:movementKey(s),dice,total:dice.reduce((a,b)=>a+b,0)};out.push({unit:u.id,...u.randomRoll});}return out;}
+// The random movers of a side still to move this turn (they move before any other unit).
+export function randomMoversWaiting(s,team){return s.units.filter(u=>u.team===team&&isRandomMover(u)&&u.randomRoll?.key===movementKey(s)&&canAct(s,u));}
+export function randomChargeError(s,u,t){
+ if(!u||!isRandomMover(u)||u.randomRoll?.key!==movementKey(s)||s.stage!=='movement'||s.movementStep!=='remaining'||!canAct(s,u))return 'Only a random mover, in its Compulsory Moves.';
+ if((u.spent??0)>EPS)return 'It has already started to move.';
+ const p=chargePlan(s,u,t,{sight:false});if(p.error)return p.error;
+ const path=[u,...(p.angle?[wheelPose(u,p.angle)]:[]),p.end],difficult=sweptVortices(s,u,path,{all:true}).length>0||terrainCrossed(s,u,path).length>0,reach=Math.max(1,u.randomRoll.total-(difficult&&!unitHasRule(u,'moveThroughCover')?1:0));
+ return p.cost<=reach+EPS?null:`It needs ${Math.round(p.cost*10)/10}″; it rolled ${reach}″.`;}
+export function randomChargeTargets(s,u){return combatants(s).filter(t=>t.team!==u?.team&&t.x!==null&&aliveCount(t)>0&&!randomChargeError(s,u,t));}
+export function randomCharge(s,id,targetId,random=Math.random){
+ panicGate(s);const u=getUnit(s,id),t=getUnit(s,targetId),err=randomChargeError(s,u,t);if(err)throw Error(err);
+ const p=chargePlan(s,u,t,{sight:false}),before={...u};remember(s,u);
+ Object.assign(u,{x:p.end.x,y:p.end.y,heading:heading(p.end),moved:true,movedThisTurn:true,spent:p.cost});engage(u,t);
+ let disordered=null;if(hasRule(t,'defendedObstacle')&&!flyValues(u).length)disordered='Earthen Ramparts';const wall=defendedObstacle(s,t,p.face);if(wall&&!flyValues(u).length)disordered=disordered??`defended ${wall.name.toLowerCase()}`;
+ u.charge={target:t.id,status:'success',reaction:'hold',random:true,dice:[...u.randomRoll.dice],roll:u.randomRoll.total,range:u.randomRoll.total,distance:p.cost,face:p.face,...(disordered?{disordered}:{})};s.history=[];
+ u.chargeMoving=true;const poses=[before,...(p.angle?[wheelPose(before,p.angle)]:[]),{...u}],vortexHits=vortexMoveHits(s,u,sweptVortices(s,u,poses),random,poses),terrainHits=terrainMoveTests(s,u,terrainCrossed(s,u,poses),poses,random);s.lastTerrainHits=terrainHits;delete u.chargeMoving;
+ syncJoined(s);return {unit:u.id,target:t.id,distance:p.cost,face:p.face,roll:u.randomRoll.total,dice:u.randomRoll.dice,vortexHits,terrainHits,disordered};}
 // Move Through Cover: no Movement penalty for difficult or dangerous terrain.
 export function moveAllowance(u,{mode='advance',medium='ground',fly=null,difficult=false}={}){return Math.max(1,moveValue(u,medium,fly)-(difficult&&!unitHasRule(u,'moveThroughCover')?1:0))*(mode==='march'?2:1);}
 // The General's Command range is 12″, whatever its Leadership (the core rules' General & Battle Standard).
@@ -526,6 +555,8 @@ export function orderError(s,u,order){
   if(s.stage==='movement'&&arrivals(s,u.team).length)return 'Place the arriving reinforcements first: they enter in Compulsory Moves.';
   if(mode==='march'&&u.reinforced===`${s.round}:${s.team}`)return 'Arrived as reinforcements this turn: it cannot march.';
   if(!['advance','back','side','wheel','pivot'].includes(kind)||!['advance','march'].includes(mode))return 'Choose a valid movement order.';
+  if(s.stage==='movement'&&!isRandomMover(u)&&randomMoversWaiting(s,u.team).length)return 'The random movers move first, in Compulsory Moves.';
+  if(isRandomMover(u)&&s.stage==='movement'){if(u.randomRoll?.key!==movementKey(s))return 'A random mover moves in Compulsory Moves, once it has rolled.';if(mode==='march')return 'Random Movement: it cannot march.';if(!['advance','wheel'].includes(kind))return 'Random Movement: it may only wheel and move forward.';}
   if(!Number.isFinite(angle)||!Number.isFinite(distance)||distance<0)return 'Enter a valid angle and distance.';
   if(kind==='advance'&&(distance<=0||angle!==0))return 'Choose a forward distance.';
   if((kind==='back'||kind==='side')&&(distance<=0||angle!==0))return 'Choose a sideways or backward distance.';
@@ -1459,6 +1490,7 @@ function closeTheDoor(u,t,face){
 export function chargeSightError(s,u,t){const skirmish=u.formation==='skirmish',sight=sightPlan(s,u,t,{lookers:skirmish?'all':'front'});if(skirmish?sight.seeing*2>sight.lookers.length:sight.visible)return null;return {error:`The charger cannot see its target: ${sightText(sight.code)}.`,code:sight.code};}
 // sight:false for a charge already declared: line of sight is needed only when it is declared.
 export function chargePlan(s,u,t,{sight=true}={}){
+ if(sight&&isRandomMover(u))return {error:'Random Movement: it cannot declare a charge; it may move into contact in Compulsory Moves.'};
  if(u?.joined)return {error:'A character in a unit charges with its unit.'};
  if(u&&hasRule(u,'noCharge'))return {error:'Earthen Ramparts: this unit cannot charge.'};
  if(u&&s.round===1&&(u.scouted||u.vanguarded))return {error:u.scouted?'Deployed as Scouts: it cannot charge in its first turn.':'Made a Vanguard move: it cannot charge in its first turn.'};
@@ -1556,7 +1588,7 @@ export function enterRemaining(s,random=Math.random){
 }
 // Compulsory Moves, before Remaining Moves: pursuers that left the battlefield return, and each
 // fleeing unit that failed to rally this turn flees again, 2D6″ straight ahead.
-function beginRemaining(s,random=Math.random){if(s.movementStep!=='remaining'){s.movementStep='remaining';returnPursuers(s);s.compulsoryReports=compulsoryFlight(s,random);}}
+function beginRemaining(s,random=Math.random){if(s.movementStep!=='remaining'){s.movementStep='remaining';returnPursuers(s);s.compulsoryReports=compulsoryFlight(s,random);s.randomRolls=rollRandomMovers(s,random);}}
 function compulsoryFlight(s,random){const out=[];for(const u of s.units.filter(u=>u.team===s.team&&u.x!==null&&aliveCount(u)>0&&u.fleeing&&u.rallyAttempted&&!u.rallied&&!u.engaged)){const dice=rollD6(2,random),move=fleeMove(s,u,dice[0]+dice[1]+swift(u,random),random);out.push({unit:u.id,dice,distance:move.distance,fledOffBoard:move.fledOffBoard,move});}return out;}
 // Pursuers and overrunners that left the battlefield return during their Compulsory Moves:
 // just inside the edge they left by, facing inward, near their exit point, counting as moved.

@@ -452,6 +452,11 @@ export function takeStep(s,random=Math.random){
  if(s.stage==='movement'){
   // Arriving Ambushers enter first, at the first legal place along its own edge.
   for(const a of G.arrivals(s,ME)){const p=G.autoReinforce(s,a.id);if(p)return {message:`${a.name} arrives as reinforcements.`};}
+  // Random movers move first: into contact when that fight is worth having (it arrives for
+  // certain once rolled), otherwise like any other unit, within the roll.
+  for(const r of G.randomMoversWaiting(s,ME)){s.selected=r.id;let best=null;for(const t of G.randomChargeTargets(s,r)){const plan=G.chargePlan(s,r,t,{sight:false}),ev=playFight(s,[{u:r,t,plan}],r.id).value-(s.objectives?heldValue(s,r):0);if(ev>0&&(!best||ev>best.ev))best={t,ev};}
+   if(best){const out=G.randomCharge(s,r.id,best.t.id,random);return {message:`${r.name} rolls ${out.dice.join('+')} = ${out.roll}″ for Random Movement and crashes into ${best.t.name}.`};}
+   return moveRegiment(s,r,random);}
   const u=s.units.find(u=>u.team===ME&&G.canAct(s,u));if(u)return moveRegiment(s,u,random);
   const cast=aiSpell(s,random);if(cast)return cast;
   G.nextPhase(s,random);return {message:`The bot begins ${s.stage}.`};

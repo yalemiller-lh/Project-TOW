@@ -15,7 +15,7 @@ test('the list\'s costs: Oddgit 125 with the Ruby Ring, 30 Night Goblins 157 wit
  assert.match(A.validateRoster({faction:'orc',entries:[{entry:'oddgit',general:true,options:{rubyRing:true}},{entry:'nightGoblins',models:20,fanatics:1},{entry:'nightGoblins',models:20}]},500).errors.join(' '),/Fanatics are not modelled yet/);
 });
 test('the partly built list is offered for Green, with what is missing listed',()=>{
- const r=A.defaultRoster('orc',500);assert.equal(r.id,'orc-squig-750');assert.equal(A.rosterCost(r),309,'the Oddgit with its Ruby Ring, and both Night Goblin units');assert.ok(r.missing.some(m=>/Mangler Squig/.test(m)));
+ const r=A.defaultRoster('orc',500);assert.equal(r.id,'orc-squig-750');assert.equal(A.rosterCost(r),396,'the Oddgit with its Ruby Ring, the Warboss on his Giant Cave Squig, and both Night Goblin units');assert.ok(r.missing.some(m=>/Mangler Squig/.test(m)));
  const v=A.validateRoster(r,500);assert.deepEqual(v.errors,['Night Goblins has Unit Strength 30; no mustered unit may exceed 20.'],'only the Battle March Unit Strength cap');
 });
 test('Night Goblins: their own profile, 25 mm bases, free shields, a Boss with A2 Ld5, Horde, Warband, no Choppas',()=>{
@@ -44,4 +44,26 @@ const AI=await import('./dist/ai.mjs');
 test('the bot casts the Ring\'s Fireball when it is worth it',()=>{
  AI.setSide('iron');const {s,w}=ringShot();w.spells=[];for(const u of s.units)if(u.team==='iron'&&u!==w)u.x=null;
  const out=AI.takeStep(s,()=>.5);assert.match(out.message,/Fireball \(bound, Ruby Ring of Ruin\)/);
+});
+// Random Movement (rulebook) and the Night Goblin Warboss on a Giant Cave Squig.
+const warbossGame=()=>{const s=game(750);Object.assign(s,{stage:'movement',team:'iron',movementStep:'declare'});for(const u of s.units)u.charge=null;const w=s.units.find(u=>u.kind==='ngWarboss'),e=s.units.find(u=>u.team==='ash'&&u.role==='infantry');
+ Object.assign(w,{x:e.x,y:e.y-G.size(e).h/2-8-1,heading:180});for(const u of s.units)if(u!==w&&u.x!==null&&u.team==='iron'&&Math.hypot(u.x-w.x,u.y-w.y)<9)u.x+=14;return {s,w,e};};
+test('the Warboss: 97 points with his kit, Wounds 4 on a 50 mm Giant Cave Squig, light armour, a random mover',()=>{
+ assert.equal(A.entryCost('orc',{entry:'warboss',options:{greatWeapon:true,lightArmour:true,charmedShield:true,potion:true},mount:'giantCaveSquig'}),97);
+ const {s,w}=warbossGame();assert.equal(G.profile(w).W,4);assert.equal(G.armourSave(w),6);assert.equal(G.troopType(w),'monstrousCavalry');assert.equal(G.unitStrength(w),3);assert.ok(Math.abs(G.size(w).w-50/25.4)<1e-9);
+ assert.equal(G.isRandomMover(w),true);assert.equal(G.randomDice(w),3);assert.equal(w.weapon,'greatWeapon');
+});
+test('a random mover rolls 3D6 in Compulsory Moves and moves first; it cannot declare a charge, march or move back',()=>{
+ const {s,w,e}=warbossGame();assert.match(G.chargePlan(s,w,e).error,/cannot declare a charge/);
+ G.finishDeclarations(s,faces(1,2,1));assert.equal(s.movementStep,'remaining');assert.deepEqual(w.randomRoll.dice,[1,2,1]);assert.equal(w.randomRoll.total,4);
+ const other=s.units.find(u=>u.team==='iron'&&u.kind==='nightGoblin');assert.match(G.orderError(s,other,{kind:'advance',mode:'advance',distance:1}),/random movers move first/);
+ assert.match(G.orderError(s,w,{kind:'advance',mode:'march',distance:2}),/cannot march/);assert.match(G.orderError(s,w,{kind:'back',mode:'advance',distance:1}),/wheel and move forward/);
+ assert.match(G.orderError(s,w,{kind:'advance',mode:'advance',distance:4.5})??'',/exceeds/,'no more than the roll');assert.equal(G.orderError(s,w,{kind:'advance',mode:'advance',distance:4}),null);
+ assert.match(G.randomChargeError(s,w,e),/maximum 4″/,'8″ away: a roll of 4 falls short');
+});
+test('a random mover whose roll reaches an enemy may move into contact: it counts as charging, and the enemy must Hold',()=>{
+ const {s,w,e}=warbossGame();G.finishDeclarations(s,faces(4,5,3));assert.deepEqual(G.randomChargeTargets(s,w).map(t=>t.id),[e.id]);
+ const r=G.randomCharge(s,w.id,e.id);assert.equal(w.charge.status,'success');assert.equal(w.charge.random,true);assert.equal(w.charge.reaction,'hold');assert.ok(Math.abs(r.distance-8)<.05);
+ assert.ok(G.gap(w,e)<1e-6);assert.deepEqual(e.engaged,[w.id]);assert.equal(G.randomMoversWaiting(s,'iron').length,0,'the others may move now');
+ Object.assign(s,{stage:'combat'});G.beginCombat(s,w.id);const init=s.combatSession.initiative;assert.equal(init[w.id+':mount'],3+3,'the Giant Cave Squig strikes for itself at its Initiative 3, +3 for charging');assert.ok(init[w.id]<init[w.id+':mount'],'the Warboss, with a great weapon, strikes last');
 });
