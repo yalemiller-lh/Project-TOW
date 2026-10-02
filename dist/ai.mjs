@@ -235,7 +235,30 @@ export function deployNext(s,random=null){
  return G.autoDeploy(s,{team:ME,random});
 }
 
+// ---- Challenges ----
+// A duel is judged by the share of the other's Wounds each side can expect to take in a round,
+// weighed by what each model is worth (its points, the General's 50 VP); a champion is worth little.
+function duelPower(s,key,foeKey){const a=G.duelist(s,key),b=G.duelist(s,foeKey);if(!a||!b)return 0;const att=a.champion?G.championProfile(a.unit):G.profile(a.unit),save=G.saveTarget(b.unit,a.unit),ward=G.wardSave(b.unit),left=b.champion?1:Math.max(1,G.remainingWounds(b.unit));return att.A*(7-G.hitTarget(a.unit,b.unit))/6*(7-G.woundTarget(a.unit,b.unit))/6*Math.min(1,Math.max(0,(save-1)/6))*(ward<=6?(ward-1)/6:1)/left;}
+const duelWorth=(s,key)=>{const d=G.duelist(s,key);return !d?0:d.champion?12:points(d.unit);};
+const duelValue=(s,mine,theirs)=>Math.min(1,duelPower(s,mine,theirs))*duelWorth(s,theirs)-Math.min(1,duelPower(s,theirs,mine))*duelWorth(s,mine);
+// A reform it has earned: it turns to face the nearest enemy that is not fleeing, when that is
+// more than a little off its front; otherwise it keeps its facing.
+function aiReform(s,random){const o=(s.reformOffers??[]).find(o=>G.getUnit(s,o.unit)?.team===ME&&G.reformOffer(s,o.unit)),u=G.getUnit(s,o.unit),foe=s.units.filter(e=>e.team===THEM&&alive(e)&&!e.fleeing).sort((a,b)=>G.gap(u,a)-G.gap(u,b))[0];
+ const to=foe?Math.round(G.normalize(Math.atan2(foe.x-u.x,-(foe.y-u.y))*180/Math.PI)):G.heading(u),off=Math.abs(((to-G.heading(u)+540)%360)-180);
+ if(off<20||G.reformError(s,u.id,to)){G.declineReform(s,u.id);return {message:`${u.name} keeps its facing.`};}
+ const out=G.reformUnit(s,u.id,to,random);return {message:`${u.name} ${out.passed?`reforms to face ${foe.name}`:'fails its Leadership test and cannot reform'}.`,...(out.dice?{roll:{label:`${u.id} · reform`,dice:out.dice,team:ME}}:{})};}
+const myReform=s=>(s.reformOffers??[]).some(o=>G.getUnit(s,o.unit)?.team===ME&&G.reformOffer(s,o.unit));
+function aiChallenge(s){
+ const ch=s.combatSession.challenge,name=k=>G.duelist(s,k)?.name??k;
+ if(ch.stage==='issue'){const theirs=G.challengeCandidates(s,THEM),best=G.challengeCandidates(s,ME).map(k=>({k,v:theirs.length?Math.min(...theirs.map(t=>duelValue(s,k,t))):0})).sort((a,b)=>b.v-a.v)[0];
+  if(best&&best.v>2){G.issueChallenge(s,ME,best.k);return {message:`${name(best.k)} issues a challenge.`};}G.issueChallenge(s,ME,null);return {message:'The bot issues no challenge.'};}
+ if(ch.stage==='accept'){const best=G.challengeCandidates(s,ME).map(k=>({k,v:duelValue(s,k,ch.challenger)})).sort((a,b)=>b.v-a.v)[0];
+  if(!G.canRefuseChallenge(s)||best.v>-5){G.answerChallenge(s,best.k);return {message:`${name(best.k)} accepts ${name(ch.challenger)}’s challenge.`};}G.answerChallenge(s,null);return {message:`The bot refuses ${name(ch.challenger)}’s challenge.`};}
+ // A refused challenge: the most dangerous enemy fighter retires.
+ const pick=G.challengeCandidates(s,ch.refusedBy).sort((a,b)=>duelWorth(s,b)-duelWorth(s,a))[0];G.nominateRetiree(s,pick);return {message:`${name(pick)} must retire to the rear.`};}
 export function humanDecision(s){
+ {const o=(s.reformOffers??[]).find(o=>G.getUnit(s,o.unit)?.team===THEM&&G.reformOffer(s,o.unit));if(o)return {id:o.unit,kind:'reform',message:'Choose a facing to reform, or keep it.'};}
+ if(G.challengePending(s)&&s.combatSession.challenge.team===THEM){const ch=s.combatSession.challenge;return {id:s.selected,kind:'challenge',message:ch.stage==='issue'?'Issue a challenge, or fight on without one.':ch.stage==='accept'?'Accept the challenge, or refuse it.':'Name the model that must retire.'};}
  if(s.pendingSpell&&G.getUnit(s,s.pendingSpell.caster)?.team===ME)return {id:s.pendingSpell.caster,kind:'dispel',message:`Choose how to dispel ${G.SPELLS[s.pendingSpell.key].name}.`};
  // At the player's wizard's Initiative step in a combat: cast an Assailment or fight on.
  const wizard=G.assailmentWaiting(s,THEM)[0];
@@ -275,7 +298,7 @@ export function shouldAct(s){
  if(s.stage==='deployment'||s.stage==='finished')return false;
  if(s.pendingSpell)return G.getUnit(s,s.pendingSpell.caster)?.team===THEM;
  if(s.team===ME)return !humanDecision(s);
- return s.stage==='movement'&&s.movementStep==='reactions'&&s.units.some(u=>u.team===THEM&&u.charge?.status==='declared'&&u.charge.reaction==='pending'&&G.getUnit(s,u.charge.target)?.team===ME)||!!combatDecision(s)||G.assailmentWaiting(s,ME).length>0;
+ return s.stage==='movement'&&s.movementStep==='reactions'&&s.units.some(u=>u.team===THEM&&u.charge?.status==='declared'&&u.charge.reaction==='pending'&&G.getUnit(s,u.charge.target)?.team===ME)||!!combatDecision(s)||G.assailmentWaiting(s,ME).length>0||G.challengePending(s)&&s.combatSession.challenge.team===ME||myReform(s);
 }
 
 function moveRegiment(s,u,random){
@@ -376,6 +399,8 @@ function aiDispel(s,random){
 export function takeStep(s,random=Math.random){
  if(!shouldAct(s))return {message:'Waiting for the player.',wait:true};
  if(s.pendingSpell)return aiDispel(s,random);
+ if(G.challengePending(s)&&s.combatSession.challenge.team===ME)return aiChallenge(s);
+ if(myReform(s))return aiReform(s,random);
  if(s.team===THEM){
   if(s.stage==='combat'){if(combatDecision(s))return resolveCombatDecision(s,random);const cast=aiSpell(s,random);if(cast)return cast;return {message:'Waiting for the player.',wait:true};}
   // One reaction answers every charge on a unit: Stand & Shoot at the strongest charger it can

@@ -620,7 +620,7 @@ export function nextTurn(s,random=Math.random){if(s.stage!=='combat')throw Error
  // Start of Turn, in this order: (1) effects lasting until the casting side's next Start of Turn
  // end; (2) vortices move; (3) the format's start of turn (Raid & Burn).
  expireEffects(s,'start',`${s.round}:${s.team}`);s.vortexReports=driftVortices(s,random);s.reserveReports=reserveRolls(s,s.team,random);s.rocket.shot=false;s.rocket.lastShot=null;s.cannons.forEach(c=>{c.shot=false;c.lastShot=null;});s.history=[];s.selected=s.units.find(u=>u.team===s.team).id;formatRules(s)?.startOfTurn?.(s,s.team,random);}
-export function nextPhase(s,random=Math.random){if(s.stage==='finished')throw Error('The battle is over.');if(s.pendingSpell)throw Error('Resolve the dispel of the spell just cast first.');if(s.stage==='strategy'&&s.units.some(u=>u.team===s.team&&u.x!==null&&u.fleeing&&!u.rallyAttempted))throw Error('Attempt to rally every fleeing regiment first.');if(s.units.some(u=>u.charge?.status==='declared'))throw Error('Resolve all declared charges first.');if(s.stage==='combat'&&(s.combatSession||s.pendingCombat||combatPairs(s).length))throw Error('Resolve every combat and its outcome first.');const i=PHASES.indexOf(s.stage);if(i<0)throw Error('Begin the battle first.');if(s.stage==='movement')for(const u of arrivals(s)){if(firstReinforcementSpot(s,u.id))throw Error(`Place ${u.name} first: it arrives as reinforcements this turn.`);u.reserve.arriving=null;}if(s.stage==='movement')for(const u of s.units.filter(u=>u.team===s.team&&u.movedThisTurn))endOfMove(s,u,random);s.movementReopened=false;s.movementHistory=i===1?s.history:i===2?s.movementHistory:null;if(i===3)nextTurn(s,random);else{s.stage=PHASES[i+1];s.history=[];if(s.stage==='movement'){s.movementStep='declare';if(!s.units.some(u=>u.team===s.team&&canAct(s,u)&&availableCharges(s,u).length))beginRemaining(s,random);}s.shootingSkipped=false;if(s.stage==='shooting'&&!phaseHasActions(s)){s.stage='combat';s.shootingSkipped=true;}if(s.stage==='combat')combatants(s).forEach(u=>u.combatResolved=false);}return s.stage;}
+export function nextPhase(s,random=Math.random){if(s.stage==='finished')throw Error('The battle is over.');if(s.pendingSpell)throw Error('Resolve the dispel of the spell just cast first.');if(s.stage==='strategy'&&s.units.some(u=>u.team===s.team&&u.x!==null&&u.fleeing&&!u.rallyAttempted))throw Error('Attempt to rally every fleeing regiment first.');if(s.units.some(u=>u.charge?.status==='declared'))throw Error('Resolve all declared charges first.');if(s.stage==='combat'&&(s.combatSession||s.pendingCombat||combatPairs(s).length))throw Error('Resolve every combat and its outcome first.');const i=PHASES.indexOf(s.stage);if(i<0)throw Error('Begin the battle first.');if(s.stage==='movement')for(const u of arrivals(s)){if(firstReinforcementSpot(s,u.id))throw Error(`Place ${u.name} first: it arrives as reinforcements this turn.`);u.reserve.arriving=null;}if(s.stage==='movement')for(const u of s.units.filter(u=>u.team===s.team&&u.movedThisTurn))endOfMove(s,u,random);s.reformOffers=null;s.movementReopened=false;s.movementHistory=i===1?s.history:i===2?s.movementHistory:null;if(i===3)nextTurn(s,random);else{s.stage=PHASES[i+1];s.history=[];if(s.stage==='movement'){s.movementStep='declare';if(!s.units.some(u=>u.team===s.team&&canAct(s,u)&&availableCharges(s,u).length))beginRemaining(s,random);}s.shootingSkipped=false;if(s.stage==='shooting'&&!phaseHasActions(s)){s.stage='combat';s.shootingSkipped=true;}if(s.stage==='combat')combatants(s).forEach(u=>u.combatResolved=false);}return s.stage;}
 // Movement can be reopened until the active army acts in Shooting (or, when Shooting
 // was skipped, in Combat). Its undo history is kept so the last moves can be taken back.
 function castIn(s,phase){return s.units.some(u=>u.team===s.team&&u.role==='wizard'&&u.castThisTurn.some(key=>SPELLS[key]?.phase===phase));}
@@ -635,6 +635,8 @@ export function returnToMovement(s){if(!canReturnToMovement(s))throw Error('Move
 function canDispelAVortex(s,u){return (s.vortices??[]).some(v=>canDispelVortex(s,v.id??v.caster)&&(vortexDispellers(s,v.id??v.caster).some(w=>w.id===u.id)||fatedDispelAvailable(s,s.team)));}
 export function phaseHasActions(s){
  if(s.stage==='deployment'||s.stage==='finished'||s.pendingSpell)return true;
+ // A reform still to choose keeps the phase open.
+ if((s.reformOffers??[]).some(o=>reformOffer(s,o.unit)))return true;
  const active=s.units.filter(u=>u.team===s.team&&u.x!==null&&aliveCount(u)>0);
  const spells=phase=>active.some(u=>u.role==='wizard'&&u.spells.some(key=>SPELLS[key]?.phase===phase&&spellTargets(s,u.id,key).some(t=>canCast(s,u.id,key,t.id))));
  if(s.stage==='strategy')return active.some(u=>u.fleeing&&!u.rallyAttempted)||spells('strategy')||active.some(u=>canExchangeSignature(s,u)||u.role==='wizard'&&canDispelAVortex(s,u));
@@ -1381,7 +1383,7 @@ export function resolveCharge(s,id,dice,random=Math.random){
  const difficult=!!route?.end&&sweptVortices(s,u,[u,...(route.angle?[wheelPose(u,route.angle)]:[]),route.end],{all:true}).length>0,roll=difficult?Math.min(...dice):Math.max(...dice),range=Math.max(1,profile(u).M-(difficult?1:0))+roll,success=!p.error&&range+EPS>=p.cost;
  let end={...u},travel=0,disordered=null;
  // Charging a unit behind a defended obstacle (Earthen Ramparts) is a disordered charge, unless the charger has Fly.
- if(success){end=p.end;travel=p.cost;if(fled){claimStandard(s,t,u.team);destroyUnit(s,t,'RUN_DOWN',random);}else{engage(u,t);if(hasRule(t,'defendedObstacle')&&!flyValues(u).length)disordered='Earthen Ramparts';}}
+ if(success){end=p.end;travel=p.cost;if(fled){claimStandard(s,t,u.team);destroyUnit(s,t,'RUN_DOWN',random);u.ranDown=true;}else{engage(u,t);if(hasRule(t,'defendedObstacle')&&!flyValues(u).length)disordered='Earthen Ramparts';}}
  else if(route?.start){
   const budget=fled?range:roll;
   const wheelAngle=route.wheelCost<=budget?route.angle:Math.sign(route.angle)*2*Math.asin(Math.min(1,budget/(2*size(u).w)))*180/Math.PI;
@@ -1394,7 +1396,7 @@ export function resolveCharge(s,id,dice,random=Math.random){
  const poses=[before,...(route?.angle?[wheelPose(before,route.angle)]:[]),{...u}],vortexHits=travel>0?vortexMoveHits(s,u,sweptVortices(s,u,poses),random,poses):[];
  if(!success&&travel>0)s.lastPhantasm=endOfMove(s,u,random);
  if(!s.units.some(v=>v.charge?.status==='declared'))beginRemaining(s,random);
- syncJoined(s);
+ syncJoined(s);if(success&&fled&&u.ranDown){delete u.ranDown;offerReform(s,u,'leadership','ran down');}
  return {success,runDown:success&&fled,pursuit:fled&&!success,targetLeftBoard:fled&&!!t.destroyed,dice,roll,range,distance:travel,target:t.id,reason:p.error??null,difficult,vortexHits};
 }
 
@@ -1454,15 +1456,18 @@ function rankBonus(u){const alive=aliveCount(u),files=filesOf(u),full=Math.floor
 // Leadership for a test: the unit's own (or its champion's), or the General's through Inspiring
 // Presence when s is given, then a Warband's rank bonus and a musician's +1 to march and rally.
 // A unit tests on the highest Leadership among its models: its champion's, a joined character's.
-export function leadership(u,kind='normal',s=null){const own=Math.max(commandAlive(u,'C')?Math.max(profile(u).Ld,championProfile(u).Ld):profile(u).Ld,...(s?joinedCharacters(s,u).filter(c=>!c.retired).map(c=>profile(c).Ld):[])),base=Math.max(own,inspiringPresence(s,u)??0);return Math.min(10,base+(FACTIONS[u.faction??'chaos'].warband&&kind!=='restraint'&&!u.fleeing&&!(s&&isDisrupted(s,u))?rankBonus(u):0)+(commandAlive(u,'M')&&(kind==='march'||kind==='rally')?1:0));}
+export function leadership(u,kind='normal',s=null){const own=Math.max(commandAlive(u,'C')&&!u.championRetired?Math.max(profile(u).Ld,championProfile(u).Ld):profile(u).Ld,...(s?joinedCharacters(s,u).filter(c=>!c.retired).map(c=>profile(c).Ld):[])),base=Math.max(own,inspiringPresence(s,u)??0);return Math.min(10,base+(FACTIONS[u.faction??'chaos'].warband&&kind!=='restraint'&&!u.fleeing&&!(s&&isDisrupted(s,u))?rankBonus(u):0)+(commandAlive(u,'M')&&(kind==='march'||kind==='rally')?1:0));}
 // Casualties already suffered in this combat count against the first fighting rank, then the
 // second (never the champion); the models that stepped forward from the rear cannot attack.
 function stepForward(models,lost){let drop=lost;return [...models].sort((a,b)=>(a.rank??0)-(b.rank??0)).filter(m=>{if(drop>0&&m.command!=='C'){drop--;return false;}return true;});}
 // Which enemy each fighting model attacks. A model in base contact attacks a unit it touches
 // (the unit's chosen focus if it touches several); a supporting model attacks the closest enemy
 // unit it can reach, the focus breaking a tie. Casualties already taken come off the front first.
+// In a challenge the two duellists fight only each other (fightCombatStep): no one else attacks or
+// is attacked by them. A model retired by a refused challenge neither attacks nor is attacked.
 export function attackAllocation(s,u,lost=0){
- const fighting=modelSquares(s,u).filter(m=>m.fighting),fighters=isCharacter(u)||u.role==='warmachine'?fighting:stepForward(fighting,lost),out=new Map(),foes=new Map(opponents(s,u).map(e=>[e.id,corners(e)]));
+ const keys=duelKeys(s);if(isCharacter(u)&&(u.retired||keys.includes(u.id)))return new Map();const benched=keys.includes(u.id+':C')||!!u.championRetired;
+ const fighting=modelSquares(s,u).filter(m=>m.fighting&&!(benched&&m.command==='C')),fighters=isCharacter(u)||u.role==='warmachine'?fighting:stepForward(fighting,lost),out=new Map(),foes=new Map(opponents(s,u).filter(e=>!(isCharacter(e)&&(e.retired||keys.includes(e.id)))).map(e=>[e.id,corners(e)]));
  for(const m of fighters){
   let pick=null;
   if(m.contacts?.length)pick=m.contacts.includes(u.combatFocus)?u.combatFocus:m.contacts.find(id=>foes.has(id));
@@ -1621,8 +1626,8 @@ function sideScores(s,units,stages){
   const closeOrder=alive.filter(u=>aliveCount(u)>=10&&!(u.role==='missile'&&u.faction==='chaos')).length;
   let flank=0;
   for(const e of foes.filter(e=>e.role!=='warmachine')){const faces=alive.filter(u=>u.role!=='warmachine'&&engagedWith(u,e)).map(u=>chargeFace(u,e));if(faces.some(f=>f==='left flank'||f==='right flank'))flank+=1;if(faces.includes('rear'))flank+=2;}
-  const massed=strength(team)>strength(other)?1:0,standard=alive.some(u=>commandAlive(u,'S'))?1:0;
-  score[team]={wounds,ranks,closeOrder,flank,massed,standard,musician:0,total:wounds+ranks+closeOrder+flank+massed+standard,disrupted:alive.filter(u=>rankBonus(u)>0&&disrupted(u)).map(u=>({unit:u.id,reasons:disruption(s,u).map(r=>r.text)}))};
+  const massed=strength(team)>strength(other)?1:0,standard=alive.some(u=>commandAlive(u,'S'))?1:0,overkill=Math.min(5,stages.filter(st=>st.duel&&unit(st.from)?.team===team).reduce((n,st)=>n+(st.overkill??0),0));
+  score[team]={wounds,ranks,closeOrder,flank,massed,standard,overkill,musician:0,total:wounds+ranks+closeOrder+flank+massed+standard+overkill,disrupted:alive.filter(u=>rankBonus(u)>0&&disrupted(u)).map(u=>({unit:u.id,reasons:disruption(s,u).map(r=>r.text)}))};
  }
  if(score.ash.total===score.iron.total){const music=team=>side(team).filter(live).some(u=>commandAlive(u,'M'));if(music('ash')!==music('iron')){const team=music('ash')?'ash':'iron';score[team].musician=1;score[team].total++;}}
  return score;
@@ -1633,24 +1638,69 @@ function facingWinner(s,p,loserId){const loser=getUnit(s,loserId),foes=opponents
 // result, and the first loser's Break test (Shieldwall is used when it is offered).
 export function resolveCombat(s,id,random=Math.random){
  if(s.stage!=='combat'||s.pendingCombat)throw Error('Finish the current combat outcome first.');
- beginCombat(s,id);
+ beginCombat(s,id);declineChallenges(s);
  while(s.combatSession?.phase==='attacks')fightCombatStep(s,random);
  compareCombat(s,random);
  const p=s.pendingCombat;
  if(p?.stage==='break'){rollCombatBreak(s,random);if(p.stage==='loser-choice')chooseLoserAction(s,'shieldwall');}
  return s.lastCombat;
 }
+// ---- Challenges ----
+// When a combat is chosen, before any blow, the active player may issue a challenge with a
+// character or champion in (or beside) the fighting rank; if not, the other player may. Only one
+// is issued per combat. The opponent accepts with one of its own, or refuses: the challenger's
+// player then names one model that could have accepted, which retires (it gives and takes no
+// attacks and lends no Leadership while its unit fights the challenger's). A lone character, a
+// unit's last model, or one in a unit engaged on all four sides cannot refuse (Nowhere to Run).
+// The two attack only each other; if both survive and the combat goes on, so does the challenge.
+// A duellist is keyed by its unit's id; a champion by "id:C".
+export function duelist(s,key){if(!key)return null;const [id,c]=String(key).split(':'),u=getUnit(s,id);if(!u||u.x===null||u.destroyed||aliveCount(u)===0||c&&!commandAlive(u,'C'))return null;const model=c?modelSquares(s,u).find(m=>m.command==='C'&&!m.dead):modelSquares(s,u)[0];if(!model)return null;return {key:String(key),unit:u,champion:!!c,model,team:u.team,name:c?`${u.name}’s champion`:u.name};}
+const duelKeys=s=>{const ch=s.combatSession?.challenge;return ch?.stage==='fight'?[ch.challenger,ch.acceptor]:[];};
+export function challengeCandidates(s,team){const c=s.combatSession;if(!c)return [];const out=[];
+ for(const id of c.units){const u=getUnit(s,id);if(!u||u.team!==team||u.x===null||aliveCount(u)===0||u.role==='warmachine')continue;
+  if(isCharacter(u)){if(!u.retired&&modelSquares(s,u)[0]?.fighting)out.push(u.id);continue;}
+  if(!u.championRetired&&commandAlive(u,'C')&&modelSquares(s,u).some(m=>m.command==='C'&&!m.dead&&m.fighting))out.push(u.id+':C');}
+ return out;}
+function nowhereToRun(s,key){const d=duelist(s,key);if(!d)return true;const host=d.champion?d.unit:d.unit.joined?getUnit(s,d.unit.joined):null;if(!host)return true;if(aliveCount(host)+joinedCharacters(s,host).length<=1)return true;const faces=new Set(opponents(s,host).map(e=>chargeFace(e,host)));return ['front','rear','left flank','right flank'].every(f=>faces.has(f));}
+export function canRefuseChallenge(s){const ch=s.combatSession?.challenge;return ch?.stage==='accept'&&challengeCandidates(s,ch.team).every(k=>!nowhereToRun(s,k));}
+// Who may issue next: the active player, then the other; with neither, the combat is fought.
+function advanceIssue(s){const c=s.combatSession,ch=c.challenge,other=t=>t==='ash'?'iron':'ash',next=[s.team,other(s.team)].find(t=>!ch.declined.includes(t)&&challengeCandidates(s,t).length);if(next){ch.team=next;return ch;}ch.stage='none';ch.team=null;c.phase='attacks';return ch;}
+export function issueChallenge(s,team,key=null){
+ const c=s.combatSession,ch=c?.challenge;if(!c||ch?.stage!=='issue')throw Error('No challenge can be issued now.');if(team!==ch.team)throw Error(`${armyName(ch.team,s)} may issue a challenge first.`);
+ if(!key){ch.declined.push(team);return advanceIssue(s);}
+ if(!challengeCandidates(s,team).includes(key))throw Error('Choose a character or champion in the fighting rank.');
+ Object.assign(ch,{challenger:key,issuedBy:team,stage:'accept',team:team==='ash'?'iron':'ash'});return ch;}
+export function answerChallenge(s,key=null){
+ const c=s.combatSession,ch=c?.challenge;if(!c||ch?.stage!=='accept')throw Error('No challenge is waiting for an answer.');
+ if(key){if(!challengeCandidates(s,ch.team).includes(key))throw Error('Choose a character or champion in the fighting rank to accept.');Object.assign(ch,{acceptor:key,stage:'fight',team:null});c.phase='attacks';return ch;}
+ if(!canRefuseChallenge(s))throw Error('Nowhere to Run: this challenge cannot be refused.');Object.assign(ch,{refused:true,stage:'nominate',refusedBy:ch.team,team:ch.issuedBy});return ch;}
+export function nominateRetiree(s,key){
+ const c=s.combatSession,ch=c?.challenge;if(ch?.stage!=='nominate')throw Error('No refused challenge is waiting for a nomination.');if(!challengeCandidates(s,ch.refusedBy).includes(key))throw Error('Name a character or champion that could have accepted.');
+ const d=duelist(s,key),from=duelist(s,ch.challenger).unit,retired={by:from.joined??from.id,round:s.round};if(d.champion)d.unit.championRetired=retired;else d.unit.retired=retired;Object.assign(ch,{retired:key,stage:'refused',team:null});c.phase='attacks';return ch;}
+// A retired model returns once its unit is no longer engaged with the challenger's.
+function clearRetirements(s){for(const u of s.units){for(const key of ['retired','championRetired']){const r=u[key];if(!r)continue;const host=key==='retired'&&u.joined?getUnit(s,u.joined):u;if(!host||!engagedWith(host,r.by)&&!opponentIds(host).some(id=>getUnit(s,id)?.joined===r.by))delete u[key];}}}
+// Decline every challenge (quick resolution and the bot's play-outs).
+export function declineChallenges(s){const c=s.combatSession;while(c?.challenge?.stage==='issue')issueChallenge(s,c.challenge.team,null);if(c?.challenge?.stage==='accept')answerChallenge(s,canRefuseChallenge(s)?null:challengeCandidates(s,c.challenge.team)[0]);if(c?.challenge?.stage==='nominate')nominateRetiree(s,challengeCandidates(s,c.challenge.refusedBy)[0]);}
+// A challenge choice is waiting: to issue (or not), to accept or refuse, or to name who retires.
+export function challengePending(s){return ['issue','accept','nominate'].includes(s.combatSession?.challenge?.stage);}
 export function beginCombat(s,id){
  if(s.stage!=='combat'||s.combatSession||s.pendingCombat)throw Error('Finish the current combat first.');
  const first=getUnit(s,id),units=first?.engaged&&first.x!==null?combatGroup(s,first).filter(u=>u.x!==null&&aliveCount(u)>0):[];
  if(units.length<2||!units.some(u=>!u.combatResolved))throw Error('Select an unresolved engaged regiment.');
  const ids=units.map(u=>u.id),initiative=Object.fromEntries(units.map(u=>[u.id,combatInitiative(u,opponents(s,u))]));
- return s.combatSession={units:ids,sides:{ash:ids.filter(i=>getUnit(s,i).team==='ash'),iron:ids.filter(i=>getUnit(s,i).team==='iron')},a:first.id,b:opponents(s,first)[0]?.id??null,
+ s.combatSession={units:ids,sides:{ash:ids.filter(i=>getUnit(s,i).team==='ash'),iron:ids.filter(i=>getUnit(s,i).team==='iron')},a:first.id,b:opponents(s,first)[0]?.id??null,
   standards:Object.fromEntries(units.map(u=>[u.id,commandAlive(u,'S')])),initiative,groups:[...new Set(Object.values(initiative))].sort((x,y)=>y-x),step:0,phase:'attacks',stages:[],spellStages:[],passed:{},damage:Object.fromEntries(ids.map(i=>[i,0]))};
+ // A challenge fought to the death goes on; otherwise one may be issued.
+ clearRetirements(s);const c=s.combatSession,inCombat=key=>!!duelist(s,key)&&ids.includes(String(key).split(':')[0]),going=(s.duels??[]).find(d=>inCombat(d.challenger)&&inCombat(d.acceptor));
+ if(going)c.challenge={stage:'fight',challenger:going.challenger,acceptor:going.acceptor,continued:true,team:null};
+ else{c.challenge={stage:'issue',team:null,declined:[]};advanceIssue(s);}
+ return c;
 }
 // One Initiative step: every unit at this Initiative attacks, its models split between the enemy
 // units they can reach (see attackAllocation); casualties are removed after the whole step.
+// Rolling attacks while a challenge is still unanswered means no challenge (see declineChallenges).
 export function fightCombatStep(s,random=Math.random){
+ if(challengePending(s))declineChallenges(s);
  const c=s.combatSession;if(s.stage!=='combat'||c?.phase!=='attacks')throw Error('Show Initiative before rolling attacks.');if(s.pendingSpell)throw Error('Resolve the dispel of the spell just cast first.');
  // Assailments cast at this step join it: their wounds are claimed before the attacks are rolled.
  const initiative=c.groups[c.step],stages=[...(c.spellStages??[])],claimed={};c.spellStages=[];for(const st of stages)claimed[st.to]=(claimed[st.to]??0)+st.unsaved;
@@ -1663,8 +1713,15 @@ export function fightCombatStep(s,random=Math.random){
    const stage=attackStage(s,u,t,random,lost,{models,cap:Math.max(0,remainingWounds(t)-(claimed[target]??0))});claimed[target]=(claimed[target]??0)+stage.unsaved;stages.push(stage);
   }
  }
+ // The challenge: each duellist strikes the other at its own Initiative step. Wounds beyond what
+ // the other has left are Overkill (counted for a character).
+ const ch=c.challenge?.stage==='fight'?c.challenge:null;
+ if(ch)for(const [from,to]of [[ch.challenger,ch.acceptor],[ch.acceptor,ch.challenger]]){const a=duelist(s,from),d=duelist(s,to);if(!a||!d||c.initiative[a.unit.id]!==initiative)continue;
+  const stage=attackStage(s,a.unit,d.unit,random,0,{models:[a.model],cap:Infinity}),left=d.champion?1:remainingWounds(d.unit),kill=Math.min(stage.unsaved,left);
+  Object.assign(stage,{unsaved:kill,saved:stage.wounds-stage.unsaved,duel:{from,to,champion:d.champion},overkill:!a.champion&&stage.unsaved>left?stage.unsaved-left:0});stages.push(stage);}
  for(const stage of stages){c.stages.push(stage);c.damage[stage.to]+=stage.unsaved;if(stage.rear)(c.rearLosses??={})[stage.to]=(c.rearLosses[stage.to]??0)+stage.unsaved;}
- for(const stage of stages)removeCasualties(s,getUnit(s,stage.to),stage.unsaved,random);
+ // A slain champion is replaced by a rank and file model: the unit loses a model and its champion.
+ for(const stage of stages){const t=getUnit(s,stage.to);if(stage.duel?.champion){if(stage.unsaved>0){removeCasualties(s,t,1,random);t.command={...(t.command??{M:true,S:true,C:true}),C:false};t.championSlain={round:s.round,by:stage.from};}}else removeCasualties(s,t,stage.unsaved,random);}
  c.step++;if(c.step>=c.groups.length)c.phase='compare';
  return {initiative,stages,next:c.phase};
 }
@@ -1681,6 +1738,8 @@ export function compareCombat(s,random=Math.random){
  const winner=winners.includes(c.a)?c.a:winners.includes(c.b)?c.b:winners[0]??null,loser=winner?(winner===c.a?c.b:winner===c.b?c.a:null)??(units.find(u=>u.team===loserSide)?.id??null):null;
  const former=Object.fromEntries(units.map(u=>[u.id,opponentIds(u)]));
  const result={units:c.units,sides:c.sides,a:c.a,b:c.b,initiative:c.initiative,stages:c.stages,damage:c.damage,score:{...score,...Object.fromEntries(units.map(u=>[u.id,score[u.team]]))},winnerSide,loserSide,winners,losers,winner,loser,outcome,breakDice:null,breaks:{},margin,round:s.round};
+ // To the Death: a challenge both duellists survive goes on in this combat's next round.
+ {const ch=c.challenge;if(ch?.stage==='fight'){s.duels=(s.duels??[]).filter(d=>d.challenger!==ch.challenger&&d.acceptor!==ch.acceptor);if(duelist(s,ch.challenger)&&duelist(s,ch.acceptor))s.duels.push({challenger:ch.challenger,acceptor:ch.acceptor,since:ch.since??s.round});}result.challenge=ch?{...ch}:null;}
  for(const u of units)u.combatResolved=true;s.lastCombat=result;(s.combatHistory??=[]).push(result);s.combatSession=null;
  // The dead are removed; a destroyed unit's standard goes to the other side if any of it stands.
  for(const dead of units.filter(u=>aliveCount(u)===0)){const other=dead.team==='ash'?'iron':'ash';if(c.standards?.[dead.id]&&standing(other)&&!dead.standardClaimed){dead.standardClaimed=other;(s.trophies??=[]).push({unit:dead.id,team:other,round:s.round});}release(s,dead);if(!dead.destroyed||dead.x!==null)destroyUnit(s,dead,'COMBAT_CASUALTIES',random);}syncJoined(s);
@@ -1988,8 +2047,9 @@ export function winnerCombat(s,choice='follow',random=Math.random,reformHeading=
  let follow=choice!=='restrain';
  if(decl?.restraint){out.rolls.restraint=decl.restraint.dice;follow=decl.follow;out.restraintFailed=follow;}
  else if(choice==='restrain'){const dice=combatDice(2,random);out.rolls.restraint=dice;follow=dice[0]+dice[1]>leadership(winner,'restraint',s);out.restraintFailed=follow;}
- // Restrained: a free reform after an overrun-or-restrain against a wiped-out enemy, or after a Give Ground.
- if(!follow&&(p.outcome==='overrun'||p.outcome==='give-ground'))reform();
+ // Restrained: a free reform. With a facing given it is made at once (after an overrun or a Give
+ // Ground, as before); otherwise it is offered (reformOffer) for the player to choose the facing.
+ if(!follow){if(reformHeading!==null){if(p.outcome==='overrun'||p.outcome==='give-ground')reform();}else out.reformOffer=offerReform(s,winner,'free','restrained');}
  if(follow){
   let advance=p.retreat?.moved??0,dir=p.retreat?.dir??null,chase=0;
   if(p.outcome!=='give-ground'){
@@ -2015,7 +2075,9 @@ export function winnerCombat(s,choice='follow',random=Math.random,reformHeading=
    if(p.outcome==='give-ground'&&loser.x!==null&&gap(winner,loser)<EPS)engage(winner,loser);
   }
  }
- if(choice==='follow-reform'&&out.loserDestroyed&&!opponents(s,winner).length&&winner.x!==null){const dice=combatDice(2,random);out.rolls.reform=dice;if(dice[0]+dice[1]<=leadership(winner,'restraint',s))reform();else out.reform={passed:false,heading:heading(winner),error:'Leadership test failed.'};}
+ // Running down a fleeing enemy: an attempt to reform, offered (the facing is chosen afterwards).
+ if(follow&&(out.runDown||out.contact&&getUnit(s,out.contact)?.destroyedBy==='RUN_DOWN')&&reformHeading===null&&winner.x!==null)out.reformOffer=offerReform(s,winner,'leadership','ran down');
+ else if(choice==='follow-reform'&&out.loserDestroyed&&!opponents(s,winner).length&&winner.x!==null){const dice=combatDice(2,random);out.rolls.reform=dice;if(dice[0]+dice[1]<=leadership(winner,'restraint',s))reform();else out.reform={passed:false,heading:heading(winner),error:'Leadership test failed.'};}
  if(p.outcome==='overrun')out.overrun=follow;
  // A loser that could not move away is still in the fight: the combat continues next turn.
  if(!out.loserDestroyed&&loser&&(stillTouching(winner,loser)||engagedWith(winner,loser))){engage(winner,loser);out.stillEngaged=true;}
@@ -2038,6 +2100,19 @@ export function loadGame(text){
  if(s.format.id&&s.format.id!=='classic'&&!FORMAT_RULES[s.format.id])throw Error(`The rules for ${s.format.name??s.format.id} are not loaded.`);
  const extra=Object.fromEntries(Object.entries(data).filter(([k])=>!['app','version','saved','summary','state'].includes(k)));
  return {state:s,saved:data.saved??null,summary:data.summary??saveSummary(s),extra};}
+// ---- Reforming after a combat or a run-down ----
+// A unit that passes its Restraint test may make a free reform; one that runs down a fleeing enemy
+// (with a charge or a pursuit) may attempt to reform by passing a Leadership test. The reform is
+// offered once the move is made, and the player then chooses the facing (or keeps its own). An
+// offer lasts until the end of the phase.
+function offerReform(s,u,test,reason){if(!u||u.x===null||u.destroyed||opponents(s,u).length)return null;s.reformOffers=[...(s.reformOffers??[]).filter(o=>o.unit!==u.id),{unit:u.id,test,reason,turn:`${s.round}:${s.team}`,stage:s.stage}];return test;}
+export function reformOffer(s,id){const o=(s.reformOffers??[]).find(o=>o.unit===id),u=getUnit(s,id);if(!o||!u||u.x===null||u.destroyed||u.engaged||u.fleeing||o.turn!==`${s.round}:${s.team}`||o.stage!==s.stage)return null;return o;}
+export function reformError(s,id,to){const u=getUnit(s,id);if(!reformOffer(s,id))return 'This unit has no reform to make.';if(!Number.isFinite(to))return 'Choose a facing.';const error=checkPosition(s,{...u,heading:normalize(to)},u.x,u.y,false,{moving:true});return error?`Turned to ${Math.round(normalize(to))}° it would not fit: ${error}`:null;}
+export function reformUnit(s,id,to,random=Math.random){
+ const error=reformError(s,id,to);if(error)throw Error(error);const o=reformOffer(s,id),u=getUnit(s,id),out={unit:id,test:o.test,reason:o.reason,passed:true,dice:null,from:heading(u)};
+ if(o.test==='leadership'){out.dice=rollD6(2,random);out.leadership=leadership(u,'normal',s);out.passed=out.dice[0]+out.dice[1]<=out.leadership;}
+ s.reformOffers=s.reformOffers.filter(x=>x!==o);if(out.passed){u.heading=normalize(to);syncJoined(s,u);}out.heading=heading(u);return out;}
+export function declineReform(s,id){s.reformOffers=(s.reformOffers??[]).filter(o=>o.unit!==id);}
 // Finish the whole aftermath at once: Break tests (Shieldwall when offered), retreats, and every
 // winner's choice.
 export function finishCombat(s,choice='follow',random=Math.random,reformHeading=null){

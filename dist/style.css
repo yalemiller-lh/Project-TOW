@@ -275,3 +275,8 @@ input[type=range]{accent-color:var(--army-primary)}.charge-step{background:var(-
 /* Save / Load */
 .save-dialog .save-note{margin:6px 0 10px;color:var(--muted,#b9b2a3);font-size:13px}
 .save-resume{display:grid;gap:4px;margin:0 0 12px}.save-resume small{color:var(--muted,#b9b2a3)}
+/* Reform prompt and challenge controls */
+.reform-controls{margin:8px 0;padding:8px;border:1px solid var(--gold,#c9a14a);border-radius:6px;display:grid;gap:6px}
+.reform-turns{display:flex;flex-wrap:wrap;gap:4px}
+.reform-turns button{flex:1 1 auto;min-width:64px}
+.challenge-controls{display:grid;gap:6px;margin:6px 0}
