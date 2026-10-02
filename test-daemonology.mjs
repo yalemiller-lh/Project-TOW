@@ -27,10 +27,10 @@ test('The Summoning is Daemonology\'s signature spell; a Daemonsmith may also ta
  assert.throws(()=>G.exchangeSignature(s,'A6','steed','hammerhand'),/Exchange/,'Hammerhand is Battle Magic\'s');
  assert.deepEqual(G.exchangeSignature(s,'A6','steed','summoning'),['summoning','darkness']);assert.throws(()=>G.exchangeSignature(s,'A6','darkness','ashStorm'),/Exchange/,'only one exchange');
 });
-test('a Daemonsmith roster may choose Daemonology or Battle Magic; other lores are not implemented',()=>{
+test('a Daemonsmith roster may choose any of its four lores; an Empire Master Mage only Battle Magic',()=>{
  const roster=lore=>({faction:'chaos',entries:[{entry:'daemonsmith',general:true,lore},{entry:'warriors',models:19},{entry:'decimators',models:9}]});
  const errors=lore=>A.validateRoster(roster(lore),500).errors??A.validateRoster(roster(lore),500);const text=lore=>JSON.stringify(errors(lore));
- assert.doesNotMatch(text('daemonology'),/lore|implemented|Daemonology/i);assert.doesNotMatch(text('battle'),/implemented/);assert.match(text('darkMagic'),/not implemented/);
+ for(const lore of ['daemonology','battle','darkMagic','elementalism'])assert.doesNotMatch(text(lore),/lore|implemented|cannot use/i,lore);assert.match(text('illusion'),/cannot use/);assert.throws(()=>G.createGame('empire',{lores:{iron:'darkMagic'}}),/cannot use Dark Magic/);assert.equal(G.getUnit(G.createGame('empire',{lores:{ash:'elementalism'}}),'A6').lore,'elementalism');
  const s=G.createGame('empire',{format:'battle-march',points:500,rosters:{ash:roster('daemonology')}});assert.equal(G.getUnit(s,'A6').lore,'daemonology');
 });
 test('casting: Level 2 adds 1; exactly the value succeeds; a tied dispel fails',()=>{

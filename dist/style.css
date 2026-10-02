@@ -266,3 +266,9 @@ input[type=range]{accent-color:var(--army-primary)}.charge-step{background:var(-
 .dice-animation.choosing .animated-die{cursor:pointer;transition:transform .12s}
 .dice-animation.choosing .animated-die:hover,.dice-animation.choosing .animated-die:focus-visible{transform:scale(1.12);outline-width:3px}
 .dice-animation .keep-roll{display:block;margin:8px auto 0;pointer-events:auto}
+
+/* Phantasmagoria's 12″ reach, the template a spell just used, and the vortices that differ. */
+.phantasm-ring{fill:none;stroke:#b07cff73;stroke-width:1.5px;stroke-dasharray:3 6;pointer-events:none}
+.spell-shape{fill:#b07cff38;stroke:#d7b8ff;stroke-width:2px;pointer-events:none}
+.vortex-elementalSpirit{fill:#8fb9c6aa}
+.vortex-phantasmagoria{fill:#6d3fa8aa}

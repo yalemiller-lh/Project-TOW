@@ -81,7 +81,7 @@ function chargeChoices(s){
  const out=[];
  for(const u of s.units.filter(u=>u.team===ME&&G.canAct(s,u)&&!u.charge)){
   // Frenzy, or an Orc Mob that failed its Impetuous test, must charge if it can.
-  const must=G.hasRule(u,'frenzy')||u.faction==='orc'&&u.impetuousTest===false;
+  const must=G.hasRule(u,'frenzy')||G.isImpetuous(s,u)&&u.impetuousTest===false;
   for(const t of G.availableCharges(s,u)){
    const plan=G.chargePlan(s,u,t);if(plan.error)continue;
    const p=reachChance(u,plan.cost);if(p<=0&&!must)continue;
@@ -357,7 +357,7 @@ function describeOrder(o){return o.kind==='pivot'?'reforms':o.kind==='side'?`ste
 function spellHarm(s){
  const p=s.pendingSpell,key=p.key,spell=G.SPELLS[key];let harm=0;
  for(let i=0;i<6;i++){const c=structuredClone(s);try{G.resolveDispel(c,'none',seeded(i+11));harm+=-swing(s,c)/6;}catch{}}
- const lasting={arrow:6,shield:5,ashStorm:8,urgency:8,darkness:12,vessel:10,vigour:10,steed:10,pillar:15,vortexChaos:15};
+ const lasting={arrow:6,shield:5,ashStorm:8,urgency:8,darkness:12,vessel:10,vigour:10,steed:10,pillar:15,vortexChaos:15,stormCall:8,plagueRust:10,ramparts:10,pathway:8,elementalSpirit:15,wordOfPain:12,gateway:8,phantasmagoria:15,battleLust:12};
  return harm+(lasting[key]??(spell.type==='assailment'?8:0));
 }
 function aiDispel(s,random){
@@ -392,7 +392,7 @@ export function takeStep(s,random=Math.random){
  if(s.stage==='movement'&&s.movementStep==='reactions'){G.finishReactions(s);return {message:'Every charged unit has reacted.'};}
  if(s.stage==='movement'&&s.movementStep==='declare'){
 
-  for(const u of s.units.filter(u=>u.team===ME&&G.canAct(s,u)&&u.faction==='orc'&&u.impetuousTest===null&&G.availableCharges(s,u).length)){const dice=roll(random),passed=G.impetuousTest(s,u.id,dice);s.selected=u.id;return {message:`${u.id} Impetuous test ${passed?'passed':'failed'} (${dice.join('+')}).`};}
+  for(const u of s.units.filter(u=>u.team===ME&&G.canAct(s,u)&&G.isImpetuous(s,u)&&u.impetuousTest===null&&G.availableCharges(s,u).length)){const dice=roll(random),passed=G.impetuousTest(s,u.id,dice);s.selected=u.id;return {message:`${u.id} Impetuous test ${passed?'passed':'failed'} (${dice.join('+')}).`};}
   // Charges are weighed by playing the fights out (see chargeChoices); a Frenzied unit must charge.
   const options=chargeChoices(s).sort((a,b)=>b.ev-a.ev),best=options.find(o=>o.must)??options.find(o=>worthCharging(o));
   if(best){const {u,t}=best;s.selected=u.id;G.declareCharge(s,u.id,t.id);return {message:`${u.id} charges ${t.id}. Choose a reaction.`,judged:{ev:Math.round(best.ev),chance:Math.round(best.p*100)}};}
@@ -446,6 +446,13 @@ function spellValue(s,w,key,target,point){
  if(key==='vigour')return target.engaged?0:s.units.some(t=>t.team===THEM&&alive(t)&&G.gap(target,t)<=G.profile(target).M+7)?8:1;
  if(key==='darkness')return target.engaged?12:6;
  if(key==='steed')return 6;
+ // Elementalism and Dark Magic, by what they are for. The bot does not plan relocations yet.
+ if(key==='stormCall')return target.engaged?4:6;
+ if(key==='plagueRust')return target.engaged||s.units.some(u=>u.team===ME&&u.role==='missile'&&alive(u))?9:4;
+ if(key==='wordOfPain')return target.engaged?12:6;
+ if(key==='ramparts')return target.engaged?0:danger(s,target,target)<-20?10:2;
+ if(key==='battleLust')return target.role==='infantry'&&!target.engaged&&s.units.some(t=>t.team===THEM&&alive(t)&&!t.fleeing&&G.gap(target,t)<=G.profile(target).M+6)?8:0;
+ if(G.SPELLS[key].relocate)return 0;
  if(spell.template)return point?10:0;
  let v=0;for(let i=0;i<6;i++){const c=structuredClone(s);try{G.castSpell(c,w.id,key,target.id,seeded(i+21),{point,dispel:'none'});v+=swing(s,c)/6;}catch{}}
  return v;

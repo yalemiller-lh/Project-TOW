@@ -50,9 +50,9 @@ export function rosterCost(roster){return roster.entries.reduce((n,item)=>n+entr
 export const BATTLE_MARCH_LIMITS={entry:{characters:25,core:35,special:30,rare:25,mercenaries:25},category:{characters:{max:50},core:{min:25},special:{max:50},rare:{max:25},mercenaries:{max:20}},maxUnitStrength:20,minUnits:2,restrictedSelections:1};
 const CATEGORY_NAME={characters:'character',core:'Core unit',special:'Special unit',rare:'Rare unit',mercenaries:'Mercenary unit'};
 const fmt=n=>Number.isInteger(n)?String(n):n.toFixed(1);
-// Lores of Magic by key; the engine implements Battle Magic and Daemonology.
+// Lores of Magic by key; the engine implements all four a Daemonsmith may know.
 export const LORE_NAMES={battle:'Battle Magic',daemonology:'Daemonology',darkMagic:'Dark Magic',elementalism:'Elementalism'};
-export const LORES_IMPLEMENTED=['battle','daemonology'];
+export const LORES_IMPLEMENTED=['battle','daemonology','darkMagic','elementalism'];
 export function validateRoster(roster,points,{format='battle-march'}={}){
  const errors=[],faction=roster.faction,entries=roster.entries,total=rosterCost(roster),L=BATTLE_MARCH_LIMITS;
  for(const gap of format==='battle-march'&&!Object.values(ENTRIES[faction]??{}).some(e=>e.general)?GAPS[faction]??[]:[])errors.push(gap);
