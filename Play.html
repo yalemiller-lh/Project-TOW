@@ -725,7 +725,7 @@ function gap(a,b){return polygonGap(corners(a),corners(b));}
 // Distance from a footprint to a circle (0 when they touch or overlap).
 function circleGap(poly,c){if(inside({x:c.x,y:c.y},poly))return 0;let best=Infinity;for(let i=0;i<poly.length;i++)best=Math.min(best,pointSegment({x:c.x,y:c.y},poly[i],poly[(i+1)%poly.length]));return Math.max(0,best-c.r);}
 // Impassable terrain a footprint (or the area a move sweeps) overlaps; touching its edge is allowed.
-function terrainBlocks(s,poly){const inner=shrink(poly,.01);return (s?.terrain??[]).some(t=>featureMovement(t)==='impassable'&&featureGap(t,inner)<EPS);}
+function terrainBlocks(s,poly,u=null){const inner=shrink(poly,.01);return (s?.terrain??[]).some(t=>(u?movementOf(t,u):featureMovement(t))==='impassable'&&featureGap(t,inner)<EPS);}
 function terrainBlocksSight(s,a,b){return (s?.terrain??[]).some(t=>(t.blocksSight||t.sight==='blocks')&&(t.points||t.line?polygonGap(shrink(t.points??t.line,.01),[a,b])<EPS&&!(t.points&&(inside(a,t.points)||inside(b,t.points))):pointSegment({x:t.x,y:t.y},a,b)<t.r-EPS));}
 // ---- Temporary effects: a spell's or a landmark's, kept on the units they affect. ----
 // A record: {id, spell or property, source:{kind,caster,team}, mods:[{stat,add,min?,max?}], ap,
@@ -779,7 +779,8 @@ const swift=(u,random)=>unitHasRule(u,'swiftstride')?rollD6(1,random)[0]:0;
 // The Movement a move uses: on foot, M; flying, the Fly value. Marching doubles it; difficult
 // terrain takes 1 off first (never below 1).
 function moveValue(u,medium='ground',fly=null){return medium==='fly'?(fly??flyValues(u)[0]??0):profile(u).M;}
-function moveAllowance(u,{mode='advance',medium='ground',fly=null,difficult=false}={}){return Math.max(1,moveValue(u,medium,fly)-(difficult?1:0))*(mode==='march'?2:1);}
+// Move Through Cover: no Movement penalty for difficult or dangerous terrain.
+function moveAllowance(u,{mode='advance',medium='ground',fly=null,difficult=false}={}){return Math.max(1,moveValue(u,medium,fly)-(difficult&&!unitHasRule(u,'moveThroughCover')?1:0))*(mode==='march'?2:1);}
 // The General's Command range is 12″, whatever its Leadership (the core rules' General & Battle Standard).
 const COMMAND_RANGE=12;
 function inspiringPresence(s,u){if(!s||!u||u.x===null)return null;const g=generalOf(s,u.team);if(!g||g.id===u.id||g.fleeing||g.x===null||blocksRule(u,'inspiringPresence'))return null;const ld=profile(g).Ld;return gap(g,u)<=COMMAND_RANGE+EPS?ld:null;}
@@ -1064,7 +1065,7 @@ function sweptVortices(s,u,poses,{all=false}={}){const out=new Set();for(let i=0
 // The hits for each vortex crossed, once per vortex in each movement (all of a unit's Remaining
 // Moves are one movement; Arcane Urgency starts another).
 function vortexMoveHits(s,u,vortices,random=Math.random,poses=null){const out=[],event=`${s.round}:${s.team}:${s.stage}:${u.moveEvent??0}`;for(const v of vortices){if(u.x===null||aliveCount(u)===0)break;const ref=v.id??v.caster;u.vortexHits??={};if(u.vortexHits[ref]===event)continue;u.vortexHits[ref]=event;const rule=VORTEX_RULES[v.spell??'pillar']??VORTEX_RULES.pillar;out.push({vortex:ref,spell:v.spell??'pillar',caster:v.caster,unit:u.id,...(rule.dangerous?dangerousTests(s,u,{x:v.x,y:v.y,r:v.radius??1.5},poses,random):magicDamage(s,u,rule.hits(random),rule.strength,rule.ap,random,{flaming:rule.flaming}))});}return out;}
-function forwardError(s,u,start,end){const swept=hull([...corners(start),...corners(end)]),close=closeAtStart(s,u),inner=shrink(swept),blocks=(v,poly)=>close(v)?polygonGap(inner,poly)<EPS:polygonGap(swept,poly)<1-EPS;if(terrainBlocks(s,swept))return 'Impassable terrain blocks this path. Shorten the move or go around it.';for(const v of s.units){if(v.id===u.id||v.x===null||v.joined)continue;if(blocks(v,corners(v)))return 'Another regiment blocks this path. Shorten the move.';}if(s.rocket?.x!==null&&s.rocket.id!==u.id&&blocks(s.rocket,corners(s.rocket)))return 'The Deathshrieker blocks this path. Shorten the move.';if(s.cannons.some(c=>c.x!==null&&c.id!==u.id&&blocks(c,corners(c))))return 'A cannon blocks this path. Shorten the move.';return null;}
+function forwardError(s,u,start,end){const swept=hull([...corners(start),...corners(end)]),close=closeAtStart(s,u),inner=shrink(swept),blocks=(v,poly)=>close(v)?polygonGap(inner,poly)<EPS:polygonGap(swept,poly)<1-EPS;if(terrainBlocks(s,swept,u))return 'Impassable terrain blocks this path. Shorten the move or go around it.';for(const v of s.units){if(v.id===u.id||v.x===null||v.joined)continue;if(blocks(v,corners(v)))return 'Another regiment blocks this path. Shorten the move.';}if(s.rocket?.x!==null&&s.rocket.id!==u.id&&blocks(s.rocket,corners(s.rocket)))return 'The Deathshrieker blocks this path. Shorten the move.';if(s.cannons.some(c=>c.x!==null&&c.id!==u.id&&blocks(c,corners(c))))return 'A cannon blocks this path. Shorten the move.';return null;}
 function orderError(s,u,order){
   if(!canAct(s,u))return 'Select an unmoved regiment from the active army.';
   const {kind='advance',mode='advance',angle=0,distance=0}=order;
@@ -1088,7 +1089,7 @@ function orderError(s,u,order){
   const plan=planMove(u,order);
   // A vortex is difficult terrain: Movement −1 for the whole move once the unit enters it; a
   // flyer only when it takes off from or lands in one.
-  const difficult=!!u.difficultThisMove||(medium==='fly'?vortexUnder(s,u,plan.start)||vortexUnder(s,u,plan.end):sweptVortices(s,u,movePoses(plan),{all:true}).length>0),allowance=moveAllowance(u,{mode,medium,fly,difficult});
+  const difficult=!!u.difficultThisMove||(medium==='fly'?vortexUnder(s,u,plan.start)||vortexUnder(s,u,plan.end):sweptVortices(s,u,movePoses(plan),{all:true}).length>0)||terrainCrossed(s,u,movePoses(plan),{fly:medium==='fly'}).length>0,allowance=moveAllowance(u,{mode,medium,fly,difficult});
   if(u.movementMode&&u.movementMode!==mode)return 'Movement mode is locked after the first step. Undo all steps to change it.';
   if(mode==='march'&&hasRule(u,'noMarch'))return 'Earthen Ramparts: this unit cannot march.';
   if(kind==='pivot'&&(u.spent??0)>EPS)return 'A reform requires the whole unused movement allowance.';
@@ -1109,7 +1110,7 @@ function orderError(s,u,order){
       const close=closeAtStart(s,u),blocks=v=>close(v)?polygonGap(shrink(sweep),corners(v))<EPS:polygonGap(sweep,corners(v))<1.0001-EPS;
       for(const v of s.units){if(v.id===u.id||v.x===null||v.joined)continue;if(blocks(v))return 'Another regiment blocks the leading edge of this wheel.';}
       if(combatants(s).some(m=>m.role==='warmachine'&&m.x!==null&&m.id!==u.id&&blocks(m)))return 'A war machine blocks the leading edge of this wheel.';
-      if(terrainBlocks(s,sweep))return 'Impassable terrain blocks this wheel.';
+      if(terrainBlocks(s,sweep,u))return 'Impassable terrain blocks this wheel.';
       previous=front;
     }
   }
@@ -1175,13 +1176,15 @@ function leaveSpot(s,charId){const c=getUnit(s,charId),u=getUnit(s,c?.joined);if
  const ok=out.map(p=>({...p,heading:heading(u)})).sort((p,q)=>Math.hypot(p.x-c.x,p.y-c.y)-Math.hypot(q.x-c.x,q.y-c.y)).find(p=>!leaveError(s,charId,p));return ok??null;}
 function remember(s,u){s.history.push({id:u.id,x:u.x,y:u.y,heading:heading(u),moved:u.moved,spent:u.spent??0,movementMode:u.movementMode??null,movementMedium:u.movementMedium??null,movementFly:u.movementFly??null,difficultThisMove:!!u.difficultThisMove,movedThisTurn:!!u.movedThisTurn,marchRequired:u.marchRequired??null});}
 // A flyer that crosses a vortex is struck by it as well; its Movement suffers only for landing in it.
-function commitOrder(s,id,order,random=Math.random){const u=getUnit(s,id);const error=orderError(s,u,order);if(error)throw Error(error);const medium=order.medium??u.movementMedium??'ground',fly=medium==='fly'?(order.fly??u.movementFly??flyValues(u)[0]):null,plan=planMove(u,order),vortices=sweptVortices(s,u,movePoses(plan)),entered=medium==='fly'?vortexUnder(s,u,plan.start)||vortexUnder(s,u,plan.end):sweptVortices(s,u,movePoses(plan),{all:true}).length>0,difficult=!!u.difficultThisMove||entered;if(s.stage==='movement')enterRemaining(s,random);remember(s,u);
+function commitOrder(s,id,order,random=Math.random){const u=getUnit(s,id);const error=orderError(s,u,order);if(error)throw Error(error);const medium=order.medium??u.movementMedium??'ground',fly=medium==='fly'?(order.fly??u.movementFly??flyValues(u)[0]):null,plan=planMove(u,order),vortices=sweptVortices(s,u,movePoses(plan)),crossedTerrain=terrainCrossed(s,u,movePoses(plan),{fly:medium==='fly'}),entered=(medium==='fly'?vortexUnder(s,u,plan.start)||vortexUnder(s,u,plan.end):sweptVortices(s,u,movePoses(plan),{all:true}).length>0)||crossedTerrain.length>0,difficult=!!u.difficultThisMove||entered;if(s.stage==='movement')enterRemaining(s,random);remember(s,u);
  // A flyer suffers dangerous terrain only where it takes off or lands.
  const lands=v=>[plan.start,plan.end].some(p=>circleGap(corners(p),{x:v.x,y:v.y,r:v.radius??1.5})<EPS),struck=medium==='fly'?vortices.filter(v=>!VORTEX_RULES[v.spell]?.dangerous||lands(v)):vortices;const marchRequired=medium==='fly'?false:needsMarchTest(s,u),spent=(u.spent??0)+plan.cost,allowance=moveAllowance(u,{mode:plan.mode,medium,fly,difficult});Object.assign(u,{x:plan.end.x,y:plan.end.y,heading:plan.end.heading,spent,movementMode:plan.mode,movementMedium:medium,movementFly:fly,marchRequired,moved:plan.kind==='pivot'||spent>=allowance-EPS,movedThisTurn:true});if(entered)u.difficultThisMove=true;s.lastVortexHits=vortexMoveHits(s,u,struck,random,medium==='fly'?[plan.end]:movePoses(plan));
+ // Dangerous terrain: the tests for each feature crossed (a flyer: where it takes off or lands).
+ s.lastTerrainHits=terrainMoveTests(s,u,crossedTerrain,medium==='fly'?[plan.end]:movePoses(plan),random,{once:true});
  // A unit that has finished moving may have to test against a Phantasmagoria.
  s.lastPhantasm=u.moved?endOfMove(s,u,random):null;
  // Dice were rolled for crossing a vortex: this unit's moves can no longer be taken back.
- if(s.lastVortexHits.length||s.lastPhantasm?.length)s.history=s.history.filter(h=>h.id!==u.id);syncJoined(s,u);return plan;}
+ if(s.lastVortexHits.length||s.lastTerrainHits.length||s.lastPhantasm?.length)s.history=s.history.filter(h=>h.id!==u.id);syncJoined(s,u);return plan;}
 function movementError(s,u,distance,mode){return orderError(s,u,{kind:'advance',distance,mode,angle:0});}
 function move(s,id,distance,mode){return commitOrder(s,id,{kind:'advance',distance,mode,angle:0});}
 function hold(s,id,random=Math.random){const u=getUnit(s,id);if(!canAct(s,u)||s.stage!=='movement')throw Error('This regiment cannot take orders now.');if(arrivals(s,u.team).length)throw Error('Place the arriving reinforcements first: they enter in Compulsory Moves.');enterRemaining(s,random);remember(s,u);u.moved=true;s.lastPhantasm=u.movedThisTurn?endOfMove(s,u,random):null;if(s.lastPhantasm?.length)s.history=s.history.filter(h=>h.id!==u.id);}
@@ -1620,11 +1623,30 @@ const VORTEX_RULES={pillar:{hits:random=>Math.ceil(rollD6(1,random)[0]/2)+3,stre
 function vortexBlocksSight(s,a,b){return (s?.vortices??[]).some(v=>VORTEX_RULES[v.spell]?.blocksSight&&pointSegment({x:v.x,y:v.y},a,b)<(v.radius??1.5)-EPS);}
 // Dangerous terrain: a D6 for each model that starts, crosses or ends this move in it; each 1 costs
 // a Wound. Only the models whose own bases touch it test.
+// ---- Terrain and movement ----
+// Difficult and dangerous terrain, and low obstacles (difficult for movement), slow a unit that
+// starts, passes through or ends a move in them, judged on the whole footprint it sweeps: Movement
+// −1 (minimum 1) for the move, and on a charge the lower die counts. A flyer is affected only where
+// it takes off and lands. Iron Shod Wheels treats difficult terrain as dangerous and linear
+// obstacles as impassable.
+function movementOf(t,u=null){let m=featureMovement(t);if(t.low&&m==='open')m='difficult';if(u&&unitHasRule(u,'ironShodWheels')){if(m==='difficult')m='dangerous';if(t.line)m='impassable';}return m;}
+function terrainCrossed(s,u,poses,{fly=false}={}){
+ const list=fly?[poses[0],poses.at(-1)]:poses,out=[];
+ for(const t of (s?.terrain??[]).filter(t=>t.points||t.line)){const m=movementOf(t,u);if(m!=='difficult'&&m!=='dangerous')continue;
+  const hit=fly?list.some(p=>featureGap(t,shrink(corners(p),.01))<EPS):list.some((p,i)=>featureGap(t,shrink(hull([...corners(p),...corners(list[Math.min(i+1,list.length-1)])]),.01))<EPS);if(hit)out.push(t);}
+ return out;}
+// once: a move made in parts tests each feature only once (as a vortex strikes only once).
+function terrainMoveTests(s,u,features,poses,random,{once=false}={}){const out=[],event=`${s.round}:${s.team}:${s.stage}:${u.moveEvent??0}`;for(const t of features.filter(t=>movementOf(t,u)==='dangerous')){if(u.x===null||aliveCount(u)===0)break;if(once&&u.terrainTests?.[t.id]===event)continue;const r=dangerousTests(s,u,t,poses,random);if(r.tests){if(once)(u.terrainTests??={})[t.id]=event;out.push({feature:t.id,name:t.name,unit:u.id,...r});}}return out;}
+// A low wall a unit defends: along its front edge, in base contact with it, running with it.
+function defendedObstacle(s,t,face='front'){if(face!=='front'||!t||t.x===null)return null;const [a,b]=corners(t),dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy);
+ return (s?.terrain??[]).find(f=>f.line&&f.low&&(()=>{const [p,q]=f.line,ex=q.x-p.x,ey=q.y-p.y,el=Math.hypot(ex,ey);if(Math.abs(dx*ey-dy*ex)/(len*el)>Math.sin(rad(15)))return false;if(polygonGap([p,q],[a,b])>.6)return false;const along=pt=>((pt.x-a.x)*dx+(pt.y-a.y)*dy)/len,lo=Math.max(0,Math.min(along(p),along(q))),hi=Math.min(len,Math.max(along(p),along(q)));return hi-lo>=1;})())??null;}
+// Dangerous terrain: a D6 for each model that starts, crosses or ends this move in it; each 1 costs
+// a Wound (D3 with Iron Shod Wheels; Move Through Cover re-rolls the 1s). Only models whose own bases touch it test.
 function dangerousTests(s,u,circle,poses,random){
  const live=u.role==='warmachine'||isCharacter(u)?[{index:0,local:null}]:modelSquares(s,u).filter(m=>!m.dead).map(m=>({index:m.index,local:[[m.x,m.y],[m.x+m.size,m.y],[m.x+m.size,m.y+m.size],[m.x,m.y+m.size]]}));
  const square=(pose,m)=>m.local?m.local.map(([x,y])=>localPoint(pose,x,y)):corners(pose),list=poses?.length?poses:[u];
- const testing=live.filter(m=>list.some((p,i)=>circleGap(hull([...square(p,m),...square(list[Math.min(i+1,list.length-1)],m)]),circle)<EPS));
- const rolls=testing.map(m=>({model:m.index,roll:rollD6(1,random)[0]})),lost=rolls.filter(r=>r.roll===1).length,before=aliveCount(u);
+ const testing=live.filter(m=>list.some((p,i)=>featureGap(circle,hull([...square(p,m),...square(list[Math.min(i+1,list.length-1)],m)]))<EPS));
+ const rolls=testing.map(m=>{const first=rollD6(1,random)[0],reroll=first===1&&unitHasRule(u,'moveThroughCover')?rollD6(1,random)[0]:null;return {model:m.index,roll:reroll??first,...(reroll!==null?{first,reroll}:{})};}),fails=rolls.filter(r=>r.roll===1).length,lost=unitHasRule(u,'ironShodWheels')?rolls.filter(r=>r.roll===1).reduce(n=>n+Math.ceil(rollD6(1,random)[0]/2),0):fails,before=aliveCount(u);
  if(lost){removeCasualties(s,u,lost,random);wipeOut(s,u,random);}
  return {tests:rolls.length,rolls,hits:0,wounds:lost,unsaved:lost,dangerous:true,panic:lost&&u.x!==null?heavyCasualties(s,u,before,null,random):null};}
 const vortexVictim=(s,v,u)=>!(VORTEX_RULES[v.spell??'pillar']??VORTEX_RULES.pillar).enemiesOnly||u.team!==(v.team??getUnit(s,v.caster)?.team);
@@ -1794,15 +1816,15 @@ function directChargePlan(s,u,t){
  if(offBoard(end,s))return {...plan,error:'Charge ends off the battlefield.'};
  const others=combatants(s).filter(v=>v.x!==null&&v.id!==u.id&&v.id!==t.id),clear=pose=>!others.some(v=>blocksContact(u,t,v,pose));
  if(!clear(end))return {...plan,error:'Another regiment blocks the contact position.'};
- if(terrainBlocks(s,corners(end)))return {...plan,error:'Impassable terrain blocks the contact position.'};
+ if(terrainBlocks(s,corners(end),u))return {...plan,error:'Impassable terrain blocks the contact position.'};
  const steps=Math.max(1,Math.ceil(Math.abs(angle)/.25));let prev=corners(u).slice(0,2);
  for(let i=1;i<=steps;i++){
   const pose=wheelPose(u,angle*i/steps),front=corners(pose).slice(0,2),sweep=hull([...prev,...front]);
-  if(offBoard(pose,s)||polygonGap(sweep,corners(t))<EPS||others.some(v=>polygonGap(sweep,corners(v))<1-EPS)||terrainBlocks(s,sweep))return {...plan,error:'The charge wheel is obstructed.'};prev=front;
+  if(offBoard(pose,s)||polygonGap(sweep,corners(t))<EPS||others.some(v=>polygonGap(sweep,corners(v))<1-EPS)||terrainBlocks(s,sweep,u))return {...plan,error:'The charge wheel is obstructed.'};prev=front;
  }
  const swept=hull([...corners(after),...corners(end)]);
  if(others.some(v=>!sharesCombat(u,t,v)&&polygonGap(swept,corners(v))<1-EPS))return {...plan,error:'Another regiment blocks the charge path.'};
- if(terrainBlocks(s,swept))return {...plan,error:'Impassable terrain blocks the charge path.'};
+ if(terrainBlocks(s,swept,u))return {...plan,error:'Impassable terrain blocks the charge path.'};
  return plan;
 }
 // A friend already fighting the target may be touched by a charger (several units can charge one
@@ -1859,23 +1881,23 @@ function chargePlan(s,u,t){
  for(let angle=-90;angle<=90;angle+=5){
   const after=Math.abs(angle)>EPS?wheelPose(u,angle):{...u},wheel=wheelCost(angle,u);if(wheel>=limit||offBoard(after,s))continue;
   let blocked=false,previous=corners(u).slice(0,2);
-  for(let i=1,n=Math.ceil(Math.abs(angle)/2);i<=n;i++){const pose=wheelPose(u,angle*i/n),front=corners(pose).slice(0,2),sweep=hull([...previous,...front]);if(offBoard(pose,s)||polygonGap(sweep,corners(t))<EPS||others.some(v=>!sharesCombat(u,t,v)&&polygonGap(sweep,corners(v))<1-EPS)||terrainBlocks(s,sweep)){blocked=true;break;}previous=front;}
+  for(let i=1,n=Math.ceil(Math.abs(angle)/2);i<=n;i++){const pose=wheelPose(u,angle*i/n),front=corners(pose).slice(0,2),sweep=hull([...previous,...front]);if(offBoard(pose,s)||polygonGap(sweep,corners(t))<EPS||others.some(v=>!sharesCombat(u,t,v)&&polygonGap(sweep,corners(v))<1-EPS)||terrainBlocks(s,sweep,u)){blocked=true;break;}previous=front;}
   if(blocked)continue;
   const remaining=limit-wheel;
   for(let d=.1;d<=remaining+.1;d+=.1){
-   const contact=forwardPose(after,Math.min(d,remaining));if(offBoard(contact,s)||others.some(v=>blocksContact(u,t,v,contact))||terrainBlocks(s,corners(contact))){blocked=true;break;}
+   const contact=forwardPose(after,Math.min(d,remaining));if(offBoard(contact,s)||others.some(v=>blocksContact(u,t,v,contact))||terrainBlocks(s,corners(contact),u)){blocked=true;break;}
    if(gap(contact,t)>.12)continue;
    // The face is the one the charger's position gave when the charge was declared; a charger on the
    // border of two arcs may read differently on contact, which is fine while it touches that face.
    if(chargeFace(contact,t)!==face&&!touchesFace(contact,t,face))break;
-   const fits=pose=>!offBoard(pose,s)&&gap(pose,t)<=.02&&!others.some(v=>blocksContact(u,t,v,pose))&&!terrainBlocks(s,corners(pose));
+   const fits=pose=>!offBoard(pose,s)&&gap(pose,t)<=.02&&!others.some(v=>blocksContact(u,t,v,pose))&&!terrainBlocks(s,corners(pose),u);
    const alignAngle=((desired-heading(contact)+540)%360)-180,shared=others.some(v=>sharesCombat(u,t,v)),allowed=.2+2*own.w*Math.sin(rad(Math.abs(alignAngle))/2)+(shared?own.w+width:0);
    let end=alignedContact(contact,t,face,fits),slide=Math.hypot(end.x-contact.x,end.y-contact.y),door=false;
    // Closing the door: when squaring up on the middle of the face would need a long slide, the
    // charger pivots about its point of contact instead and ends flush where it touched.
    if(allowDoor&&(slide>allowed||!fits(end))){const pivot=closeTheDoor(contact,t,face);if(fits(pivot)){end=pivot;slide=Math.hypot(end.x-contact.x,end.y-contact.y);door=true;}}
    if(Math.abs(alignAngle)>90+EPS||slide>allowed+(door?baseSize(u)/25.4:0)||!fits(end))break;
-   const swept=hull([...corners(after),...corners(contact)]);if(others.some(v=>!sharesCombat(u,t,v)&&polygonGap(swept,corners(v))<1-EPS)||terrainBlocks(s,swept))break;
+   const swept=hull([...corners(after),...corners(contact)]);if(others.some(v=>!sharesCombat(u,t,v)&&polygonGap(swept,corners(v))<1-EPS)||terrainBlocks(s,swept,u))break;
    const plan={start:{...u},afterWheel:after,contact,end,angle,distance:Math.min(d,remaining),wheelCost:wheel,alignAngle,cost:wheel+Math.min(d,remaining),face,target:t.id};
    if(!best||plan.cost<best.cost)best=plan;break;
   }
@@ -1965,10 +1987,10 @@ function resolveCharge(s,id,dice,random=Math.random){
  if(u.charge.reaction==='pending')throw Error('Choose the defender’s reaction first.');
  const t=getUnit(s,u.charge.target),fled=u.charge.reaction==='flee',p=t?.x!==null?chargePlan(s,u,t):{error:'Target fled off the table.'},route=p.error?u.charge.initialPlan:p;
  // Charging through a vortex (difficult terrain): Movement −1, and the lower die counts.
- const difficult=!!route?.end&&sweptVortices(s,u,[u,...(route.angle?[wheelPose(u,route.angle)]:[]),route.end],{all:true}).length>0,roll=difficult?Math.min(...dice):Math.max(...dice),swiftRoll=swift(u,random),range=Math.max(1,profile(u).M-(difficult?1:0))+roll+swiftRoll,success=!p.error&&range+EPS>=p.cost;
+ const chargePath=route?.end?[u,...(route.angle?[wheelPose(u,route.angle)]:[]),route.end]:[u],difficult=!!route?.end&&(sweptVortices(s,u,chargePath,{all:true}).length>0||terrainCrossed(s,u,chargePath).length>0),roll=difficult?Math.min(...dice):Math.max(...dice),swiftRoll=swift(u,random),range=Math.max(1,profile(u).M-(difficult&&!unitHasRule(u,'moveThroughCover')?1:0))+roll+swiftRoll,success=!p.error&&range+EPS>=p.cost;
  let end={...u},travel=0,disordered=null;
  // Charging a unit behind a defended obstacle (Earthen Ramparts) is a disordered charge, unless the charger has Fly.
- if(success){end=p.end;travel=p.cost;if(fled){claimStandard(s,t,u.team);destroyUnit(s,t,'RUN_DOWN',random);u.ranDown=true;}else{engage(u,t);if(hasRule(t,'defendedObstacle')&&!flyValues(u).length)disordered='Earthen Ramparts';}}
+ if(success){end=p.end;travel=p.cost;if(fled){claimStandard(s,t,u.team);destroyUnit(s,t,'RUN_DOWN',random);u.ranDown=true;}else{engage(u,t);if(hasRule(t,'defendedObstacle')&&!flyValues(u).length)disordered='Earthen Ramparts';const wall=defendedObstacle(s,t,route?.face);if(wall&&!flyValues(u).length)disordered=disordered??`defended ${wall.name.toLowerCase()}`;}}
  else if(route?.start){
   const budget=fled?range:roll;
   const wheelAngle=route.wheelCost<=budget?route.angle:Math.sign(route.angle)*2*Math.asin(Math.min(1,budget/(2*size(u).w)))*180/Math.PI;
@@ -1978,14 +2000,14 @@ function resolveCharge(s,id,dice,random=Math.random){
  }
  const before={...u};Object.assign(u,{x:end.x,y:end.y,heading:heading(end),moved:true,movedThisTurn:u.movedThisTurn||travel>0});
  u.charge={...u.charge,status:success?'success':fled?'pursuit':'failed',dice:[...dice],roll,range,distance:travel,face:route?.face,difficult,...(disordered?{disordered}:{})};s.history=[];
- const poses=[before,...(route?.angle?[wheelPose(before,route.angle)]:[]),{...u}],vortexHits=travel>0?vortexMoveHits(s,u,sweptVortices(s,u,poses),random,poses):[];
+ const poses=[before,...(route?.angle?[wheelPose(before,route.angle)]:[]),{...u}],vortexHits=travel>0?vortexMoveHits(s,u,sweptVortices(s,u,poses),random,poses):[],terrainHits=travel>0?terrainMoveTests(s,u,terrainCrossed(s,u,poses),poses,random):[];s.lastTerrainHits=terrainHits;
  if(!success&&travel>0)s.lastPhantasm=endOfMove(s,u,random);
  // First Charge: a unit's first charge of the game, if it hits home, leaves its target Disrupted
  // until the end of that turn's Combat phase.
  if(!u.firstChargeTried){u.firstChargeTried=true;if(success&&!fled&&unitHasRule(u,'firstCharge'))t.firstChargeDisrupted=`${s.round}:${s.team}`;}
  if(!s.units.some(v=>v.charge?.status==='declared'))beginRemaining(s,random);
  syncJoined(s);if(success&&fled&&u.ranDown){delete u.ranDown;offerReform(s,u,'leadership','ran down');}
- return {success,runDown:success&&fled,pursuit:fled&&!success,targetLeftBoard:fled&&!!t.destroyed,dice,roll,range,distance:travel,target:t.id,reason:p.error??null,difficult,vortexHits,...(swiftRoll?{swift:swiftRoll}:{})};
+ return {success,runDown:success&&fled,pursuit:fled&&!success,targetLeftBoard:fled&&!!t.destroyed,dice,roll,range,distance:travel,target:t.id,reason:p.error??null,difficult,vortexHits,terrainHits,...(swiftRoll?{swift:swiftRoll}:{})};
 }
 
 function modelSquares(s,u){
@@ -2100,7 +2122,8 @@ function autoPlaceTerrain(s,team,random=Math.random,{key=null,score=null}={}){
  for(const k of keys){const options=[];for(let x=1;x<b.width;x+=1)for(let y=1;y<b.height;y+=1)for(const h of [0,90,45,135])if(!terrainPlacementError(s,team,k,x,y,h))options.push({x,y,h,v:score?score(k,x,y,h):random()});
   if(options.length){const o=options.sort((p,q)=>q.v-p.v)[0];return placeTerrain(s,team,k,o.x,o.y,o.h);}}
  return null;}
-function difficultGround(s){return [...(s?.terrain??[]).filter(t=>['difficult','dangerous'].includes(featureMovement(t))).map(t=>({kind:'terrain',id:t.id,name:t.name,shape:t})),...(s?.vortices??[]).filter(v=>getUnit(s,v.caster)?.x!=null).map(v=>({kind:'vortex',id:v.id??v.caster,name:SPELLS[v.spell??'pillar']?.name??'Vortex',shape:{x:v.x,y:v.y,r:v.radius??1.5}}))];}
+// A low obstacle is difficult for movement only: a unit is never "within" one (see straddling, in disruption).
+function difficultGround(s){return [...(s?.terrain??[]).filter(t=>!t.line&&['difficult','dangerous'].includes(featureMovement(t))).map(t=>({kind:'terrain',id:t.id,name:t.name,shape:t})),...(s?.vortices??[]).filter(v=>getUnit(s,v.caster)?.x!=null).map(v=>({kind:'vortex',id:v.id??v.caster,name:SPELLS[v.spell??'pillar']?.name??'Vortex',shape:{x:v.x,y:v.y,r:v.radius??1.5}}))];}
 // A model is within difficult ground when part of its base overlaps it (only touching is not enough).
 function modelsInDifficult(s,u){const ground=difficultGround(s),total=aliveCount(u);if(!ground.length||!u||u.x===null)return {within:0,total,features:[]};
  const squares=isCharacter(u)||u.role==='warmachine'?[corners(u)]:modelSquares(s,u).filter(m=>!m.dead).map(m=>[[m.x,m.y],[m.x+m.size,m.y],[m.x+m.size,m.y+m.size],[m.x,m.y+m.size]].map(([x,y])=>localPoint(u,x,y)));
@@ -2112,6 +2135,9 @@ function modelsInDifficult(s,u){const ground=difficultGround(s),total=aliveCount
 function disruption(s,u){const out=[];if(!u||u.x===null)return out;
  for(const e of opponents(s,u)){const face=chargeFace(e,u);if(unitStrength(e)>=5&&['left flank','right flank','rear'].includes(face))out.push({kind:'flank',unit:e.id,text:`engaged in the ${face} by ${e.name}`});}
  if(u.firstChargeDisrupted===`${s.round}:${s.team}`)out.push({kind:'firstCharge',text:'charged by a unit with First Charge'});
+ // A unit in combat straddling a low obstacle. One it stands against is not straddled, nor is one
+ // an enemy it fights defends: the charger meets the far side of it.
+ if(u.engaged?.length){const across=new Set([u,...opponentIds(u).map(id=>getUnit(s,id))].map(v=>defendedObstacle(s,v)?.id).filter(Boolean)),wall=(s.terrain??[]).find(t=>t.line&&t.low&&!across.has(t.id)&&featureGap(t,shrink(corners(u),.05))<EPS);if(wall)out.push({kind:'obstacle',text:`straddling the ${wall.name.toLowerCase()} in combat`});}
  const g=modelsInDifficult(s,u);if(g.total&&g.within*4>=g.total)out.push({kind:'terrain',within:g.within,total:g.total,features:g.features,text:`${g.within} of ${g.total} models in ${g.features.join(' and ')}`});
  return out;}
 const isDisrupted=(s,u)=>disruption(s,u).length>0;
@@ -2460,11 +2486,11 @@ function chooseLoserAction(s,choice){
 // 1" beyond enemies and, because this prototype keeps 1" between all units, 1" from friends.
 function fleeMove(s,u,distance,random=Math.random,depth=0){
  const start={...u},others=combatants(s).filter(v=>v.id!==u.id&&v.x!==null&&aliveCount(v)>0);
- const clearOf=pose=>!terrainBlocks(s,hull([...corners(pose),...corners(forwardPose(pose,distance))]));
+ const clearOf=pose=>!terrainBlocks(s,hull([...corners(pose),...corners(forwardPose(pose,distance))]),u);
  if(!clearOf(start))for(let turn=5;turn<=90;turn+=5){const l={...start,heading:normalize(heading(start)-turn)},r={...start,heading:normalize(heading(start)+turn)};if(clearOf(l)){start.heading=l.heading;break;}if(clearOf(r)){start.heading=r.heading;break;}}
  u.heading=start.heading;
  let travel=distance,end=forwardPose(start,travel);
- while(!offBoard(end,s)&&(others.some(v=>gap(end,v)<1-EPS)||terrainBlocks(s,corners(end)))){travel+=.05;end=forwardPose(start,travel);}
+ while(!offBoard(end,s)&&(others.some(v=>gap(end,v)<1-EPS)||terrainBlocks(s,corners(end),u))){travel+=.05;end=forwardPose(start,travel);}
  const leave=forwardPose(start,Math.min(.02,travel)),path=hull([...corners(leave),...corners(end)]),crossed=others.filter(v=>polygonGap(path,corners(v))<EPS);
  const report={unit:u.id,distance:travel,passedThrough:crossed.map(v=>v.id),peril:[],panic:[],fledOffBoard:offBoard(end,s)};
  if(report.fledOffBoard)destroyUnit(s,u,'FLED_OFF_TABLE',random);
@@ -2479,6 +2505,8 @@ function fleeMove(s,u,distance,random=Math.random,depth=0){
   Object.assign(u,{x:end.x,y:end.y,movedThisTurn:true});
   // A fleeing unit is struck by any vortex it passes through (it moves on the ground).
   if(aliveCount(u)>0)report.vortexHits=vortexMoveHits(s,u,sweptVortices(s,u,[start,{...u}]),random,[start,{...u}]);
+  // A fleeing unit takes no Movement penalty from terrain, but still tests for dangerous terrain.
+  if(aliveCount(u)>0)report.terrainHits=terrainMoveTests(s,u,terrainCrossed(s,u,[start,{...u}]),[start,{...u}],random);
   if(aliveCount(u)===0)destroyUnit(s,u,'SPECIAL_RULE',random);
  }
  syncJoined(s,u);report.casualties=report.peril.filter(p=>p.lost).length;report.destroyed=!!u.destroyed;
@@ -2558,7 +2586,7 @@ function retreatPose(s,u,enemy,distance,stopNear=true){
  for(let i=1;i<=Math.ceil(distance*20);i++){
   const d=Math.min(distance,i/20),pose={...u,x:start.x+dir.x*d,y:start.y+dir.y*d};
   if(offBoard(pose,s))break;
-  const obstructed=combatants(s).some(v=>v.x!==null&&v.id!==u.id&&v.id!==enemy.id&&(touching.has(v.id)?overlaps(pose,v):gap(pose,v)<1-EPS))||terrainBlocks(s,corners(pose));
+  const obstructed=combatants(s).some(v=>v.x!==null&&v.id!==u.id&&v.id!==enemy.id&&(touching.has(v.id)?overlaps(pose,v):gap(pose,v)<1-EPS))||terrainBlocks(s,corners(pose),u);
   if(obstructed)break;
   Object.assign(u,{x:pose.x,y:pose.y,movedThisTurn:true});moved=d;
  }
@@ -2577,7 +2605,7 @@ function pursuitAdvance(s,winner,distance,dir,ignoredId,originalId,random=Math.r
    const r=rectangle(pose),edge=reached[0]??(r.left<0?'left':r.right>boardOf(s).width?'right':r.top<0?'top':'bottom');
    winner.offBoardPursuit={edge,x:winner.x,y:winner.y};winner.x=null;winner.y=null;offBoardPursuit=true;break;
   }
-  if(terrainBlocks(s,corners(pose))){blocked=true;break;}
+  if(terrainBlocks(s,corners(pose),winner)){blocked=true;break;}
   const obstacle=combatants(s).find(v=>v.id!==winner.id&&v.id!==ignoredId&&v.x!==null&&aliveCount(v)>0&&(v.team===winner.team?(touching.has(v.id)?overlaps(pose,v):gap(pose,v)<1-EPS):gap(pose,v)<EPS));
   if(obstacle){
    if(obstacle.team!==winner.team){
@@ -2596,8 +2624,8 @@ function pursuitAdvance(s,winner,distance,dir,ignoredId,originalId,random=Math.r
   Object.assign(winner,{x:pose.x,y:pose.y,movedThisTurn:true});moved=d;
  }
  // A pursuer is struck by any vortex it passes through.
- const path=[{...winner,x:start.x,y:start.y},{...winner}],vortexHits=winner.x!==null&&moved>0?vortexMoveHits(s,winner,sweptVortices(s,winner,path),random,path):[];
- syncJoined(s);return {distance:moved,contact,blocked,offBoardPursuit,joined,vortexHits};
+ const path=[{...winner,x:start.x,y:start.y},{...winner}],vortexHits=winner.x!==null&&moved>0?vortexMoveHits(s,winner,sweptVortices(s,winner,path),random,path):[],terrainHits=winner.x!==null&&moved>0?terrainMoveTests(s,winner,terrainCrossed(s,winner,path),path,random):[];
+ syncJoined(s);return {distance:moved,contact,blocked,offBoardPursuit,joined,vortexHits,terrainHits};
 }
 // After the combat result, each losing unit in turn takes its Break test and moves; then each
 // winning unit that is no longer touching an enemy follows up, pursues or restrains against one of
@@ -2696,7 +2724,7 @@ function moveCombatLoser(s,random=Math.random){
  // Only a unit that Breaks can leave the battlefield (fleeing off it, it is lost); one that Gives
  // Ground or Falls Back in Good Order stops at the edge.
  const before={...loser},retreat=p.outcome==='break'?fleeFrom(s,loser,winner,distance,random):retreatPose(s,loser,winner,distance);if(retreat.offBoard&&loser.x!==null)destroyUnit(s,loser,'FLED_OFF_TABLE',random);
- if(p.outcome!=='break'&&loser.x!==null){const crossed=sweptVortices(s,loser,[before,{...loser}]);if(crossed.length)retreat.vortexHits=vortexMoveHits(s,loser,crossed,random,[before,{...loser}]);}
+ if(p.outcome!=='break'&&loser.x!==null){const crossed=sweptVortices(s,loser,[before,{...loser}]);if(crossed.length)retreat.vortexHits=vortexMoveHits(s,loser,crossed,random,[before,{...loser}]);retreat.terrainHits=terrainMoveTests(s,loser,terrainCrossed(s,loser,[before,{...loser}]),[before,{...loser}],random);}
  if(p.outcome==='break'&&loser.x!==null)loser.fleeing=true;
  // Each Break outcome is kept as its own record, apart from the fleeing flag (a unit that Falls Back rallies).
  loser.combatOutcome={kind:{'give-ground':'GAVE_GROUND','fall-back':'FELL_BACK',break:'BROKE'}[p.outcome],round:s.round,outnumbered:!!p.outnumbered};
@@ -2804,7 +2832,7 @@ function finishCombat(s,choice='follow',random=Math.random,reformHeading=null){
  return out??s.lastCombat?.aftermath;
 }
 
-return {BATTLE_MAGIC,BOARD,CANNON_BASE,CHARACTERS,COMMAND_RANGE,COMMAND_SLOTS,DAEMONOLOGY,DARK_MAGIC,ELEMENTALISM,FACTIONS,FLAME_TEMPLATE,LORES,MISSILE,MOUNTS,PHASES,PROFILE,ROCKET_BASE,ROCKET_PROFILES,SAVE_VERSION,SIGNATURE_SPELLS,SIZE,SPELLS,SPELL_ROLL,SPELL_TEXT,TROOP_TYPES,VORTEX_RULES,WAR_MACHINE_CREW,WAR_MACHINE_STATS,WIZARDS,activeSpells,addEffect,aliveCount,allPieces,answerChallenge,apBonus,armourPenalty,armourSave,armyName,arrivals,assailmentWaiting,attackAllocation,attemptSpell,autoDeploy,autoPlaceTerrain,autoReinforce,availableCharges,availableShots,baseProfile,baseSize,begin,beginCombat,beginVanguard,blocksRule,boardOf,canAct,canCast,canDispelVortex,canEndVortex,canEngineerReroll,canExchangeSignature,canFireCannon,canFireRocket,canRefuseChallenge,canReturnToMovement,canShoot,canStandShoot,cancelCharge,cannonFootprint,cannonPlan,cannonTargets,castBlockReason,castSpell,challengeCandidates,challengePending,championProfile,chargeFace,chargePlan,chargeReach,chargeReaction,checkPosition,chooseDeploymentOrder,chooseDeploymentZone,chooseFirstTurn,chooseLoserAction,circleGap,combatGroup,combatPairs,combatants,combats,commandAlive,commandSlots,commitOrder,compareCombat,confirmDeployment,corners,createCannons,createGame,createWizard,declareCharge,declarePursuit,declineChallenges,declineReform,deployError,deploymentBatch,deploymentComplete,deploymentFacing,deploymentPieces,deploymentRollOff,deploymentTurn,deploymentZoneChooser,difficultGround,dispelOptions,dispelVortex,disruption,driftVortices,duelist,effectRule,endOfPlayerTurn,endVanguard,endVortex,engagedWith,engineerReroll,enterRemaining,equipment,exchangeSignature,expiryAt,fatedDispelAvailable,featureDistance,featureGap,featureMovement,featuresGap,fightCombatStep,filesOf,finishCombat,finishDeclarations,finishGame,finishReactions,finishShooting,fireCannon,fireRocket,firstReinforcementSpot,firstTurnRollOff,flameTemplate,flyValues,followingTurn,forwardPose,gap,generalOf,generateSpells,getUnit,hasRule,hasShield,heading,hitTarget,hold,holdInReserve,impetuousTest,inReserve,inVisionArc,inZone,inactionReason,insideZone,inspiringPresence,isCavalry,isCharacter,isDisrupted,isImpetuous,issueChallenge,joinError,joinUnit,joinedCharacters,leadership,leaveError,leaveSpot,leaveUnit,loadGame,localPoint,lookOutSir,machineReady,magicResistance,makeFeature,marchTest,maxWheel,missileWeapon,modelSquares,modelsInDifficult,mountProxy,move,moveAllowance,moveCombatLoser,moveValue,movementError,movementRemaining,needsMarchTest,nextPhase,nextTurn,nextTurnOf,nominateRetiree,normalize,opponentIds,opponents,orderError,overlaps,panicTest,passAssailment,passTerrain,phaseComplete,phaseHasActions,place,placeAt,placeCannon,placeReinforcement,placeRocket,placeTerrain,planMove,polygonGap,profile,pursuitTargets,quickTerrain,rally,ranksOf,rectangle,reformError,reformOffer,reformUnit,registerFormatRules,reinforcementError,reinforcementPose,relocationError,remainingWounds,removeCasualties,removeEffects,resolveCharge,resolveCombat,resolveDispel,returnToMovement,rocketFootprint,rocketPlan,rocketTargets,rollCannonDice,rollCombatBreak,rollD6,rollRocketDice,rollScatter,rollSpells,saveGame,saveSummary,saveTarget,scatterTerrain,scatterTerrainCount,scoutPhase,scoutRollOff,screenedCharacter,setOpponent,shoot,shootingPlan,shootingTargets,shotToughness,signatureChoices,size,skipEmptySteps,spellRangeLabel,spellTargetOptions,spellTargets,standShootTooClose,startTerrain,startingModels,startingUnitStrength,startingWounds,syncJoined,targetReason,templatePlacementError,terrainBlocks,terrainGeometry,terrainPending,terrainPlacementError,terrainRollOff,troopType,turnDeployed,undo,unitHasRule,unitStrength,unitStrengthWith,unplace,vanguardPending,vanguardRollOff,vanguardState,vanguardUnits,vortexDispellers,wardSave,wheelCost,wheelPose,winnerCombat,woundTarget,zoneBounds,zoneOf};})();
+return {BATTLE_MAGIC,BOARD,CANNON_BASE,CHARACTERS,COMMAND_RANGE,COMMAND_SLOTS,DAEMONOLOGY,DARK_MAGIC,ELEMENTALISM,FACTIONS,FLAME_TEMPLATE,LORES,MISSILE,MOUNTS,PHASES,PROFILE,ROCKET_BASE,ROCKET_PROFILES,SAVE_VERSION,SIGNATURE_SPELLS,SIZE,SPELLS,SPELL_ROLL,SPELL_TEXT,TROOP_TYPES,VORTEX_RULES,WAR_MACHINE_CREW,WAR_MACHINE_STATS,WIZARDS,activeSpells,addEffect,aliveCount,allPieces,answerChallenge,apBonus,armourPenalty,armourSave,armyName,arrivals,assailmentWaiting,attackAllocation,attemptSpell,autoDeploy,autoPlaceTerrain,autoReinforce,availableCharges,availableShots,baseProfile,baseSize,begin,beginCombat,beginVanguard,blocksRule,boardOf,canAct,canCast,canDispelVortex,canEndVortex,canEngineerReroll,canExchangeSignature,canFireCannon,canFireRocket,canRefuseChallenge,canReturnToMovement,canShoot,canStandShoot,cancelCharge,cannonFootprint,cannonPlan,cannonTargets,castBlockReason,castSpell,challengeCandidates,challengePending,championProfile,chargeFace,chargePlan,chargeReach,chargeReaction,checkPosition,chooseDeploymentOrder,chooseDeploymentZone,chooseFirstTurn,chooseLoserAction,circleGap,combatGroup,combatPairs,combatants,combats,commandAlive,commandSlots,commitOrder,compareCombat,confirmDeployment,corners,createCannons,createGame,createWizard,declareCharge,declarePursuit,declineChallenges,declineReform,defendedObstacle,deployError,deploymentBatch,deploymentComplete,deploymentFacing,deploymentPieces,deploymentRollOff,deploymentTurn,deploymentZoneChooser,difficultGround,dispelOptions,dispelVortex,disruption,driftVortices,duelist,effectRule,endOfPlayerTurn,endVanguard,endVortex,engagedWith,engineerReroll,enterRemaining,equipment,exchangeSignature,expiryAt,fatedDispelAvailable,featureDistance,featureGap,featureMovement,featuresGap,fightCombatStep,filesOf,finishCombat,finishDeclarations,finishGame,finishReactions,finishShooting,fireCannon,fireRocket,firstReinforcementSpot,firstTurnRollOff,flameTemplate,flyValues,followingTurn,forwardPose,gap,generalOf,generateSpells,getUnit,hasRule,hasShield,heading,hitTarget,hold,holdInReserve,impetuousTest,inReserve,inVisionArc,inZone,inactionReason,insideZone,inspiringPresence,isCavalry,isCharacter,isDisrupted,isImpetuous,issueChallenge,joinError,joinUnit,joinedCharacters,leadership,leaveError,leaveSpot,leaveUnit,loadGame,localPoint,lookOutSir,machineReady,magicResistance,makeFeature,marchTest,maxWheel,missileWeapon,modelSquares,modelsInDifficult,mountProxy,move,moveAllowance,moveCombatLoser,moveValue,movementError,movementOf,movementRemaining,needsMarchTest,nextPhase,nextTurn,nextTurnOf,nominateRetiree,normalize,opponentIds,opponents,orderError,overlaps,panicTest,passAssailment,passTerrain,phaseComplete,phaseHasActions,place,placeAt,placeCannon,placeReinforcement,placeRocket,placeTerrain,planMove,polygonGap,profile,pursuitTargets,quickTerrain,rally,ranksOf,rectangle,reformError,reformOffer,reformUnit,registerFormatRules,reinforcementError,reinforcementPose,relocationError,remainingWounds,removeCasualties,removeEffects,resolveCharge,resolveCombat,resolveDispel,returnToMovement,rocketFootprint,rocketPlan,rocketTargets,rollCannonDice,rollCombatBreak,rollD6,rollRocketDice,rollScatter,rollSpells,saveGame,saveSummary,saveTarget,scatterTerrain,scatterTerrainCount,scoutPhase,scoutRollOff,screenedCharacter,setOpponent,shoot,shootingPlan,shootingTargets,shotToughness,signatureChoices,size,skipEmptySteps,spellRangeLabel,spellTargetOptions,spellTargets,standShootTooClose,startTerrain,startingModels,startingUnitStrength,startingWounds,syncJoined,targetReason,templatePlacementError,terrainBlocks,terrainCrossed,terrainGeometry,terrainPending,terrainPlacementError,terrainRollOff,troopType,turnDeployed,undo,unitHasRule,unitStrength,unitStrengthWith,unplace,vanguardPending,vanguardRollOff,vanguardState,vanguardUnits,vortexDispellers,wardSave,wheelCost,wheelPose,winnerCombat,woundTarget,zoneBounds,zoneOf};})();
 const BM=(()=>{// Battle March rules layered on the core engine: objectives, objective control, scoring and the
 // end of the game. The engine calls these hooks through registerFormatRules; the UI and the bot
 // call the same functions.
@@ -3000,7 +3028,7 @@ function shortName(unit){
 // One sentence per event in a flee move and any chain reaction it caused.
 function fleeSummary(flee){
  if(!flee)return '';const parts=[];
- const walk=f=>{if(f.passedThrough.length)parts.push(`${f.unit} flees through ${f.passedThrough.join(', ')}`);if(f.peril.length)parts.push(`${f.peril.length} Peril test${f.peril.length===1?'':'s'}, ${f.casualties} lost${f.destroyed&&!f.fledOffBoard?' — destroyed':''}`);if(f.fledOffBoard)parts.push(`${f.unit} flees off the battlefield`);for(const p of f.panic){parts.push(`${p.unit} ${p.passed?'passes its Panic test':'panics and flees'}`);if(p.flee)walk(p.flee);}};
+ const walk=f=>{if(f.passedThrough.length)parts.push(`${f.unit} flees through ${f.passedThrough.join(', ')}`);for(const h of f.terrainHits??[])parts.push(`${f.unit} flees through ${h.name}: ${h.tests} Dangerous Terrain test${h.tests===1?'':'s'}, ${h.unsaved} Wound${h.unsaved===1?'':'s'} lost`);if(f.peril.length)parts.push(`${f.peril.length} Peril test${f.peril.length===1?'':'s'}, ${f.casualties} lost${f.destroyed&&!f.fledOffBoard?' — destroyed':''}`);if(f.fledOffBoard)parts.push(`${f.unit} flees off the battlefield`);for(const p of f.panic){parts.push(`${p.unit} ${p.passed?'passes its Panic test':'panics and flees'}`);if(p.flee)walk(p.flee);}};
  walk(flee);return parts.length?' '+parts.join('. ')+'.':'';
 }
 function strengthLabel(unit,game){return unit.role==='warmachine'?`${unit.wounds} / 3 W · ${unit.crew} crew`:unit.role==='wizard'||unit.role==='character'?`${unit.wounds} / ${unit.role==='character'?2:2} W`:`${game.aliveCount(unit)} / ${game.startingModels(unit)}`;}
@@ -3949,6 +3977,8 @@ function vortexNews(){const r=state.vortexReports;if(!r?.length||r===seenVortexR
 // Compulsory Moves: each unit that failed to rally flees again.
 let seenFlights=null;
 function flightNews(){const r=state.compulsoryReports;if(!r?.length||r===seenFlights)return '';seenFlights=r;return r.map(x=>`${pieceName(x.unit)} failed to rally and flees ${fmt(x.distance)}″${x.fledOffBoard?' off the battlefield':''}. `).join('');}
+// Dangerous terrain crossed in a move: each feature's tests (Move Through Cover re-rolls the 1s).
+const terrainNews=hits=>(hits??[]).map(h=>`${h.name}: ${pieceName(h.unit)} makes ${h.tests} Dangerous Terrain test${h.tests===1?'':'s'}${h.rolls?.some(r=>r.reroll!=null)?' (1s re-rolled: Move Through Cover)':''}, ${h.unsaved} Wound${h.unsaved===1?'':'s'} lost. `).join('');
 const crossingNews=hits=>(hits??[]).map(h=>h.dangerous?`${G.SPELLS[h.spell]?.name??'Vortex'} (dangerous terrain): ${pieceName(h.unit)} makes ${h.tests} test${h.tests===1?'':'s'}, ${h.unsaved} Wound${h.unsaved===1?'':'s'} lost. `:`${G.SPELLS[h.spell]?.name??'Vortex'}: ${pieceName(h.unit)} suffers ${h.hits} hits, ${h.unsaved} slain. `).join('');
 // A unit ending its move near an enemy Phantasmagoria: its Panic test, or Impetuous.
 const phantasmNews=tests=>(tests??[]).map(t=>`${pieceName(t.unit)} ends its move within 12″ of the Phantasmagoria: Panic ${t.dice.join('+')}, ${t.passed?'passed — it is Impetuous while within 12″':t.outcome==='fall-back'?'failed — it falls back in good order':t.fledOffBoard?'failed — it flees off the battlefield':'failed — it flees'}. `).join('');
@@ -4142,7 +4172,7 @@ $('advanceMode').onclick=()=>{mode='advance';refreshPreview();};$('marchMode').o
 for(const id of ['distance','distanceNumber'])$(id).oninput=e=>{distance=Number(e.target.value);refreshPreview();};
 $('angle').oninput=e=>{setTurn(Number(e.target.value));refreshPreview();};
 document.querySelectorAll('[data-angle]').forEach(b=>b.onclick=()=>{setTurn(Number(b.dataset.angle));refreshPreview();});
-$('moveButton').onclick=()=>{const id=state.selected,before=G.getUnit(state,id),from={x:before.x,y:before.y,heading:G.heading(before)};if(safely(()=>{const plan=G.commitOrder(state,id,currentOrder()),u=G.getUnit(state,id);notify(id+' spent '+fmt(plan.cost)+'″. '+crossingNews(state.lastVortexHits)+phantasmNews(state.lastPhantasm)+(u.moved?'Movement complete.':fmt(G.movementRemaining(u))+'″ remaining — continue moving or finish.'));if(state.stage==='movement'&&!u.moved&&G.movementRemaining(u)<.1){G.hold(state,id);const news=phantasmNews(state.lastPhantasm);if(news)notify(news);}if(u.moved)advanceSelection(id);else resetOrder();}))animateUnit(id,from);};
+$('moveButton').onclick=()=>{const id=state.selected,before=G.getUnit(state,id),from={x:before.x,y:before.y,heading:G.heading(before)};if(safely(()=>{const plan=G.commitOrder(state,id,currentOrder()),u=G.getUnit(state,id);notify(id+' spent '+fmt(plan.cost)+'″. '+crossingNews(state.lastVortexHits)+terrainNews(state.lastTerrainHits)+phantasmNews(state.lastPhantasm)+(u.moved?'Movement complete.':fmt(G.movementRemaining(u))+'″ remaining — continue moving or finish.'));if(state.stage==='movement'&&!u.moved&&G.movementRemaining(u)<.1){G.hold(state,id);const news=phantasmNews(state.lastPhantasm);if(news)notify(news);}if(u.moved)advanceSelection(id);else resetOrder();}))animateUnit(id,from);};
 function undo(){safely(()=>{G.undo(state);resetOrder();ordersOpen=true;notify('Move undone. Any march-test result still stands.');});}
 $('undoButton').onclick=undo;$('boardUndo').onclick=undo;
 $('testButton').onclick=async()=>{if(rolling)return;const id=state.selected;try{const dice=await animatedRoll(2,id+' · March Leadership test');safely(()=>{const pass=G.marchTest(state,id,dice);showDice(dice,id+' march: '+(pass?'passed':'failed'));if(!pass){mode='advance';clampInputs();}notify(id+': '+dice.join(' + ')+'. March test '+(pass?'passed':'failed; normal movement remains available')+'.',!pass);});}catch(e){notify(e.message,true);}};
@@ -4629,7 +4659,7 @@ $('cancelCharge').onclick=()=>safely(()=>G.cancelCharge(state,state.selected));
 $('finishDeclarations').onclick=nextPhase;
 $('resolveCharge').onclick=async()=>{
  if(rolling)return;const id=state.selected;
- try{const unit=G.getUnit(state,id),from={x:unit.x,y:unit.y,heading:G.heading(unit)},first=await animatedRoll(2,id+' · Charge roll · keep highest'),plan=G.chargePlan(state,unit,G.getUnit(state,unit.charge.target)),m=G.profile(unit).M,rerolled=unit.faction==='orc'&&!plan.error&&m+Math.max(...first)<plan.cost,dice=rerolled?await animatedRoll(2,id+' · Warband charge reroll'):first;if(safely(()=>{const fleeing=unit.charge.reaction==='flee',r=G.resolveCharge(state,id,dice),label=id+' charge: '+(r.success?'SUCCESS':r.pursuit?'PURSUIT':'FAILED');showDice(dice,label);$('diceSummary').textContent=(rerolled?'Warband reroll · ':'')+'Kept '+r.roll+' + M'+m+' = '+r.range+'″ · '+label;document.querySelectorAll('#animatedDice .animated-die').forEach((el,i)=>el.classList.toggle('kept',dice[i]===r.roll));$('diceAnimationResult').textContent=m+' + '+r.roll+' = '+r.range+'″ · '+(r.success?'CHARGE!':r.pursuit?'Pursuit move':'Failed charge');$('boardRoll').textContent=dice.join(', ')+' → '+r.range+'″ charge';const outcome=r.runDown?'Fleeing unit run down.':r.success?'Charge successful — engaged!':fleeing?(r.targetLeftBoard?'Fleeing unit left the battlefield and was destroyed; ':'Fleeing unit escaped; ')+'charger moved '+fmt(r.distance)+'″.':'Failed charge; moved '+fmt(r.distance)+'″.';notify(id+' → '+r.target+': '+m+' + '+r.roll+' = '+r.range+'″. '+(rerolled?'Warband reroll. ':'')+outcome+(state.movementStep==='remaining'?' Remaining Moves.':'')+(G.reformOffer(state,id)?' It may attempt to reform (Leadership test): choose its facing.':''));if(G.reformOffer(state,id)){state.selected=id;ordersOpen=true;}else advanceSelection(id);}))animateUnit(id,from,true);}catch(e){notify(e.message,true);}
+ try{const unit=G.getUnit(state,id),from={x:unit.x,y:unit.y,heading:G.heading(unit)},first=await animatedRoll(2,id+' · Charge roll · keep highest'),plan=G.chargePlan(state,unit,G.getUnit(state,unit.charge.target)),m=G.profile(unit).M,rerolled=unit.faction==='orc'&&!plan.error&&m+Math.max(...first)<plan.cost,dice=rerolled?await animatedRoll(2,id+' · Warband charge reroll'):first;if(safely(()=>{const fleeing=unit.charge.reaction==='flee',r=G.resolveCharge(state,id,dice),mv=r.range-r.roll-(r.swift??0),sum=mv+(r.swift?' + '+r.swift:'')+' + '+r.roll,label=id+' charge: '+(r.success?'SUCCESS':r.pursuit?'PURSUIT':'FAILED');showDice(dice,label);$('diceSummary').textContent=(rerolled?'Warband reroll · ':'')+'Kept '+r.roll+(r.difficult?' (the lower die: difficult ground)':'')+' + M'+mv+(r.swift?' + '+r.swift+' Swiftstride':'')+' = '+r.range+'″ · '+label;document.querySelectorAll('#animatedDice .animated-die').forEach((el,i)=>el.classList.toggle('kept',dice[i]===r.roll));$('diceAnimationResult').textContent=sum+' = '+r.range+'″ · '+(r.success?'CHARGE!':r.pursuit?'Pursuit move':'Failed charge');$('boardRoll').textContent=dice.join(', ')+' → '+r.range+'″ charge';const outcome=r.runDown?'Fleeing unit run down.':r.success?'Charge successful — engaged!':fleeing?(r.targetLeftBoard?'Fleeing unit left the battlefield and was destroyed; ':'Fleeing unit escaped; ')+'charger moved '+fmt(r.distance)+'″.':'Failed charge; moved '+fmt(r.distance)+'″.';notify(id+' → '+r.target+': '+sum+' = '+r.range+'″. '+(r.difficult?'Through difficult ground: the lower die counts and Movement −1. ':'')+(rerolled?'Warband reroll. ':'')+outcome+(unit.charge?.disordered?' A disordered charge ('+unit.charge.disordered+'): no Initiative bonus for charging.':'')+((n=>n?' '+n.trim():'')(crossingNews(r.vortexHits)+terrainNews(r.terrainHits)))+(state.movementStep==='remaining'?' Remaining Moves.':'')+(G.reformOffer(state,id)?' It may attempt to reform (Leadership test): choose its facing.':''));if(G.reformOffer(state,id)){state.selected=id;ordersOpen=true;}else advanceSelection(id);}))animateUnit(id,from,true);}catch(e){notify(e.message,true);}
 };
 const faces=['','⚀','⚁','⚂','⚃','⚄','⚅'];
 async function animatedRoll(count,label,preset=null,{color=null}={}){

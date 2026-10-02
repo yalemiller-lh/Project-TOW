@@ -35,7 +35,7 @@ export function shortName(unit){
 // One sentence per event in a flee move and any chain reaction it caused.
 export function fleeSummary(flee){
  if(!flee)return '';const parts=[];
- const walk=f=>{if(f.passedThrough.length)parts.push(`${f.unit} flees through ${f.passedThrough.join(', ')}`);if(f.peril.length)parts.push(`${f.peril.length} Peril test${f.peril.length===1?'':'s'}, ${f.casualties} lost${f.destroyed&&!f.fledOffBoard?' — destroyed':''}`);if(f.fledOffBoard)parts.push(`${f.unit} flees off the battlefield`);for(const p of f.panic){parts.push(`${p.unit} ${p.passed?'passes its Panic test':'panics and flees'}`);if(p.flee)walk(p.flee);}};
+ const walk=f=>{if(f.passedThrough.length)parts.push(`${f.unit} flees through ${f.passedThrough.join(', ')}`);for(const h of f.terrainHits??[])parts.push(`${f.unit} flees through ${h.name}: ${h.tests} Dangerous Terrain test${h.tests===1?'':'s'}, ${h.unsaved} Wound${h.unsaved===1?'':'s'} lost`);if(f.peril.length)parts.push(`${f.peril.length} Peril test${f.peril.length===1?'':'s'}, ${f.casualties} lost${f.destroyed&&!f.fledOffBoard?' — destroyed':''}`);if(f.fledOffBoard)parts.push(`${f.unit} flees off the battlefield`);for(const p of f.panic){parts.push(`${p.unit} ${p.passed?'passes its Panic test':'panics and flees'}`);if(p.flee)walk(p.flee);}};
  walk(flee);return parts.length?' '+parts.join('. ')+'.':'';
 }
 export function strengthLabel(unit,game){return unit.role==='warmachine'?`${unit.wounds} / 3 W · ${unit.crew} crew`:unit.role==='wizard'||unit.role==='character'?`${unit.wounds} / ${unit.role==='character'?2:2} W`:`${game.aliveCount(unit)} / ${game.startingModels(unit)}`;}
