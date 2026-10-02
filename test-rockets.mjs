@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import * as G from './dist/game.mjs';
 
+// Two dice streams: one for the shot, one for everything the Panic resolver rolls.
+const face=f=>(f-1)/6+.01,split=(s,damage,panic)=>{let i=0,j=0;return ()=>s.panicResolving?face(panic[Math.min(j++,panic.length-1)]):face(damage[Math.min(i++,damage.length-1)]);};
 function battle(opponent='empire'){const s=G.createGame(opponent);G.autoDeploy(s);G.begin(s);G.nextPhase(s);G.nextPhase(s);assert.equal(s.stage,'shooting');return s;}
 {
  const s=G.createGame('empire');assert.deepEqual(G.ROCKET_BASE,{w:50/25.4,h:75/25.4});
@@ -30,26 +32,27 @@ function battle(opponent='empire'){const s=G.createGame(opponent);G.autoDeploy(s
 {
  const s=battle('orc'),target=G.getUnit(s,'I1');target.x=8;target.y=6;
  let i=0;const result=G.fireRocket(s,'I1','incendiary',{artillery:2,scatter:'hit'},()=>[.6,.8,.6][i++]??.999);
- assert.ok(result.unsaved>0);assert.ok(result.panic?.length>0);assert.equal(result.panic[0].unit,'I1');assert.equal(result.panic[0].passed,false);
+ assert.ok(result.unsaved>0);const mob=result.units.find(u=>u.unit==='I1');assert.deepEqual([mob.killed,mob.destroyed],[20,true],'S3 AP−1 with Armour Bane (1): the whole mob dies under the template');assert.equal(result.panic,undefined,'a unit the shot destroyed takes no Panic test');
 }
 {
- const s=battle(),target=G.getUnit(s,'I1');target.x=8;target.y=20;for(const u of [...s.units,...s.cannons])if(u.id!=='I1'){u.x=null;u.y=null;}target.deadModels=G.modelSquares(s,target).map(m=>m.index).slice(10);// half strength: it flees
- // Saves of 5 hold against the rocket (State Troops 5+): only the third roll fails.
- let rolls=0;const result=G.fireRocket(s,'I1','incendiary',{artillery:2,scatter:'hit'},()=>++rolls===3?.2:.7);
+ // Half strength (10 of 20): one more model lost to the incendiaries, a failed Panic test, and it flees 2D6.
+ const s=battle(),target=G.getUnit(s,'I1');target.x=8;target.y=20;for(const u of [...s.units,...s.cannons])if(u.id!=='I1'){u.x=null;u.y=null;}target.deadModels=G.modelSquares(s,target).map(m=>m.index).slice(10);
+ const result=G.fireRocket(s,'I1','incendiary',{artillery:2,scatter:'hit'},split(s,[4,4,1],[5,5,5,5]));
  const panic=result.panic.find(p=>p.unit==='I1');
- assert.equal(panic.passed,false);assert.deepEqual(panic.fleeDice,[5,5]);
+ assert.equal(panic.passed,false);assert.equal(panic.outcome,'flee');assert.deepEqual(panic.fleeDice,[5,5]);
  assert.equal(panic.fledOffBoard,false);assert.equal(target.fleeing,true);
  assert.equal(target.destroyed,undefined);assert.ok(target.x!==null&&target.y>0);
- assert.ok(G.aliveCount(target)>0);
+ assert.equal(G.aliveCount(target),9);
  G.nextPhase(s);G.nextPhase(s);assert.equal(s.team,'iron');
  assert.equal(G.rally(s,'I1',()=>0).success,true);
 }
 {
+ // At full strength by the table edge: it Falls Back in Good Order, off the battlefield, and is lost.
  const s=battle(),target=G.getUnit(s,'I1');target.x=8;target.y=6;
- let rolls=0;const result=G.fireRocket(s,'I1','incendiary',{artillery:2,scatter:'hit'},()=>++rolls===3?.2:.7);
+ const result=G.fireRocket(s,'I1','incendiary',{artillery:2,scatter:'hit'},split(s,[4,4,1],[5,5,5,5]));
  const panic=result.panic.find(p=>p.unit==='I1');
- assert.equal(panic.passed,false);assert.equal(panic.fledOffBoard,true);
- assert.equal(target.destroyed,true);assert.equal(target.x,null);
+ assert.equal(panic.passed,false);assert.equal(panic.outcome,'fall-back');assert.equal(panic.fledOffBoard,true);
+ assert.equal(target.destroyed,true);assert.equal(target.x,null);assert.equal(result.units[0].killed,1,'the rocket itself killed one');
  assert.equal(target.fleeing,false);assert.equal(G.aliveCount(target),0);
  G.nextPhase(s);G.nextPhase(s);assert.equal(s.stage,'strategy');assert.equal(s.team,'iron');
  assert.throws(()=>G.rally(s,'I1'),/fleeing regiment/);

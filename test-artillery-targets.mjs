@@ -13,7 +13,7 @@ test('enemy war machines are among the artillery targets',()=>{
 test('a rocket on a war machine hits machine and crew as one model: Toughness 6, crew armour, Multiple Wounds',()=>{
  const s=duel('ash'),cannon=G.getUnit(s,'I5');
  const report=G.fireRocket(s,'I5','demolition',{artillery:2,scatter:'hit'},()=>.99);
- const hit=report.affected.find(a=>a.unit==='I5');assert.ok(hit.centre);assert.equal(hit.toWound,4,'S6 against Toughness 6');assert.equal(hit.toSave,7,'the crew has no armour save here');
+ const hit=report.affected.find(a=>a.unit==='I5');assert.ok(hit.centre);assert.equal(hit.toWound,2,'S8 (Renegades 2.0 centre hole) against Toughness 6');assert.equal(hit.toSave,7,'the crew has no armour save here');
  assert.equal(hit.multiple,6);assert.equal(hit.wounds,3,'Multiple Wounds capped at the 3 Wounds left');assert.equal(report.affected.filter(a=>a.unit==='I5').length,1,'one model, not machine and crew separately');
  assert.equal(cannon.wounds,0);assert.equal(cannon.x,null,'the whole machine and crew are removed');assert.equal(cannon.crew,0);
 });

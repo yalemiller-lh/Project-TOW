@@ -70,7 +70,8 @@ test('two losers each test; a winner still touching an enemy cannot pursue',()=>
  assert.equal(r.winnerSide,'ash');assert.deepEqual([...r.losers].sort(),['I1','I2']);
  const order=[];for(let i=0;i<4&&s.pendingCombat?.stage==='break';i++){const loser=s.pendingCombat.loser;order.push(loser);G.rollCombatBreak(s,loser==='I1'?seq([.99,.99]):()=>0);if(s.pendingCombat.stage==='loser-choice')G.chooseLoserAction(s,'fall-back');}
  assert.equal(s.pendingCombat.stage,'declare','every Break test comes before any retreat dice');assert.equal(s.pendingCombat.results.I1.retreatDice,undefined);
- G.declarePursuit(s,'A1','follow','I1');while(s.pendingCombat?.stage==='retreat')G.moveCombatLoser(s,()=>.5);
+ // I3, within 6″ of I1 as it breaks, holds its nerve (2+2) and stays behind I2.
+ G.declarePursuit(s,'A1','follow','I1');while(s.pendingCombat?.stage==='retreat')G.moveCombatLoser(s,()=>.3);
  assert.equal(order.length,2,'both losers took a Break test');
  assert.equal(G.getUnit(s,'I1').fleeing,true);assert.ok(engaged(s,'A1','I2'),'I2 could not get clear');
  assert.equal(s.pendingCombat,null,'A1 is still in contact with I2, so it cannot pursue I1');

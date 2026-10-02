@@ -28,7 +28,7 @@ test('a panicked friend flees in turn, directly away from the nearest enemy that
  const {s,charger,friend}=chargeIntoScreen();friend.deadModels=G.modelSquares(s,friend).map(m=>m.index).slice(10);// at half strength a failed Panic test means fleeing
  const perils=Array.from({length:20},(_,i)=>i%2?6:1);const r=G.chargeReaction(s,'A1','flee',dice(6,6,6,6,6,6,...perils));
  const panic=r.flee.panic[0];assert.equal(panic.passed,false);assert.equal(friend.fleeing,true);assert.equal(G.heading(friend),0,'away from the nearest enemy that is not fleeing: the charger');
- assert.deepEqual(panic.flee.passedThrough,['I1'],'back through the fleeing regiment, not the charger');assert.equal(panic.flee.peril.length,0);assert.equal(G.aliveCount(friend),10);
+ assert.deepEqual(panic.move.passedThrough,['I1'],'back through the fleeing regiment, not the charger');assert.equal(panic.move.peril.length,0);assert.equal(G.aliveCount(friend),10);
  assert.ok(friend.y<charger.y-5,'it fled away from the charger');assert.equal(G.aliveCount(charger),20);
 });
 test('a broken unit turns away and flees through an enemy unit behind it',()=>{

@@ -32,10 +32,13 @@ export function shortName(unit){
  if(unit.role==='missile')return unit.faction==='chaos'?'Decimators':unit.faction==='empire'?'Missile Troops':'Warbows';
  return `${unit.faction==='chaos'?'Warriors':unit.faction==='empire'?'State Troops':'Orc Mob'} ${'ABC'[Number(unit.id.slice(1))-1]??''}`;
 }
+// A rocket's direct casualties, unit by unit (anything lost retreating afterwards is the Panic log's).
+export function rocketCasualties(report){return (report?.units??[]).filter(u=>u.unsaved||u.killed).map(u=>` ${u.name}: ${u.killed?`${u.killed} model${u.killed===1?'':'s'} killed`:`${u.unsaved} unsaved wound${u.unsaved===1?'':'s'}`}${u.destroyed?' — destroyed by the shot':''}.`).join('');}
 // One sentence per event in a flee move and any chain reaction it caused.
 export function fleeSummary(flee){
  if(!flee)return '';const parts=[];
- const walk=f=>{if(f.passedThrough.length)parts.push(`${f.unit} flees through ${f.passedThrough.join(', ')}`);for(const h of f.terrainHits??[])parts.push(`${f.unit} flees through ${h.name}: ${h.tests} Dangerous Terrain test${h.tests===1?'':'s'}, ${h.unsaved} Wound${h.unsaved===1?'':'s'} lost`);if(f.peril.length)parts.push(`${f.peril.length} Peril test${f.peril.length===1?'':'s'}, ${f.casualties} lost${f.destroyed&&!f.fledOffBoard?' — destroyed':''}`);if(f.fledOffBoard)parts.push(`${f.unit} flees off the battlefield`);for(const p of f.panic){parts.push(`${p.unit} ${p.passed?'passes its Panic test':'panics and flees'}`);if(p.flee)walk(p.flee);}};
+ // (Panic tests it sets off are reported from the Panic log.)
+ const walk=f=>{if(f.passedThrough.length)parts.push(`${f.unit} flees through ${f.passedThrough.join(', ')}`);for(const h of f.terrainHits??[])parts.push(`${f.unit} flees through ${h.name}: ${h.tests} Dangerous Terrain test${h.tests===1?'':'s'}, ${h.unsaved} Wound${h.unsaved===1?'':'s'} lost`);if(f.peril.length)parts.push(`${f.peril.length} Peril test${f.peril.length===1?'':'s'}, ${f.casualties} lost${f.destroyed&&!f.fledOffBoard?' — destroyed':''}`);if(f.fledOffBoard)parts.push(`${f.unit} flees off the battlefield`);};
  walk(flee);return parts.length?' '+parts.join('. ')+'.':'';
 }
 export function strengthLabel(unit,game){return unit.role==='warmachine'?`${unit.wounds} / 3 W · ${unit.crew} crew`:unit.role==='wizard'||unit.role==='character'?`${unit.wounds} / ${unit.role==='character'?2:2} W`:`${game.aliveCount(unit)} / ${game.startingModels(unit)}`;}
