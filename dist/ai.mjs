@@ -29,9 +29,11 @@ const asList=v=>Array.isArray(v)?v:v?[v]:[];
 // A fight played out: each charger set in contact as a successful charger (with any already in
 // the fight), then every Initiative step, the result, the Break test, the flight and the pursuit.
 // Fights already played out this turn are remembered (the dice are seeded, so they would repeat).
-const fightMemo=new Map();let memoTurn=null;
+// What the bot remembers belongs to one battle: a copy of it (a loaded save) starts afresh.
+const memory=new WeakMap();
+function recall(s){let m=memory.get(s);if(!m)memory.set(s,m={fightMemo:new Map(),memoTurn:null,fights:new Map(),fightTurn:null,planKey:null,planCache:null});return m;}
 export function playFight(s,charges,firstId,team=ME,n=SIMS){
- const turn=`${s.round}:${s.team}:${s.stage}`;if(memoTurn!==turn){fightMemo.clear();memoTurn=turn;}
+ const m=recall(s),fightMemo=m.fightMemo,turn=`${s.round}:${s.team}:${s.stage}`;if(m.memoTurn!==turn){fightMemo.clear();m.memoTurn=turn;}
  const key=[firstId,team,n,...charges.map(({u,t,plan})=>`${u.id}>${t.id}@${Math.round(plan.end.x*10)},${Math.round(plan.end.y*10)}`),...G.combatants(s).filter(v=>v.x!==null).map(v=>`${v.id}:${G.aliveCount(v)}:${Math.round(v.x*10)},${Math.round(v.y*10)}`)].join("|");
  if(fightMemo.has(key))return fightMemo.get(key);
  const out=fightOut(s,charges,firstId,team,n);fightMemo.set(key,out);return out;
@@ -57,8 +59,7 @@ function reachChance(u,cost){const k=Math.ceil(cost-G.profile(u).M-1e-6),p=k<=1?
 // One unit set squarely in front of another, as a frontal charge would end.
 function frontal(e,u){const a=G.heading(u)*Math.PI/180,d=(G.size(u).h+G.size(e).h)/2,end={...e,x:u.x+Math.sin(a)*d,y:u.y-Math.cos(a)*d,heading:(G.heading(u)+180)%360};return {end,cost:Math.max(0,G.gap(e,u)),face:'front'};}
 // What a charge by `a` on `b` is worth to the bot, played out once per turn and remembered.
-const fights=new Map();let fightTurn=null;
-function matchup(s,a,b){const turn=`${s.round}:${s.team}`;if(fightTurn!==turn){fights.clear();fightTurn=turn;}const key=`${a.id}>${b.id}:${G.aliveCount(a)}:${G.aliveCount(b)}`;if(!fights.has(key)){const plan=G.chargePlan(s,a,b);fights.set(key,playFight(s,[{u:a,t:b,plan:plan.error?frontal(a,b):plan}],a.id,a.team,12).value);}return fights.get(key);}
+function matchup(s,a,b){const m=recall(s),fights=m.fights,turn=`${s.round}:${s.team}`;if(m.fightTurn!==turn){fights.clear();m.fightTurn=turn;}const key=`${a.id}>${b.id}:${G.aliveCount(a)}:${G.aliveCount(b)}`;if(!fights.has(key)){const plan=G.chargePlan(s,a,b);fights.set(key,playFight(s,[{u:a,t:b,plan:plan.error?frontal(a,b):plan}],a.id,a.team,12).value);}return fights.get(key);}
 // The enemy regiments that could charge, and are worth worrying about.
 const chargers=s=>s.units.filter(e=>e.team===THEM&&alive(e)&&!e.fleeing&&!e.engaged&&e.role!=='warmachine');
 // How a spot looks for a unit: the fights enemies could start against it next turn (each weighed
@@ -272,26 +273,26 @@ export function shouldAct(s){
 
 function moveRegiment(s,u,random){
  s.selected=u.id;
- const foe=nearest(s,u);if(!foe)return endMove(s,u,`${u.id} holds position.`);
+ const foe=nearest(s,u);if(!foe)return endMove(s,u,`${u.id} holds position.`,random);
  const goal=chooseGoal(s,u,foe),virtual={...s,stage:'shooting',team:ME};
- if(u.role==='missile'&&(goal.kind!=='objective'||goal.dist(u)<=BM.CONTROL_RANGE)&&G.canShoot(virtual,u)&&G.shootingTargets(virtual,u).some(t=>!t.plan.error))return endMove(s,u,`${u.id} holds for a clear shot.`);
- if(goal.kind==='objective'&&goal.dist(u)<=.05)return endMove(s,u,`${u.id} holds ${goal.name}.`);
- if(goal.kind==='support'&&goal.dist(u)<=1)return endMove(s,u,`${u.id} stays behind the line.`);
+ if(u.role==='missile'&&(goal.kind!=='objective'||goal.dist(u)<=BM.CONTROL_RANGE)&&G.canShoot(virtual,u)&&G.shootingTargets(virtual,u).some(t=>!t.plan.error))return endMove(s,u,`${u.id} holds for a clear shot.`,random);
+ if(goal.kind==='objective'&&goal.dist(u)<=.05)return endMove(s,u,`${u.id} holds ${goal.name}.`,random);
+ if(goal.kind==='support'&&goal.dist(u)<=1)return endMove(s,u,`${u.id} stays behind the line.`,random);
  // A unit with Fly (Steed of Shadows) flies: further, over anything in the way, and it may march
  // near the enemy without a test.
  const fly=G.flyValues(u)[0],medium=u.movementMedium??(fly?'fly':'ground');
  const separation=goal.dist(u),wantMarch=(goal.kind==='enemy'?u.role!=='missile'&&separation>14:separation>G.moveValue(u,medium)+.5)&&(medium==='fly'||u.marchTest!==false),mode=u.movementMode??(wantMarch?'march':'advance');
- if(mode==='march'&&medium!=='fly'&&G.needsMarchTest(s,u)&&u.marchTest===null){const dice=roll(random),passed=G.marchTest(s,u.id,dice);return {message:`${u.id} march test ${passed?'passed':'failed'} (${dice.join('+')}).`};}
+ if(mode==='march'&&medium!=='fly'&&G.needsMarchTest(s,u)&&u.marchTest===null){const dice=roll(random),passed=G.marchTest(s,u.id,dice,random);return {message:`${u.id} march test ${passed?'passed':'failed'} (${dice.join('+')}).`};}
  const best=bestOrder(s,u,goal,mode,medium)??(mode==='march'?bestOrder(s,u,goal,'advance',medium):null);
  if(best){G.commitOrder(s,u.id,best.order,random);return {message:`${u.id} ${describeOrder(best.order)} toward ${goal.name}.`};}
- return endMove(s,u,`${u.id} holds position.`);
+ return endMove(s,u,`${u.id} holds position.`,random);
 }
 // A unit that ends its move on a treasure trove may start burning it (Raid & Burn, when on):
 // worth it once holding the trove for the rest of the battle would score less than 30 VP.
-function endMove(s,u,message){
+function endMove(s,u,message,random=Math.random){
  const trove=BM.raidOptions(s,u)[0];
  if(trove&&raidWorthIt(s)){BM.startRaid(s,u.id,trove.id);return {message:`${u.id} starts to burn ${trove.name} (Raid & Burn).`};}
- G.hold(s,u.id);return {message};
+ G.hold(s,u.id,random);return {message};
 }
 function raidWorthIt(s){const rounds=s.format?.rounds;if(!rounds||s.round>=rounds)return false;const turnEnds=2*(rounds-s.round)+(s.firstPlayer===s.team?2:1);return BM.RAID_VP>BM.OBJECTIVE_VP.trove*(turnEnds-2);}
 const enemyGoal=t=>({kind:'enemy',name:t.id,x:t.x,y:t.y,face:t,dist:p=>G.gap(p,t)});
@@ -307,8 +308,7 @@ function chooseGoal(s,u,foe){
 // and still reach them before the battle ends; the rest of the army fights.
 // The objectives are shared out once at the start of each of the bot's Movement phases, so a
 // unit does not turn from one objective to another between its own steps.
-let planKey=null,planCache=null;
-function stickyPlan(s){const key=`${s.round}:${s.team}`;if(planKey!==key||!planCache){planKey=key;planCache=objectivePlan(s);}for(const [id,o]of planCache)if(o.removed||!alive(G.getUnit(s,id)))planCache.delete(id);return planCache;}
+function stickyPlan(s){const m=recall(s),key=`${s.round}:${s.team}`;if(m.planKey!==key||!m.planCache){m.planKey=key;m.planCache=objectivePlan(s);}for(const [id,o]of m.planCache)if(o.removed||!alive(G.getUnit(s,id)))m.planCache.delete(id);return m.planCache;}
 function objectivePlan(s){
  const plan=new Map(),turns=Math.max(1,(s.format?.rounds??5)-s.round+1),free=s.units.filter(u=>u.team===ME&&!G.isCharacter(u)&&BM.canControl(u)&&!u.engaged),pairs=[];
  for(const o of s.objectives.items.filter(o=>!o.removed))for(const u of free){const d=BM.objectiveDistance(u,o);if(d<=turns*2*G.profile(u).M+BM.CONTROL_RANGE)pairs.push({u,o,score:d-(o.kind==='landmark'?4:0)});}
@@ -387,25 +387,25 @@ export function takeStep(s,random=Math.random){
   if(u){s.selected=u.id;const out=G.rally(s,u.id,random);return {message:`${u.id} ${out.success?'rallies':'fails to rally'} (${out.dice.join('+')}).`};}
   const cast=aiSpell(s,random);if(cast)return cast;
   const unbind=dispelVortices(s,random);if(unbind)return unbind;
-  G.nextPhase(s);return {message:'The bot begins Movement.'};
+  G.nextPhase(s,random);return {message:'The bot begins Movement.'};
  }
- if(s.stage==='movement'&&s.movementStep==='reactions'){G.finishReactions(s);return {message:'Every charged unit has reacted.'};}
+ if(s.stage==='movement'&&s.movementStep==='reactions'){G.finishReactions(s,random);return {message:'Every charged unit has reacted.'};}
  if(s.stage==='movement'&&s.movementStep==='declare'){
 
   for(const u of s.units.filter(u=>u.team===ME&&G.canAct(s,u)&&G.isImpetuous(s,u)&&u.impetuousTest===null&&G.availableCharges(s,u).length)){const dice=roll(random),passed=G.impetuousTest(s,u.id,dice);s.selected=u.id;return {message:`${u.id} Impetuous test ${passed?'passed':'failed'} (${dice.join('+')}).`};}
   // Charges are weighed by playing the fights out (see chargeChoices); a Frenzied unit must charge.
   const options=chargeChoices(s).sort((a,b)=>b.ev-a.ev),best=options.find(o=>o.must)??options.find(o=>worthCharging(o));
   if(best){const {u,t}=best;s.selected=u.id;G.declareCharge(s,u.id,t.id);return {message:`${u.id} charges ${t.id}. Choose a reaction.`,judged:{ev:Math.round(best.ev),chance:Math.round(best.p*100)}};}
-  G.finishDeclarations(s);return {message:'The bot finishes charge declarations.'};
+  G.finishDeclarations(s,random);return {message:'The bot finishes charge declarations.'};
  }
  if(s.stage==='movement'&&s.movementStep==='charges'){
   const u=s.units.find(u=>u.team===ME&&u.charge?.status==='declared');if(u){s.selected=u.id;const target=G.getUnit(s,u.charge.target),plan=target?.x!==null?G.chargePlan(s,u,target):{error:true},first=roll(random),reroll=u.faction==='orc'&&!plan.error&&G.profile(u).M+Math.max(...first)<plan.cost,dice=reroll?roll(random):first,out=G.resolveCharge(s,u.id,dice,random);return {message:`${u.id} ${out.success?'charge succeeds':out.pursuit?'pursues fleeing target':'charge fails'} (${reroll?'Warband reroll · ':''}${dice.join(', ')}).`,roll:{label:`${u.id} · Charge roll · keep highest`,dice,team:ME}};}
-  G.enterRemaining(s);return {message:'The bot begins remaining moves.'};
+  G.enterRemaining(s,random);return {message:'The bot begins remaining moves.'};
  }
  if(s.stage==='movement'){
   const u=s.units.find(u=>u.team===ME&&G.canAct(s,u));if(u)return moveRegiment(s,u,random);
   const cast=aiSpell(s,random);if(cast)return cast;
-  G.nextPhase(s);return {message:`The bot begins ${s.stage}.`};
+  G.nextPhase(s,random);return {message:`The bot begins ${s.stage}.`};
  }
  if(s.stage==='shooting'){
   const cast=aiSpell(s,random);if(cast)return cast;
@@ -417,18 +417,18 @@ export function takeStep(s,random=Math.random){
    if(pick){const positions=new Map(s.units.filter(alive).map(u=>[u.id,{x:u.x,y:u.y}])),report=G.fireRocket(s,pick.unit.id,G.aliveCount(pick.unit)>=10?'incendiary':'demolition',G.rollRocketDice(random),random,{indirect:!direct.length});return {message:`The Deathshrieker fires: ${report.unsaved} slain.`,report,positions,artillery:true};}}
   for(const c of ME==='iron'?s.cannons:[]){if(!G.canFireCannon(s,c.id))continue;const grape=G.cannonTargets(s,c.id,{mode:'grape'}).filter(t=>!t.error),ball=G.cannonTargets(s,c.id,{mode:'ball',aimShort:6}).filter(t=>!t.error),targets=grape.length?grape:ball;
    if(!targets.length)continue;const mode=grape.length?'grape':'ball',target=targets.map(t=>({...t,value:cannonValue(s,c,t.unit,mode)})).sort((a,b)=>b.value-a.value||a.distance-b.distance)[0],positions=new Map(s.units.filter(alive).map(u=>[u.id,{x:u.x,y:u.y}]));const report=G.fireCannon(s,c.id,target.unit.id,mode,G.rollCannonDice(random),random,{aimShort:6});return {message:`${c.name} fires ${mode==='grape'?'grapeshot':'a cannonball'}: ${report.unsaved} slain.`,report,positions,artillery:true};}
-  G.nextPhase(s);return {message:'The bot begins Combat.'};
+  G.nextPhase(s,random);return {message:'The bot begins Combat.'};
  }
  if(s.stage==='combat'){
   const cast=aiSpell(s,random);if(cast)return cast;
   if(s.pendingCombat)return resolveCombatDecision(s,random);
   if(s.combatSession?.phase==='attacks'){const out=G.fightCombatStep(s,random);return {message:`Initiative ${out.initiative}: ${out.stages.reduce((n,x)=>n+x.unsaved,0)} slain.`};}
-  if(s.combatSession?.phase==='compare'){const out=G.compareCombat(s);return {message:out.winner?`${out.winner} wins combat.`:'Combat is a draw.'};}
+  if(s.combatSession?.phase==='compare'){const out=G.compareCombat(s,random);return {message:out.winner?`${out.winner} wins combat.`:'Combat is a draw.'};}
   const pair=G.combatPairs(s)[0];if(pair){const id=pair.find(id=>G.getUnit(s,id).team===ME)??pair[0];s.selected=id;
    // A bot unit fighting several enemies aims its spare attacks at the one closest to destruction.
    for(const u of pair.map(i=>G.getUnit(s,i)).filter(u=>u.team===ME)){const foes=G.opponents(s,u);if(foes.length>1)u.combatFocus=foes.sort((a,b)=>G.remainingWounds(a)-G.remainingWounds(b))[0].id;}
    G.beginCombat(s,id);return {message:`${pair.join(pair.length>2?', ':' fights ')}${pair.length>2?' fight one combat':''}: initiative order shown.`};}
-  G.nextPhase(s);return {message:'The bot ends its turn.'};
+  G.nextPhase(s,random);return {message:'The bot ends its turn.'};
  }
  return {message:'Waiting for the player.',wait:true};
 }

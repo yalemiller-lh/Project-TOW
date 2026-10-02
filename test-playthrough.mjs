@@ -40,8 +40,8 @@ function redStep(s,r){
  if(s.stage==='movement'){const u=red.find(u=>G.canAct(s,u));if(u){const M=G.profile(u).M;for(let tries=0;tries<6;tries++){const order=r()<.35?{kind:'wheel',angle:pick(r,[-30,-15,15,30]),distance:0,mode:'advance'}:{kind:'advance',distance:Math.round(r()*M*2*2)/2||.5,mode:r()<.4?'march':'advance',angle:0};if(order.mode==='march'&&G.needsMarchTest(s,u)&&u.marchTest===null){G.marchTest(s,u.id,G.rollD6(2,r));break;}if(!G.orderError(s,u,order)){G.commitOrder(s,u.id,order);return 'move';}}if(G.canAct(s,u))G.hold(s,u.id);return 'hold';}}
  if(s.stage==='shooting'){for(const u of red.filter(u=>G.canShoot(s,u))){const t=G.shootingTargets(s,u).filter(x=>!x.plan.error);if(t.length){G.shoot(s,u.id,pick(r,t).unit.id,r);return 'shoot';}G.finishShooting(s,u.id);return 'no shot';}if(G.canFireRocket(s)){const t=G.rocketTargets(s).filter(x=>!x.error);if(t.length){G.fireRocket(s,pick(r,t).unit.id,pick(r,['demolition','incendiary']),G.rollRocketDice(r),r);return 'rocket';}}}
  // Red fights each combat one Initiative step at a time, so the bot's wizard can cast at its step.
- if(s.stage==='combat'){if(s.combatSession?.phase==='attacks'){G.fightCombatStep(s,r);return 'fight step';}if(s.combatSession?.phase==='compare'){G.compareCombat(s);return 'compare';}const pair=G.combatPairs(s)[0];if(pair){G.beginCombat(s,pair[0]);return 'begin combat';}}
- G.nextPhase(s);return 'next phase';
+ if(s.stage==='combat'){if(s.combatSession?.phase==='attacks'){G.fightCombatStep(s,r);return 'fight step';}if(s.combatSession?.phase==='compare'){G.compareCombat(s,r);return 'compare';}const pair=G.combatPairs(s)[0];if(pair){G.beginCombat(s,pair[0]);return 'begin combat';}}
+ G.nextPhase(s,r);return 'next phase';
 }
 // Classic: Red deploys, then the bot. Battle March: roll off, alternate one unit at a time, roll
 // off for the first turn; the bot makes its own choices when it wins.
@@ -62,7 +62,7 @@ function play(seed,options){
   let who,what;
   if(AI.shouldAct(s)){who='bot';const out=AI.takeStep(s,r);what=out.message;assert.ok(!out.wait||AI.humanDecision(s),`${where()}: the bot waits without a player decision (${what})`);}
   else{who='red';what=redStep(s,r);}
-  G.skipEmptySteps(s);
+  G.skipEmptySteps(s,r);
   assert.deepEqual(overlaps(s),[],`${where()}: after ${who} ${what}`);
   const now=fingerprint(s);same=now===last?same+1:0;last=now;assert.ok(same<25,`${where()}: nothing changed for 25 steps (last: ${who} ${what})`);
  }

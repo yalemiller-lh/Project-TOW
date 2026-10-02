@@ -26,7 +26,7 @@ function play(seed){
   const active=bot(s.team),other=bot(s.team==='ash'?'iron':'ash');
   if(active.shouldAct(s))active.takeStep(s,r);else if(other.shouldAct(s))other.takeStep(s,r);
   else{idle++;if(idle>3)throw Error(`seed ${seed}: neither bot acts (round ${s.round}, ${s.team} ${s.stage} ${s.movementStep??''}) ${JSON.stringify(active.humanDecision(s))}`);continue;}
-  idle=0;G.skipEmptySteps(s);
+  idle=0;G.skipEmptySteps(s,r);
  }
  if(s.stage!=='finished')throw Error(`seed ${seed}: did not finish`);
  return {seed,ash:s.result.totals.ash,iron:s.result.totals.iron};

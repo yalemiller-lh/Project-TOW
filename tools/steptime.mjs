@@ -13,6 +13,6 @@ for(const t of ['ash','iron'])if(bot(t).deploymentChoice(s)==='deploy-order')bot
 for(let g=0;g<80&&!d.complete;g++){for(const t of ['ash','iron'])if(bot(t).deploymentChoice(s)==='deploy'){bot(t).takeDeploymentStep(s,r);break;}}
 G.firstTurnRollOff(s,r);for(const t of ['ash','iron'])if(bot(t).deploymentChoice(s)==='first-turn')bot(t).takeDeploymentStep(s,r);G.begin(s,r);
 const times=[];
-for(let step=0;step<4000&&s.stage!=='finished';step++){const a=bot(s.team),o=bot(s.team==='ash'?'iron':'ash'),who=a.shouldAct(s)?a:o.shouldAct(s)?o:null;if(!who)break;const t0=performance.now(),stage=s.stage+'/'+(s.movementStep??'');who.takeStep(s,r);const ms=performance.now()-t0;if(who===BLUE)times.push([ms,stage]);G.skipEmptySteps(s);}
+for(let step=0;step<4000&&s.stage!=='finished';step++){const a=bot(s.team),o=bot(s.team==='ash'?'iron':'ash'),who=a.shouldAct(s)?a:o.shouldAct(s)?o:null;if(!who)break;const t0=performance.now(),stage=s.stage+'/'+(s.movementStep??'');who.takeStep(s,r);const ms=performance.now()-t0;if(who===BLUE)times.push([ms,stage]);G.skipEmptySteps(s,r);}
 times.sort((a,b)=>b[0]-a[0]);const total=times.reduce((n,t)=>n+t[0],0);
 console.log(JSON.stringify({steps:times.length,totalMs:Math.round(total),slowest:times.slice(0,8).map(([m,st])=>[Math.round(m),st]),result:s.result?.totals}));
