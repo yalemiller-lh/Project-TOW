@@ -29,14 +29,27 @@ export const CHARACTERS={empireCaptain:{name:'Captain of the Empire',profile:{M:
 const ARMOUR_SAVE={fullPlate:4,heavy:5,light:6};
 export const isCharacter=u=>u?.role==='wizard'||u?.role==='character';
 // A model's printed characteristics; profile() applies any temporary effects on top.
-export const baseProfile=u=>u?.role==='character'?{...CHARACTERS[u.kind].profile,save:ARMOUR_SAVE[u.armour]??7}:u?.role==='warmachine'?{...WAR_MACHINE_CREW[u.faction].profile,A:Math.max(0,u.crew)}:u?.role==='wizard'?{...WIZARDS[u.faction].profile,T:WIZARDS[u.faction].profile.T+(u.petrified??0)}:u?.role==='missile'?MISSILE[u.faction].profile:FACTIONS[u?.faction??'chaos'].profile;
+// Cavalry mounts (The Empire of Man data). A mounted character is treated as the mount's troop type
+// and keeps a split profile: the rider's characteristics, but the mount's Movement (and any extra
+// Wounds); the mount attacks with its own WS, S, I and A. Barding improves the armour value by 1.
+export const MOUNTS={
+ warhorse:{name:'Empire Warhorse',troop:'lightCavalry',base:{w:30,h:60},profile:{M:8,WS:3,S:3,I:3,A:1},rules:['fastCavalry','swiftstride']},
+ barded:{name:'Barded Warhorse',troop:'heavyCavalry',base:{w:30,h:60},profile:{M:7,WS:3,S:3,I:3,A:1},barding:true,rules:['counterCharge','firstCharge','swiftstride']},
+ pegasus:{name:'Pegasus',troop:'monstrousCavalry',base:{w:40,h:60},profile:{M:8,WS:3,S:4,I:4,A:2},wounds:1,fly:10,rules:['counterCharge','firstCharge','fly','swiftstride']},
+};
+function mounted(u,p){if(!u?.mount||!p)return p;const m=MOUNTS[u.mount];if(!m)return p;if(u.mountAttack)return {...p,...m.profile,BS:0,save:7};return {...p,M:m.profile.M,W:p.W+(m.wounds??0),save:m.barding?Math.max(2,(p.save??7)-1):p.save};}
+// The mount striking for itself: the rider's state, the mount's characteristics, no weapon of the rider's.
+export const mountProxy=u=>({...u,mountAttack:true,weapon:null,role:'mount'});
+export const baseProfile=u=>mounted(u,riderProfile(u));
+const riderProfile=u=>u?.role==='character'||u?.role==='mount'&&u.kind?{...CHARACTERS[u.kind].profile,save:ARMOUR_SAVE[u.armour]??7}:u?.role==='warmachine'?{...WAR_MACHINE_CREW[u.faction].profile,A:Math.max(0,u.crew)}:u?.role==='wizard'?{...WIZARDS[u.faction].profile,T:WIZARDS[u.faction].profile.T+(u.petrified??0)}:u?.role==='missile'?MISSILE[u.faction].profile:FACTIONS[u?.faction??'chaos'].profile;
 export const profile=u=>withEffects(u,baseProfile(u));
-export const equipment=u=>u?.role==='character'?[CHARACTERS[u.kind].equipment,u.weapon==='greatWeapon'?'great weapon':null,{fullPlate:'full plate armour',heavy:'heavy armour',light:'light armour'}[u.armour]].filter(Boolean).join(' · '):u?.role==='wizard'?WIZARDS[u.faction].equipment:u?.role==='missile'?MISSILE[u.faction].equipment:FACTIONS[u?.faction??'chaos'].equipment;
+export const equipment=u=>[riderEquipment(u),u?.mount&&MOUNTS[u.mount]?`${MOUNTS[u.mount].name} (WS${MOUNTS[u.mount].profile.WS} S${MOUNTS[u.mount].profile.S} I${MOUNTS[u.mount].profile.I} A${MOUNTS[u.mount].profile.A}${MOUNTS[u.mount].barding?', barding':''}${MOUNTS[u.mount].fly?', Fly '+MOUNTS[u.mount].fly:''})`:null].filter(Boolean).join(' · ');
+const riderEquipment=u=>u?.role==='character'?[CHARACTERS[u.kind].equipment,u.weapon==='greatWeapon'?'great weapon':null,{fullPlate:'full plate armour',heavy:'heavy armour',light:'light armour'}[u.armour]].filter(Boolean).join(' · '):u?.role==='wizard'?WIZARDS[u.faction].equipment:u?.role==='missile'?MISSILE[u.faction].equipment:FACTIONS[u?.faction??'chaos'].equipment;
 export const missileWeapon=u=>u?.role==='missile'?MISSILE[u.faction].weapon:null;
 // A regiment's block is its files wide and as many ranks deep as its starting models need.
 // A regiment joined by characters has a place in its block for each of them (u.charSlots).
 export const startingModels=u=>u?.models??20,filesOf=u=>u?.files??5,ranksOf=u=>Math.ceil((startingModels(u)+(u?.charSlots?.length??0))/filesOf(u));
-export const size=u=>{if(u?.role==='warmachine')return {w:ROCKET_BASE.w,h:ROCKET_BASE.h};const b=FACTIONS[u?.faction??'chaos'].base/25.4;return isCharacter(u)?{w:b,h:b}:{w:filesOf(u)*b,h:ranksOf(u)*b};};
+export const size=u=>{if(u?.role==='warmachine')return {w:ROCKET_BASE.w,h:ROCKET_BASE.h};const b=FACTIONS[u?.faction??'chaos'].base/25.4;return isCharacter(u)?(MOUNTS[u.mount]?{w:MOUNTS[u.mount].base.w/25.4,h:MOUNTS[u.mount].base.h/25.4}:{w:b,h:b}):{w:filesOf(u)*b,h:ranksOf(u)*b};};
 export const baseSize=u=>FACTIONS[u?.faction??'chaos'].base;
 export const COMMAND_SLOTS={1:'M',2:'S',3:'C'};
 // A model's armour save before any attack: its armour, and its shield when it carries one. An
@@ -48,7 +61,8 @@ export const COMMAND_SLOTS={1:'M',2:'S',3:'C'};
 const SCREENED='A character within 3″ of a friendly regiment can be targeted only when it is the closest target.';
 export function screenedCharacter(s,from,t){
  if(!isCharacter(t)||t.engaged||!from||from.x===null)return false;
- if(!s.units.some(f=>f.team===t.team&&f.id!==t.id&&f.x!==null&&!f.fleeing&&!isCharacter(f)&&f.role!=='warmachine'&&aliveCount(f)>=5&&gap(t,f)<=3+EPS))return false;
+ // The friendly unit must be of the character's troop type: infantry for one on foot, cavalry for one mounted.
+ if(!s.units.some(f=>f.team===t.team&&f.id!==t.id&&f.x!==null&&!f.fleeing&&!isCharacter(f)&&f.role!=='warmachine'&&isCavalry(f)===isCavalry(t)&&aliveCount(f)>=5&&gap(t,f)<=3+EPS))return false;
  const d=gap(from,t);return combatants(s).some(v=>v.team===t.team&&v.id!==t.id&&v.x!==null&&aliveCount(v)>0&&gap(from,v)<d-EPS);
 }
 // A spell that worsens an armour value (Plague of Rust) adds to the save after shields; 7+ is none.
@@ -58,11 +72,12 @@ export function hasShield(u){return u?.shields??(u?.role==='infantry'&&!!FACTION
 export function commandSlots(u){const c=Math.floor(filesOf(u)/2),bought=u?.command??{M:true,S:true,C:true},slots={};for(const [role,col]of [['M',c-1],['S',c],['C',c+1]])if(bought[role]&&col>=0&&col<filesOf(u)&&col<startingModels(u))slots[col]=role;return slots;}
 export function commandAlive(u,role){if(isCharacter(u)||u?.role==='warmachine')return false;const entry=Object.entries(commandSlots(u)).find(([,r])=>r===role);return !!entry&&aliveCount(u)>0&&!(u.deadModels??[]).includes(Number(entry[0]));}
 // Unit Strength = models x Unit Strength per model for the troop type (war machines: starting Wounds).
-export const TROOP_TYPES={regular:{name:'Regular Infantry',perModel:1,perRank:5},heavy:{name:'Heavy Infantry',perModel:1,perRank:4},character:{name:'Infantry character',perModel:1},warmachine:{name:'War Machine',perModel:'wounds'}};
-export function troopType(u){return u?.role==='warmachine'?'warmachine':isCharacter(u)?'character':u?.troop??(FACTIONS[u?.faction??'chaos'].heavy?'heavy':'regular');}
+export const TROOP_TYPES={regular:{name:'Regular Infantry',perModel:1,perRank:5},heavy:{name:'Heavy Infantry',perModel:1,perRank:4},character:{name:'Infantry character',perModel:1},warmachine:{name:'War Machine',perModel:'wounds'},lightCavalry:{name:'Light Cavalry',perModel:2,perRank:5,cavalry:true},heavyCavalry:{name:'Heavy Cavalry',perModel:2,perRank:4,cavalry:true},monstrousCavalry:{name:'Monstrous Cavalry',perModel:3,perRank:3,cavalry:true}};
+export const isCavalry=u=>!!TROOP_TYPES[troopType(u)]?.cavalry;
+export function troopType(u){return u?.role==='warmachine'?'warmachine':isCharacter(u)?(MOUNTS[u.mount]?.troop??'character'):u?.troop??(FACTIONS[u?.faction??'chaos'].heavy?'heavy':'regular');}
 export function startingWounds(u){return u?.role==='warmachine'||isCharacter(u)?(u.startingWounds??(isCharacter(u)?profile(u).W:3)):startingModels(u)*(profile(u).W??1);}
 export function unitStrength(u){if(!u||aliveCount(u)===0||u.x===null&&!u.offBoardPursuit)return 0;const per=TROOP_TYPES[troopType(u)].perModel;return per==='wounds'?startingWounds(u):aliveCount(u)*per;}
-export function startingUnitStrength(u){const per=TROOP_TYPES[troopType(u)].perModel;return per==='wounds'?startingWounds(u):isCharacter(u)?1:startingModels(u)*per;}
+export function startingUnitStrength(u){const per=TROOP_TYPES[troopType(u)].perModel;return per==='wounds'?startingWounds(u):isCharacter(u)?per:startingModels(u)*per;}
 // The champion's own characteristics, then the same temporary effects as the rest of the unit.
 export function championProfile(u){const b=baseProfile(u);return withEffects(u,{...b,A:u.role==='missile'&&u.faction==='empire'?1:2,BS:u.role==='missile'&&u.faction==='empire'?4:b.BS,Ld:u.faction==='orc'?7:b.Ld});}
 export function setOpponent(s,faction){if(s.stage!=='deployment')throw Error('Choose the opposing army before battle starts.');if(!['orc','empire','chaos'].includes(faction))throw Error('Unknown army.');s.units=s.units.filter(u=>u.id!=='I7');for(const u of s.units.filter(u=>u.team==='iron')){u.faction=faction;u.name=u.role==='missile'?MISSILE[faction].name:FACTIONS[faction].name;u.x=null;u.y=null;}if(faction==='empire')s.units.push(createWizard('iron','empire'));s.cannons=createCannons(faction);return faction;}
@@ -78,11 +93,11 @@ function armyFromRoster(team,roster){
  const faction=roster.faction,units=[],cannons=[];let rocket=null,regiments=0;
  for(const item of roster.entries){
   const e=A.entryOf(faction,item.entry),paid={cost:A.entryCost(faction,item),category:e.category,entry:item.entry,general:!!item.general};
-  if(e.role==='wizard'){if(units.some(u=>u.role==='wizard'))throw Error('This engine supports one wizard per army.');units.push({...createWizard(team,faction,{lore:item.lore??e.lores?.default}),name:e.name,...paid});}
+  if(e.role==='wizard'){if(units.some(u=>u.role==='wizard'))throw Error('This engine supports one wizard per army.');const m=MOUNTS[item.mount];units.push({...createWizard(team,faction,{lore:item.lore??e.lores?.default}),name:e.name,...paid,...(m?{mount:item.mount,wounds:WIZARDS[faction].profile.W+(m.wounds??0),rules:[...m.rules]}:{})});}
   else if(e.role==='warmachine'&&team==='ash'&&item.entry==='deathshrieker'){if(rocket)throw Error('This engine supports one Deathshrieker per army.');rocket={...paid};}
   else if(e.role==='warmachine'&&team==='iron'&&item.entry==='greatCannon'){if(cannons.length>=2)throw Error('This engine supports at most two Great Cannons.');cannons.push({id:'I'+(5+cannons.length),name:'Great Cannon '+'AB'[cannons.length],...machineFields('iron','empire'),x:null,y:null,heading:180,wounds:3,crew:3,shot:false,disabledUntil:0,lastShot:null,...paid});}
   else if(e.role==='infantry'||e.role==='missile'){const id=REGIMENT_IDS[team][regiments++];if(!id)throw Error('Too many regiments for this engine.');units.push({id,team,faction,role:e.role,name:e.name,models:item.models,files:item.files??5,command:{C:!!item.command?.C,S:!!item.command?.S,M:!!item.command?.M},troop:e.troop,shields:!!(e.options?.shields&&(e.options.shields.required||item.options?.shields)),spears:!!item.options?.spears,...paid,rules:[...(e.rules??[])],heading:team==='ash'?0:180,...runtime()});}
-  else if(e.role==='character'){const id=CHARACTER_IDS[team][units.filter(u=>u.role==='character').length];if(!id)throw Error('Too many characters for this engine.');units.push({id,team,faction,role:'character',kind:e.kind,name:e.name,weapon:item.options?.greatWeapon?'greatWeapon':null,armour:item.options?.fullPlate?'fullPlate':null,wounds:CHARACTERS[e.kind].profile.W,...paid,rules:[...(e.rules??[])],heading:team==='ash'?0:180,...runtime()});}
+  else if(e.role==='character'){const id=CHARACTER_IDS[team][units.filter(u=>u.role==='character').length];if(!id)throw Error('Too many characters for this engine.');units.push({id,team,faction,role:'character',kind:e.kind,name:e.name,weapon:item.options?.greatWeapon?'greatWeapon':null,armour:item.options?.fullPlate?'fullPlate':null,wounds:CHARACTERS[e.kind].profile.W+(MOUNTS[item.mount]?.wounds??0),mount:MOUNTS[item.mount]?item.mount:null,...paid,rules:[...(e.rules??[]),...(MOUNTS[item.mount]?.rules??[])],heading:team==='ash'?0:180,...runtime()});}
   else throw Error(`${e.name} cannot be fielded by this engine for this side.`);
  }
  return {units,cannons,rocket};
@@ -191,7 +206,10 @@ export function generalOf(s,team){return s?.units.find(u=>u.team===team&&u.gener
 // inches) may use the General's Leadership instead of its own.
 // ---- Fly ----
 // Fly values a unit has (from Steed of Shadows): separate options, never added together.
-export function flyValues(u){return [...new Set(liveEffects(u).flatMap(e=>(e.rules??[]).filter(r=>r.rule==='fly').map(r=>r.value)))].sort((a,b)=>b-a);}
+export function flyValues(u){return [...new Set([...liveEffects(u).flatMap(e=>(e.rules??[]).filter(r=>r.rule==='fly').map(r=>r.value)),...(MOUNTS[u?.mount]?.fly?[MOUNTS[u.mount].fly]:[])])].sort((a,b)=>b-a);}
+// Swiftstride: 3″ more charge range, and +D6 to every Charge, Flee and Pursuit roll (always taken here).
+export const chargeReach=u=>profile(u).M+6+(unitHasRule(u,'swiftstride')?3:0);
+const swift=(u,random)=>unitHasRule(u,'swiftstride')?rollD6(1,random)[0]:0;
 // The Movement a move uses: on foot, M; flying, the Fly value. Marching doubles it; difficult
 // terrain takes 1 off first (never below 1).
 export function moveValue(u,medium='ground',fly=null){return medium==='fly'?(fly??flyValues(u)[0]??0):profile(u).M;}
@@ -416,7 +434,7 @@ export function inactionReason(s,u){
    if(canAct(s,u)&&availableCharges(s,u).length)return null;
    if(u.rallied)return 'Rallied this turn, so it cannot charge.';
    const enemies=combatants(s).filter(v=>v.team!==u.team&&v.x!==null&&aliveCount(v)>0),reasons=enemies.map(t=>chargePlan(s,u,t).error).filter(Boolean);
-   return 'Cannot charge: '+(reasons.find(r=>!/Beyond/.test(r))&&enemies.some(t=>gap(u,t)<=profile(u).M+6)?reasons.find(r=>!/Beyond/.test(r)):`no enemy within its ${profile(u).M+6}″ maximum charge range.`);
+   return 'Cannot charge: '+(reasons.find(r=>!/Beyond/.test(r))&&enemies.some(t=>gap(u,t)<=chargeReach(u))?reasons.find(r=>!/Beyond/.test(r)):`no enemy within its ${chargeReach(u)}″ maximum charge range.`);
   }
   if(s.movementStep==='reactions')return 'Waiting for the charged units to choose their reactions.';
   if(s.movementStep==='charges')return u.charge?.status==='declared'?null:'Waiting for declared charges to be rolled.';
@@ -556,6 +574,7 @@ function detach(s,c){const u=getUnit(s,c?.joined);if(c)c.joined=null;if(!u)retur
 export function joinError(s,charId,unitId){
  const c=getUnit(s,charId),u=getUnit(s,unitId);
  if(!isCharacter(c))return 'Only a character can join a unit.';if(c.joined)return `${c.name} has already joined a unit.`;
+ if(c.mount)return 'A mounted character joining an infantry regiment is not modelled yet (it would stand on the flank).';
  if(!u||u.team!==c.team||isCharacter(u)||u.role==='warmachine'||u.x===null||aliveCount(u)===0||u.destroyed)return 'Choose a friendly regiment.';
  if(u.engaged||c.engaged)return 'Neither may be engaged in combat.';if(u.fleeing||c.fleeing)return 'Neither may be fleeing.';
  if(s.stage==='deployment')return c.deployed?`${c.name} is already deployed.`:null;
@@ -1193,7 +1212,7 @@ function directChargePlan(s,u,t){
  if(u.rallied)return {error:'A regiment that rallied this turn cannot charge.'};
  if(u.engaged)return {error:'Engaged in combat: it cannot charge.'};
  if(u.fleeing||aliveCount(u)===0||aliveCount(t)===0)return {error:'Choose an enemy regiment.'};
- if(gap(u,t)>profile(u).M+6+EPS)return {error:`Beyond the maximum ${profile(u).M+6}″ charge range.`};
+ if(gap(u,t)>chargeReach(u)+EPS)return {error:`Beyond the maximum ${chargeReach(u)}″ charge range.`};
  const a=rad(-heading(u)),dx=t.x-u.x,dy=t.y-u.y,lx=dx*Math.cos(a)-dy*Math.sin(a),ly=dx*Math.sin(a)+dy*Math.cos(a);
  if(!inVisionArc(u,t))return {error:'The target is outside the charger’s front arc.'};
  const face=chargeFace(u,t),offset={'front':0,'rear':180,'left flank':-90,'right flank':90}[face],out=normalize(heading(t)+offset),desired=normalize(out+180),angle=((desired-heading(u)+540)%360)-180;
@@ -1205,7 +1224,7 @@ function directChargePlan(s,u,t){
  // Require maximum possible frontage; do not silently slide a unit sideways.
  if(Math.abs(lateral)>Math.abs(own.w-targetWidth)/2+.02)return {error:'Line up the frontages first. Offset / closing-the-door charges are not supported yet.'};
  const end=forwardPose(after,Math.max(0,distance)),cost=wheelCost(angle,u)+Math.max(0,distance),plan={start:{...u},afterWheel:after,contact:end,end,angle,distance:Math.max(0,distance),wheelCost:wheelCost(angle,u),alignAngle:0,cost,face,target:t.id};
- if(cost>profile(u).M+6+EPS)return {...plan,error:`The wheel and approach exceed the maximum ${profile(u).M+6}″ charge range.`};
+ if(cost>chargeReach(u)+EPS)return {...plan,error:`The wheel and approach exceed the maximum ${chargeReach(u)}″ charge range.`};
  if(offBoard(end,s))return {...plan,error:'Charge ends off the battlefield.'};
  const others=combatants(s).filter(v=>v.x!==null&&v.id!==u.id&&v.id!==t.id),clear=pose=>!others.some(v=>blocksContact(u,t,v,pose));
  if(!clear(end))return {...plan,error:'Another regiment blocks the contact position.'};
@@ -1265,9 +1284,9 @@ export function chargePlan(s,u,t){
  if(u&&hasRule(u,'noCharge'))return {error:'Earthen Ramparts: this unit cannot charge.'};
  if(u&&s.round===1&&(u.scouted||u.vanguarded))return {error:u.scouted?'Deployed as Scouts: it cannot charge in its first turn.':'Made a Vanguard move: it cannot charge in its first turn.'};
  const direct=directChargePlan(s,u,t);if(!direct.error)return direct;
- if(!u||!t||u.x===null||t.x===null||u.team===t.team||u.engaged||u.fleeing||u.rallied||gap(u,t)>profile(u).M+6+EPS||/front arc/.test(direct.error))return direct;
+ if(!u||!t||u.x===null||t.x===null||u.team===t.team||u.engaged||u.fleeing||u.rallied||gap(u,t)>chargeReach(u)+EPS||/front arc/.test(direct.error))return direct;
  const face=chargeFace(u,t),offset={front:0,rear:180,'left flank':-90,'right flank':90}[face],out=normalize(heading(t)+offset),desired=normalize(out+180),own=size(u),theirs=size(t),depth=face.includes('flank')?theirs.w:theirs.h,width=face.includes('flank')?theirs.h:theirs.w;
- const oa=rad(out),normal={x:Math.sin(oa),y:-Math.cos(oa)},right={x:Math.cos(oa),y:Math.sin(oa)},others=combatants(s).filter(v=>v.x!==null&&v.id!==u.id&&v.id!==t.id),limit=profile(u).M+6;
+ const oa=rad(out),normal={x:Math.sin(oa),y:-Math.cos(oa)},right={x:Math.cos(oa),y:Math.sin(oa)},others=combatants(s).filter(v=>v.x!==null&&v.id!==u.id&&v.id!==t.id),limit=chargeReach(u);
  // Two passes: first square up on the face for maximum frontage (with the free alignment) at any
  // wheel that allows it; only if none does, close the door about the point of contact.
  const search=allowDoor=>{let best=null;
@@ -1331,7 +1350,7 @@ export function chargeReaction(s,chargerId,choice,random=Math.random){
  // A charger that panics under Stand & Shoot (Heavy Casualties) falls back or flees: its charge is stopped.
  if(choice==='stand-shoot'){const plan=shootingPlan(s,defender,charger,{reaction:true});report=fireMissiles(s,defender,charger,plan,random);defender.reacted=true;if(report.panic&&!report.panic.passed&&charger.charge){charger.charge.status='stopped';charger.charge.panicked=true;charger.moved=true;}}
  if(choice==='flee'){
-  fleeDice=rollD6(2,random);fleeDistance=fleeDice[0]+fleeDice[1];
+  fleeDice=rollD6(2,random);fleeDistance=fleeDice[0]+fleeDice[1]+swift(defender,random);
   const top=Math.max(...chargers.map(v=>unitStrength(v))),biggest=chargers.filter(v=>unitStrength(v)===top),from=biggest.length>1?biggest[Math.floor(random()*biggest.length)]:biggest[0]??charger;
   const dx=defender.x-from.x,dy=defender.y-from.y;
   defender.heading=normalize(Math.atan2(dx,-dy)*180/Math.PI);
@@ -1357,7 +1376,7 @@ export function enterRemaining(s,random=Math.random){
 // Compulsory Moves, before Remaining Moves: pursuers that left the battlefield return, and each
 // fleeing unit that failed to rally this turn flees again, 2D6″ straight ahead.
 function beginRemaining(s,random=Math.random){if(s.movementStep!=='remaining'){s.movementStep='remaining';returnPursuers(s);s.compulsoryReports=compulsoryFlight(s,random);}}
-function compulsoryFlight(s,random){const out=[];for(const u of s.units.filter(u=>u.team===s.team&&u.x!==null&&aliveCount(u)>0&&u.fleeing&&u.rallyAttempted&&!u.rallied&&!u.engaged)){const dice=rollD6(2,random),move=fleeMove(s,u,dice[0]+dice[1],random);out.push({unit:u.id,dice,distance:move.distance,fledOffBoard:move.fledOffBoard,move});}return out;}
+function compulsoryFlight(s,random){const out=[];for(const u of s.units.filter(u=>u.team===s.team&&u.x!==null&&aliveCount(u)>0&&u.fleeing&&u.rallyAttempted&&!u.rallied&&!u.engaged)){const dice=rollD6(2,random),move=fleeMove(s,u,dice[0]+dice[1]+swift(u,random),random);out.push({unit:u.id,dice,distance:move.distance,fledOffBoard:move.fledOffBoard,move});}return out;}
 // Pursuers and overrunners that left the battlefield return during their Compulsory Moves:
 // just inside the edge they left by, facing inward, near their exit point, counting as moved.
 function returnPursuers(s){
@@ -1380,7 +1399,7 @@ export function resolveCharge(s,id,dice,random=Math.random){
  if(u.charge.reaction==='pending')throw Error('Choose the defender’s reaction first.');
  const t=getUnit(s,u.charge.target),fled=u.charge.reaction==='flee',p=t?.x!==null?chargePlan(s,u,t):{error:'Target fled off the table.'},route=p.error?u.charge.initialPlan:p;
  // Charging through a vortex (difficult terrain): Movement −1, and the lower die counts.
- const difficult=!!route?.end&&sweptVortices(s,u,[u,...(route.angle?[wheelPose(u,route.angle)]:[]),route.end],{all:true}).length>0,roll=difficult?Math.min(...dice):Math.max(...dice),range=Math.max(1,profile(u).M-(difficult?1:0))+roll,success=!p.error&&range+EPS>=p.cost;
+ const difficult=!!route?.end&&sweptVortices(s,u,[u,...(route.angle?[wheelPose(u,route.angle)]:[]),route.end],{all:true}).length>0,roll=difficult?Math.min(...dice):Math.max(...dice),swiftRoll=swift(u,random),range=Math.max(1,profile(u).M-(difficult?1:0))+roll+swiftRoll,success=!p.error&&range+EPS>=p.cost;
  let end={...u},travel=0,disordered=null;
  // Charging a unit behind a defended obstacle (Earthen Ramparts) is a disordered charge, unless the charger has Fly.
  if(success){end=p.end;travel=p.cost;if(fled){claimStandard(s,t,u.team);destroyUnit(s,t,'RUN_DOWN',random);u.ranDown=true;}else{engage(u,t);if(hasRule(t,'defendedObstacle')&&!flyValues(u).length)disordered='Earthen Ramparts';}}
@@ -1395,13 +1414,16 @@ export function resolveCharge(s,id,dice,random=Math.random){
  u.charge={...u.charge,status:success?'success':fled?'pursuit':'failed',dice:[...dice],roll,range,distance:travel,face:route?.face,difficult,...(disordered?{disordered}:{})};s.history=[];
  const poses=[before,...(route?.angle?[wheelPose(before,route.angle)]:[]),{...u}],vortexHits=travel>0?vortexMoveHits(s,u,sweptVortices(s,u,poses),random,poses):[];
  if(!success&&travel>0)s.lastPhantasm=endOfMove(s,u,random);
+ // First Charge: a unit's first charge of the game, if it hits home, leaves its target Disrupted
+ // until the end of that turn's Combat phase.
+ if(!u.firstChargeTried){u.firstChargeTried=true;if(success&&!fled&&unitHasRule(u,'firstCharge'))t.firstChargeDisrupted=`${s.round}:${s.team}`;}
  if(!s.units.some(v=>v.charge?.status==='declared'))beginRemaining(s,random);
  syncJoined(s);if(success&&fled&&u.ranDown){delete u.ranDown;offerReform(s,u,'leadership','ran down');}
- return {success,runDown:success&&fled,pursuit:fled&&!success,targetLeftBoard:fled&&!!t.destroyed,dice,roll,range,distance:travel,target:t.id,reason:p.error??null,difficult,vortexHits};
+ return {success,runDown:success&&fled,pursuit:fled&&!success,targetLeftBoard:fled&&!!t.destroyed,dice,roll,range,distance:travel,target:t.id,reason:p.error??null,difficult,vortexHits,...(swiftRoll?{swift:swiftRoll}:{})};
 }
 
 export function modelSquares(s,u){
- if(u.role==='warmachine'||isCharacter(u)){const {w,h}=size(u),base=u.role==='warmachine'?null:baseSize(u)/25.4,poly=corners(u),gaps=opponents(s,u).map(e=>({id:e.id,g:polygonGap(poly,corners(e))})),targets=gaps.filter(v=>v.g<=baseProfile(u).M+EPS).map(v=>v.id),contacts=gaps.filter(v=>v.g<EPS).map(v=>v.id);return [{index:0,row:0,col:0,x:base?-base/2:-w/2,y:base?-base/2:-h/2,size:base??w,command:null,dead:aliveCount(u)===0,fighting:targets.length>0,contact:contacts.length>0,targets,contacts}];}
+ if(u.role==='warmachine'||isCharacter(u)){const {w,h}=size(u),base=u.role==='warmachine'||MOUNTS[u.mount]?null:baseSize(u)/25.4,poly=corners(u),gaps=opponents(s,u).map(e=>({id:e.id,g:polygonGap(poly,corners(e))})),targets=gaps.filter(v=>v.g<=riderProfile(u).M+EPS).map(v=>v.id),contacts=gaps.filter(v=>v.g<EPS).map(v=>v.id);return [{index:0,row:0,col:0,x:base?-base/2:-w/2,y:base?-base/2:-h/2,size:base??w,h:base??h,command:null,dead:aliveCount(u)===0,fighting:targets.length>0,contact:contacts.length>0,targets,contacts}];}
  // A model fights each enemy unit on a face it is within the fighting ranks of; it touches the
  // ones it is in base contact with.
  const base=baseSize(u)/25.4,footprint=size(u),foes=opponents(s,u).map(e=>({e,face:chargeFace(e,u),poly:corners(e)})),depth=u.charge?.status==='success'?1:u.spears?3:2;
@@ -1447,6 +1469,7 @@ export function modelsInDifficult(s,u){const ground=difficultGround(s),total=ali
 // judged where the units stand when the combat result is worked out. Returns the reasons.
 export function disruption(s,u){const out=[];if(!u||u.x===null)return out;
  for(const e of opponents(s,u)){const face=chargeFace(e,u);if(unitStrength(e)>=5&&['left flank','right flank','rear'].includes(face))out.push({kind:'flank',unit:e.id,text:`engaged in the ${face} by ${e.name}`});}
+ if(u.firstChargeDisrupted===`${s.round}:${s.team}`)out.push({kind:'firstCharge',text:'charged by a unit with First Charge'});
  const g=modelsInDifficult(s,u);if(g.total&&g.within*4>=g.total)out.push({kind:'terrain',within:g.within,total:g.total,features:g.features,text:`${g.within} of ${g.total} models in ${g.features.join(' and ')}`});
  return out;}
 export const isDisrupted=(s,u)=>disruption(s,u).length>0;
@@ -1521,7 +1544,7 @@ export function rollRocketDice(random=Math.random){const face=Math.floor(random(
 // Models under a blast template. A war machine and its crew are one model: its whole base.
 function blastCells(s,point,radius){const out=[];for(const unit of allPieces(s).filter(u=>u.x!==null&&aliveCount(u)>0)){
  const a=rad(heading(unit)),c=Math.cos(a),sn=Math.sin(a),dx=point.x-unit.x,dy=point.y-unit.y,lx=dx*c+dy*sn,ly=-dx*sn+dy*c,{w,h}=size(unit);
- const models=unit.role==='warmachine'?[{index:0,x:-w/2,y:-h/2,w,h}]:modelSquares(s,unit).filter(m=>!m.dead).map(m=>({...m,w:m.size,h:m.size}));
+ const models=unit.role==='warmachine'||MOUNTS[unit.mount]?[{index:0,x:-w/2,y:-h/2,w,h}]:modelSquares(s,unit).filter(m=>!m.dead).map(m=>({...m,w:m.size,h:m.size}));
  for(const model of models){const x=Math.max(model.x,Math.min(lx,model.x+model.w)),y=Math.max(model.y,Math.min(ly,model.y+model.h));if(Math.hypot(lx-x,ly-y)>radius+EPS)continue;
  const centre=lx>=model.x-EPS&&lx<=model.x+model.w+EPS&&ly>=model.y-EPS&&ly<=model.y+model.h+EPS;
  const fully=[[model.x,model.y],[model.x+model.w,model.y],[model.x,model.y+model.h],[model.x+model.w,model.y+model.h]].every(([mx,my])=>Math.hypot(lx-mx,ly-my)<=radius+EPS);
@@ -1579,7 +1602,7 @@ function cannonMisfire(s,c,random){const result=rollD6(1,random)[0];if(result===
 function stopAtTerrain(s,a,b){let t=1;for(const k of (s.terrain??[]).filter(k=>k.impassable)){const dx=b.x-a.x,dy=b.y-a.y,fx=a.x-k.x,fy=a.y-k.y,A=dx*dx+dy*dy,B=2*(fx*dx+fy*dy),C=fx*fx+fy*fy-k.r*k.r;if(C<=0){t=0;break;}if(A<EPS)continue;const disc=B*B-4*A*C;if(disc<0)continue;const t1=(-B-Math.sqrt(disc))/(2*A);if(t1>=0&&t1<t)t=t1;}return {x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t,stopped:t<1};}
 function cannonballCells(s,start,end,direction){const length=Math.hypot(end.x-start.x,end.y-start.y),hits=[];
  for(const unit of allPieces(s).filter(u=>u.x!==null&&aliveCount(u)>0))for(const model of unit.role==='warmachine'?[{index:0,row:0,col:0,x:-size(unit).w/2,y:-size(unit).h/2,size:size(unit).w}]:modelSquares(s,unit).filter(m=>!m.dead)){
-  const poly=unit.role==='warmachine'?corners(unit):[[model.x,model.y],[model.x+model.size,model.y],[model.x+model.size,model.y+model.size],[model.x,model.y+model.size]].map(([x,y])=>localPoint(unit,x,y));
+  const poly=unit.role==='warmachine'||MOUNTS[unit.mount]?corners(unit):[[model.x,model.y],[model.x+model.size,model.y],[model.x+model.size,model.y+model.size],[model.x,model.y+model.size]].map(([x,y])=>localPoint(unit,x,y));
   if(!inside(start,poly)&&!(length>EPS&&(inside(end,poly)||poly.some((p,i)=>intersects(start,end,p,poly[(i+1)%4])))))continue;
   const centre=localPoint(unit,model.x+model.size/2,model.y+model.size/2),along=(centre.x-start.x)*direction.x+(centre.y-start.y)*direction.y;
   const forward={x:Math.sin(rad(heading(unit))),y:-Math.cos(rad(heading(unit)))},front=Math.abs(forward.x*direction.x+forward.y*direction.y)>=.707;
@@ -1687,7 +1710,8 @@ export function beginCombat(s,id){
  if(s.stage!=='combat'||s.combatSession||s.pendingCombat)throw Error('Finish the current combat first.');
  const first=getUnit(s,id),units=first?.engaged&&first.x!==null?combatGroup(s,first).filter(u=>u.x!==null&&aliveCount(u)>0):[];
  if(units.length<2||!units.some(u=>!u.combatResolved))throw Error('Select an unresolved engaged regiment.');
- const ids=units.map(u=>u.id),initiative=Object.fromEntries(units.map(u=>[u.id,combatInitiative(u,opponents(s,u))]));
+ // A mounted character's mount strikes at its own Initiative (keyed "id:mount").
+ const ids=units.map(u=>u.id),initiative=Object.fromEntries([...units.map(u=>[u.id,combatInitiative(u,opponents(s,u))]),...units.filter(u=>isCharacter(u)&&MOUNTS[u.mount]).map(u=>[u.id+':mount',combatInitiative(mountProxy(u),opponents(s,u))])]);
  s.combatSession={units:ids,sides:{ash:ids.filter(i=>getUnit(s,i).team==='ash'),iron:ids.filter(i=>getUnit(s,i).team==='iron')},a:first.id,b:opponents(s,first)[0]?.id??null,
   standards:Object.fromEntries(units.map(u=>[u.id,commandAlive(u,'S')])),initiative,groups:[...new Set(Object.values(initiative))].sort((x,y)=>y-x),step:0,phase:'attacks',stages:[],spellStages:[],passed:{},damage:Object.fromEntries(ids.map(i=>[i,0]))};
  // A challenge fought to the death goes on; otherwise one may be issued.
@@ -1716,6 +1740,12 @@ export function fightCombatStep(s,random=Math.random){
  // The challenge: each duellist strikes the other at its own Initiative step. Wounds beyond what
  // the other has left are Overkill (counted for a character).
  const ch=c.challenge?.stage==='fight'?c.challenge:null;
+ // Mounts: at the mount's Initiative, at the enemy its rider fights (in a challenge, the other duellist).
+ for(const id of c.units){const u=getUnit(s,id);if(!u||!isCharacter(u)||!MOUNTS[u.mount]||c.initiative[id+':mount']!==initiative||u.x===null||aliveCount(u)===0||u.retired)continue;
+  const inDuel=ch&&[ch.challenger,ch.acceptor].includes(u.id),d=inDuel?duelist(s,ch.challenger===u.id?ch.acceptor:ch.challenger):null;if(inDuel&&!d)continue;
+  const target=d?d.unit:getUnit(s,[...attackAllocation(s,u,0).keys()][0]);if(!target||aliveCount(target)===0)continue;
+  const stage=attackStage(s,mountProxy(u),target,random,0,{models:modelSquares(s,u),cap:d?Infinity:Math.max(0,remainingWounds(target)-(claimed[target.id]??0))});stage.mount=MOUNTS[u.mount].name;
+  if(d){const left=d.champion?1:remainingWounds(d.unit);Object.assign(stage,{unsaved:Math.min(stage.unsaved,left),duel:{from:u.id,to:d.key,champion:d.champion},overkill:0});}else claimed[target.id]=(claimed[target.id]??0)+stage.unsaved;stages.push(stage);}
  if(ch)for(const [from,to]of [[ch.challenger,ch.acceptor],[ch.acceptor,ch.challenger]]){const a=duelist(s,from),d=duelist(s,to);if(!a||!d||c.initiative[a.unit.id]!==initiative)continue;
   const stage=attackStage(s,a.unit,d.unit,random,0,{models:[a.model],cap:Infinity}),left=d.champion?1:remainingWounds(d.unit),kill=Math.min(stage.unsaved,left);
   Object.assign(stage,{unsaved:kill,saved:stage.wounds-stage.unsaved,duel:{from,to,champion:d.champion},overkill:!a.champion&&stage.unsaved>left?stage.unsaved-left:0});stages.push(stage);}
@@ -1859,7 +1889,7 @@ export function panicTest(s,unit,{away=null,cause='Panic',random=Math.random,dep
  const dice=rollD6(2,random),frenzy=hasRule(unit,'frenzy'),passed=frenzy||dice[0]+dice[1]<=leadership(unit,'normal',s),entry={unit:unit.id,cause,dice,passed,...(frenzy?{frenzy:true}:{})};(s.panicLog??=[]).push(entry);
  if(passed)return entry;
  const from=away&&away.x!==null?away:steadyEnemy(s,unit);if(from)unit.heading=normalize(Math.atan2(unit.x-from.x,-(unit.y-from.y))*180/Math.PI);
- const good=aliveCount(unit)*2>(isCharacter(unit)?1:startingModels(unit)),flee=rollD6(2,random),distance=good?Math.max(...flee):flee[0]+flee[1];
+ const good=aliveCount(unit)*2>(isCharacter(unit)?1:startingModels(unit)),flee=rollD6(2,random),distance=(good?Math.max(...flee):flee[0]+flee[1])+swift(unit,random);
  unit.fleeing=true;unit.moved=true;const move=fleeMove(s,unit,distance,random,depth+1);if(good&&unit.x!==null)unit.fleeing=false;syncJoined(s,unit);
  return Object.assign(entry,{outcome:good?'fall-back':'flee',fleeDice:flee,distance,fledOffBoard:move.fledOffBoard,move});
 }
@@ -2017,7 +2047,7 @@ export function moveCombatLoser(s,random=Math.random){
   return {loser:loser.id,...move,finished};
  }
  release(s,loser);
- const dice=p.outcome==='give-ground'?null:combatDice(2,random),distance=p.outcome==='give-ground'?2:Math.max(1,(p.outcome==='fall-back'?Math.max(...dice):dice[0]+dice[1])-(FACTIONS[loser.faction??'chaos'].resolute?1:0));
+ const dice=p.outcome==='give-ground'?null:combatDice(2,random),distance=p.outcome==='give-ground'?2:Math.max(1,(p.outcome==='fall-back'?Math.max(...dice):dice[0]+dice[1])-(FACTIONS[loser.faction??'chaos'].resolute?1:0)+(p.outcome==='give-ground'?0:swift(loser,random)));
  // Only a unit that Breaks can leave the battlefield (fleeing off it, it is lost); one that Gives
  // Ground or Falls Back in Good Order stops at the edge.
  const before={...loser},retreat=p.outcome==='break'?fleeFrom(s,loser,winner,distance,random):retreatPose(s,loser,winner,distance);if(retreat.offBoard&&loser.x!==null)destroyUnit(s,loser,'FLED_OFF_TABLE',random);
@@ -2055,7 +2085,7 @@ export function winnerCombat(s,choice='follow',random=Math.random,reformHeading=
   if(p.outcome!=='give-ground'){
    // Pursuit and overrun: the total of 2D6 (Resolute: −1).
    const dice=combatDice(2,random);out.rolls.pursuit=dice;
-   chase=Math.max(1,dice[0]+dice[1]-(FACTIONS[winner.faction??'chaos'].resolute?1:0));out.pursuitDistance=chase;advance=chase;
+   chase=Math.max(1,dice[0]+dice[1]-(FACTIONS[winner.faction??'chaos'].resolute?1:0)+swift(winner,random));out.pursuitDistance=chase;advance=chase;
    if(p.outcome==='overrun')dir={x:Math.sin(rad(heading(winner))),y:-Math.cos(rad(heading(winner)))};
    else if(loser.x!==null){
     // A pursuer pivots about its centre toward the unit it pursues, then moves; it catches only by reaching it.

@@ -19,8 +19,8 @@ export const ENTRIES={
   deathshrieker:{name:'Deathshrieker Rocket Launcher',category:'special',role:'warmachine',base:110,restricted:'0–2 per 1,000 points'},
  },
  empire:{
-  captain:{name:'Captain of the Empire',category:'characters',role:'character',kind:'empireCaptain',base:45,options:{greatWeapon:{name:'Great weapon',cost:4},fullPlate:{name:'Full plate armour',cost:6}},general:true},
-  masterMage:{name:'Master Mage',category:'characters',role:'wizard',base:60,options:{level2:{name:'Wizard Level 2',cost:30,required:true}},general:true,lores:{options:['battle'],default:'battle'}},
+  captain:{name:'Captain of the Empire',category:'characters',role:'character',kind:'empireCaptain',base:45,options:{greatWeapon:{name:'Great weapon',cost:4},fullPlate:{name:'Full plate armour',cost:6}},mounts:{warhorse:{name:'Empire Warhorse',cost:12,us:2},barded:{name:'Barded Warhorse',cost:16,us:2},pegasus:{name:'Pegasus',cost:30,us:3}},general:true},
+  masterMage:{name:'Master Mage',category:'characters',role:'wizard',base:60,options:{level2:{name:'Wizard Level 2',cost:30,required:true}},mounts:{warhorse:{name:'Empire Warhorse',cost:12,us:2},pegasus:{name:'Pegasus',cost:30,us:3}},general:true,lores:{options:['battle'],default:'battle'}},
   stateTroops:{name:'State Troops',category:'core',role:'infantry',troop:'regular',perModel:5,minModels:10,options:{spears:{name:'Thrusting spears',perModel:1},shields:{name:'Shields',perModel:1}},command:{C:{name:'Sergeant',cost:5},S:{name:'Standard Bearer',cost:5},M:{name:'Musician',cost:5}}},
   missileTroops:{name:'State Missile Troops (crossbows)',category:'core',role:'missile',troop:'regular',perModel:7,minModels:10,command:{C:{name:'Sergeant',cost:5},S:{name:'Standard Bearer',cost:5},M:{name:'Musician',cost:5}}},
   greatCannon:{name:'Great Cannon',category:'special',role:'warmachine',base:125,restricted:"1 single 'per 1000 points' selection in Battle March"},
@@ -29,6 +29,8 @@ export const ENTRIES={
   orcMob:{name:'Orc Mob',category:'core',role:'infantry',troop:'regular',perModel:5,minModels:5,command:{C:{name:'Boss',cost:7},S:{name:'Standard Bearer',cost:5},M:{name:'Musician',cost:5}}},
  },
 };
+// Rules of these armies not modelled yet, shown to the player instead of guessing.
+export const NOT_MODELLED={chaos:['The Daemonsmith’s ridden monsters (Great Taurus, Bale Taurus, Lammasu) are not modelled: a Level 2 Daemonsmith on one is over the 25% character allowance at 500–750 points anyway.'],empire:['Counter Charge (Barded Warhorse, Pegasus) is not modelled.','A Pegasus flies when it moves; its charges are made on the ground.','A mounted character cannot join an infantry regiment here (it would stand on the flank).']};
 // Gaps this engine cannot yet represent; shown to the player instead of guessing.
 export const GAPS={
  orc:['No Orc character (Orc Bigboss, 55 points) is modelled yet, so an Orc army cannot field the General Battle March requires.','Orc Mob warbows have no points cost in the source data (revision 192), so warbow mobs are not offered.'],
@@ -40,9 +42,10 @@ export function entryCost(faction,item){
  const e=entryOf(faction,item.entry),models=e.perModel?item.models:1;let cost=(e.base??0)+(e.perModel??0)*models;
  for(const [k,o]of Object.entries(e.options??{}))if(o.required||item.options?.[k])cost+=(o.cost??0)+(o.perModel??0)*models;
  for(const [k,c]of Object.entries(e.command??{}))if(item.command?.[k])cost+=c.cost;
+ if(item.mount)cost+=e.mounts?.[item.mount]?.cost??0;
  return cost;
 }
-export function entryUnitStrength(faction,item){const e=entryOf(faction,item.entry);return e.role==='warmachine'?3:e.role==='wizard'||e.role==='character'?1:item.models*(US_PER_MODEL[e.troop]??1);}
+export function entryUnitStrength(faction,item){const e=entryOf(faction,item.entry);return e.role==='warmachine'?3:e.role==='wizard'||e.role==='character'?(e.mounts?.[item.mount]?.us??1):item.models*(US_PER_MODEL[e.troop]??1);}
 export function rosterCost(roster){return roster.entries.reduce((n,item)=>n+entryCost(roster.faction,item),0);}
 
 // Battle March muster rules, as given in the Battle March brief, plus the Grand Army category
@@ -61,6 +64,7 @@ export function validateRoster(roster,points,{format='battle-march'}={}){
   const e=entryOf(faction,item.entry),cost=entryCost(faction,item),label=item.label??e.name;
   if(PREFERENCES.excluded.some(x=>x.name===e.name))errors.push(`${e.name} is excluded by player preference.`);
   if(e.perModel&&(!Number.isInteger(item.models)||item.models<e.minModels))errors.push(`${label} needs at least ${e.minModels} models; it has ${item.models}.`);
+  if(item.mount&&!e.mounts?.[item.mount])errors.push(`${label} cannot ride that mount.`);
   if(e.maxModels&&item.models>e.maxModels)errors.push(`${label} may have at most ${e.maxModels} models; it has ${item.models}.`);
   if(e.lores){const lore=item.lore??e.lores.default;if(!e.lores.options.includes(lore))errors.push(`${label} cannot use ${LORE_NAMES[lore]??lore}.`);else if(!LORES_IMPLEMENTED.includes(lore))errors.push(`${LORE_NAMES[lore]} is not implemented yet.`);}
   if(format!=='battle-march')continue;
