@@ -42,7 +42,7 @@ test('The Summoning: 2D6 Strength 4 hits at AP −1 on an enemy in sight and not
  const s=battle(['summoning']);at(s,'shooting');clearExcept(s,['A6','I1','I2']);const w=G.getUnit(s,'A6'),t=G.getUnit(s,'I1'),units=s.units.length;Object.assign(w,{x:30,y:30,heading:0});Object.assign(t,{x:30,y:20,heading:180});
  const r=G.castSpell(s,'A6','summoning','I1',dice(5,5,3,3,...Array(6).fill([6,5]).flat()));
  assert.equal(r.effect.hits,6);assert.equal(r.effect.toSave,G.profile(t).save+1,'AP −1');assert.equal(G.aliveCount(t),14);assert.equal(s.units.length,units);
- const i2=G.getUnit(s,'I2');Object.assign(i2,{x:50,y:30,heading:270});assert.match(G.targetReason(s,'A6','summoning',i2),/vision arc/);
+ const i2=G.getUnit(s,'I2');Object.assign(i2,{x:50,y:30,heading:270});assert.equal(G.targetReason(s,'A6','summoning',i2),null,'a Lone wizard is in Skirmish formation: it sees all round');
  Object.assign(i2,{x:24,y:22,heading:180});i2.engaged=['A1'];assert.match(G.targetReason(s,'A6','summoning',i2),/Engaged/);
  w.castThisTurn=[];w.engaged=['I1'];assert.match(G.castBlockReason(s,'A6','summoning'),/Engaged/);w.engaged=null;w.movementMode='march';assert.match(G.castBlockReason(s,'A6','summoning'),/Marched/);
 });

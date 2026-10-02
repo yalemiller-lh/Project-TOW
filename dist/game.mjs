@@ -163,7 +163,7 @@ export function gap(a,b){return polygonGap(corners(a),corners(b));}
 export function circleGap(poly,c){if(inside({x:c.x,y:c.y},poly))return 0;let best=Infinity;for(let i=0;i<poly.length;i++)best=Math.min(best,pointSegment({x:c.x,y:c.y},poly[i],poly[(i+1)%poly.length]));return Math.max(0,best-c.r);}
 // Impassable terrain a footprint (or the area a move sweeps) overlaps; touching its edge is allowed.
 export function terrainBlocks(s,poly,u=null){const inner=shrink(poly,.01);return (s?.terrain??[]).some(t=>(u?movementOf(t,u):featureMovement(t))==='impassable'&&featureGap(t,inner)<EPS);}
-function terrainBlocksSight(s,a,b){return (s?.terrain??[]).some(t=>(t.blocksSight||t.sight==='blocks')&&(t.points||t.line?polygonGap(shrink(t.points??t.line,.01),[a,b])<EPS&&!(t.points&&(inside(a,t.points)||inside(b,t.points))):pointSegment({x:t.x,y:t.y},a,b)<t.r-EPS));}
+
 // ---- Temporary effects: a spell's or a landmark's, kept on the units they affect. ----
 // A record: {id, spell or property, source:{kind,caster,team}, mods:[{stat,add,min?,max?}], ap,
 // rules:[{rule,value} or {block}], stack, created:{round,team}, expiry:{kind,at}}. An older
@@ -794,7 +794,7 @@ function spellEffect(s,u,key,recipients,{rules=[],mods=[],ap=0,armour=0,expiry})
 export function rollSpells(random=Math.random,{lore='battle',level=2}={}){const table=(LORES[lore]??LORES.battle).roll,rolls=[],rerolled=[],picked=[];for(let i=0;i<Math.min(6,level);i++){let n=rollD6(1,random)[0],tries=0;rolls.push(n);while(picked.includes(n)){rerolled.push(n);if(++tries>=20){n=[1,2,3,4,5,6].find(k=>!picked.includes(k));break;}n=rollD6(1,random)[0];rolls.push(n);}picked.push(n);}return {spells:picked.map(n=>table[n-1]),rolls,rerolled};}
 export function generateSpells(random=Math.random,options={}){return rollSpells(random,options).spells;}
 export function exchangeSignature(s,id,spell,replacement=null){const u=getUnit(s,id),choices=signatureChoices(u);replacement??=choices[0];if(s.stage!=='strategy'||s.round!==1||u?.role!=='wizard'||u.castThisTurn.length||!loreOf(u).roll.includes(spell)||!u.spells.includes(spell)||!choices.includes(replacement)||u.spells.some(k=>choices.includes(k)))throw Error('Exchange one generated spell for a permitted signature before casting.');u.spells.splice(u.spells.indexOf(spell),1,replacement);return u.spells;}
-function spellVision(u,t){const a=rad(-heading(u)),dx=t.x-u.x,dy=t.y-u.y,lx=dx*Math.cos(a)-dy*Math.sin(a),ly=dx*Math.sin(a)+dy*Math.cos(a);return ly<0&&Math.abs(lx)<=-ly+Math.max(size(t).w,size(t).h)/2+EPS;}
+
 const targetless=spell=>spell?.reach==='self'||!!spell?.template;
 // A spell's range as players read it: inches, Self or Combat.
 export function spellRangeLabel(key){const spell=SPELLS[key];return !spell?'':spell.range?spell.range+'″':spell.reach==='combat'?'Combat':'Self';}
@@ -843,8 +843,10 @@ export function targetReason(s,id,key,t){
  if(t.engaged&&!spell.targetsEngaged)return 'Engaged in combat.';
  if(spell.range&&gap(u,t)>spell.range+EPS)return `Out of range (${spell.range}″).`;
  if(!spell.friendly&&screenedCharacter(s,u,t))return SCREENED;
- if(t.id!==u.id&&!spellVision(u,t))return 'Outside the wizard’s vision arc.';
- if(spell.los&&!modelCanSee(s,u,t,modelSquares(s,u)[0],spell.range))return 'No line of sight.';
+ // Any part of the target in the wizard's vision arc (all round for a Lone wizard); only a Magic
+ // Missile also needs line of sight.
+ if(t.id!==u.id&&!withinVisionArc(u,t))return 'Outside the wizard’s vision arc.';
+ if(spell.los&&t.id!==u.id){const sight=sightPlan(s,u,t,{lookers:'all'});if(!sight.visible)return `No line of sight: ${sightText(sight.code)}.`;}
  return null;
 }
 // Every unit and war machine on the battlefield with the reason it cannot be targeted (null when it can).
@@ -1060,6 +1062,8 @@ export const VORTEX_RULES={pillar:{hits:random=>Math.ceil(rollD6(1,random)[0]/2)
 function vortexBlocksSight(s,a,b){return (s?.vortices??[]).some(v=>VORTEX_RULES[v.spell]?.blocksSight&&pointSegment({x:v.x,y:v.y},a,b)<(v.radius??1.5)-EPS);}
 // Dangerous terrain: a D6 for each model that starts, crosses or ends this move in it; each 1 costs
 // a Wound. Only the models whose own bases touch it test.
+// The terrain a planned move crosses, for the movement preview: [{id, name, movement}].
+export function moveTerrain(s,u,order){const medium=order.medium??u.movementMedium??'ground';return terrainCrossed(s,u,movePoses(planMove(u,order)),{fly:medium==='fly'}).map(t=>({id:t.id,name:t.name,movement:movementOf(t,u)}));}
 // ---- Terrain and movement ----
 // Difficult and dangerous terrain, and low obstacles (difficult for movement), slow a unit that
 // starts, passes through or ends a move in them, judged on the whole footprint it sweeps: Movement
@@ -1152,16 +1156,122 @@ export function dispelVortex(s,ref,random=Math.random,mode='wizard',dispellerId=
 export function canEngineerReroll(s){const u=getUnit(s,'A6'),r=s.rocket;return !!u&&u.x!==null&&!u.fleeing&&!u.engaged&&!u.engineerUsed&&r.x!==null&&Math.hypot(u.x-r.x,u.y-r.y)<=profile(u).Ld+EPS;}
 export function engineerReroll(s,dice,which,random=Math.random){if(!canEngineerReroll(s))throw Error('The Daemonsmith cannot assist the Deathshrieker now.');if(!['artillery','scatter'].includes(which))throw Error('Choose one Artillery or Scatter die.');const next={...dice},fresh=rollRocketDice(random);next[which]=fresh[which];if(which==='scatter')next.hitArrow=fresh.hitArrow;getUnit(s,'A6').engineerUsed=true;return next;}
 
-// Ranged attacks are measured from individual model centres. The front 90-degree
-// arc extends from each front base corner; other regiments block a clear shot.
-// The models that shoot: the front rank, and with Volley Fire half of each rank behind it, but not
-// for a unit that has moved this turn or that is Standing & Shooting.
+// ---- Line of sight (the user's line-of-sight brief of 2 October 2026) ----
+// Four questions, asked separately: is the target in the vision arc, is there line of sight, may
+// the action target it, and is it in range. Cover is worked out afterwards, from the models that see.
+// DIGITAL CONVENTION (the brief's option B, not the tabletop's model's-eye view): every model is its
+// base seen from above. A sight line runs from a point of the looking model's base (its centre or a
+// front corner, inset a tenth) to a point of the seen model's base (its centre or a corner, inset a
+// tenth). It is blocked by the footprint of any other unit it crosses (a joined character is part of
+// its unit's footprint), and by terrain according to the feature's sight class: 'blocks' (buildings,
+// rocks, high walls, the landmark), 'wood' (opaque between two models outside it), 'hill' (opaque
+// between two models off it). 'obscures' (low walls, hedges) only gives cover: it obscures a line
+// that crosses it nearer the seen model than the looking one. Height is only the rules' categories:
+// a unit entirely on a hill, and Large Target. A model is in a wood, or on a hill, when its centre is.
+// A rank and file model counts as obscured when no shooter has a clear line to its centre; a lone
+// model is judged by the four inset corners of its base. Where the physical view is ambiguous, the
+// players may agree a different ruling.
+const SIGHT_TEXT={OUTSIDE_VISION_ARC:'outside its front arc (vision arc)',BLOCKED_BY_MODEL:'another unit is in the way',BLOCKED_BY_WOOD:'a wood is in the way',BLOCKED_BY_HILL:'a hill is in the way',BLOCKED_BY_TERRAIN:'terrain blocks the view',VISIBLE:'in the open',VISIBLE_PARTIAL_COVER:'partial cover',VISIBLE_FULL_COVER:'full cover',VISIBLE_BUT_ILLEGAL_TARGET:'visible, but not a legal target'};
+export const sightText=code=>SIGHT_TEXT[code]??code;
+// Skirmish formation sees all round, and a Lone character always counts as in Skirmish formation
+// (rulebook, Characters & Formations). Dispersed Formation keeps the 90° arc.
+export function allRoundVision(u){return !!u&&!unitHasRule(u,'dispersedFormation')&&((isCharacter(u)&&!u.joined)||u.formation==='skirmish');}
+export const isLargeTarget=u=>unitHasRule(u,'largeTarget');
+export function hillUnder(s,p){return p?.x==null?null:(s?.terrain??[]).find(t=>t.kind==='hill'&&t.points&&inside(p,t.points))??null;}
+const woodUnder=(s,p)=>(s?.terrain??[]).find(t=>t.sight==='wood'&&t.points&&inside(p,t.points))??null;
+// A unit entirely on a hill: every corner of its footprint on the same hill.
+export function entirelyOnHill(s,u){if(!u||u.x===null)return null;const poly=shrink(corners(u),.01);return (s?.terrain??[]).find(t=>t.kind==='hill'&&t.points&&poly.every(p=>inside(p,t.points)))??null;}
+const hillTop=h=>h.top??{x:h.x,y:h.y};
+// The 90° arc of a base: ahead of its front edge, and no further past a front corner sideways than ahead.
+function arcHas(pose,w,h,p){const a=rad(-heading(pose)),dx=p.x-pose.x,dy=p.y-pose.y,x=dx*Math.cos(a)-dy*Math.sin(a),y=dx*Math.sin(a)+dy*Math.cos(a),ahead=-y-h/2;return ahead>=-EPS&&Math.abs(x)-w/2<=ahead+EPS;}
+// Any part of a shape in the arc (its corners, its centre and points along its edges).
+function arcHasShape(pose,w,h,poly){const c={x:poly.reduce((n,p)=>n+p.x,0)/poly.length,y:poly.reduce((n,p)=>n+p.y,0)/poly.length};if(arcHas(pose,w,h,c))return true;for(let i=0;i<poly.length;i++){const a=poly[i],b=poly[(i+1)%poly.length];for(let k=0;k<10;k++)if(arcHas(pose,w,h,{x:a.x+(b.x-a.x)*k/10,y:a.y+(b.y-a.y)*k/10}))return true;}return false;}
+// The brief's withinVisionArc: any part of the target's geometry in the looker's arc (all round for Skirmishers).
+export function withinVisionArc(u,t){if(allRoundVision(u))return true;const {w,h}=size(u);return arcHasShape(u,w,h,corners(t));}
+// The models a unit sees with and is seen by: each living model's base (a lone model, a character
+// or a war machine is one base), with its rank and file.
+function sightModels(s,u){
+ if(u.role==='warmachine'||isCharacter(u)){const {w,h}=size(u);return [{index:0,row:0,col:0,centre:{x:u.x,y:u.y},poly:corners(u),w,h}];}
+ return modelSquares(s,u).filter(m=>!m.dead).map(m=>({index:m.index,row:m.row,col:m.col,command:m.command,centre:localPoint(u,m.x+m.size/2,m.y+m.size/2),poly:[[m.x,m.y],[m.x+m.size,m.y],[m.x+m.size,m.y+m.size],[m.x,m.y+m.size]].map(([x,y])=>localPoint(u,x,y)),w:m.size,h:m.size}));}
+const insetTo=(c,points,f=.1)=>points.map(p=>({x:p.x+(c.x-p.x)*f,y:p.y+(c.y-p.y)*f}));
+const lookPoints=m=>[m.centre,...insetTo(m.centre,m.poly.slice(0,2))];
+const seenPoints=m=>[m.centre,...insetTo(m.centre,m.poly)];
+const boxOf=points=>({x0:Math.min(...points.map(p=>p.x)),y0:Math.min(...points.map(p=>p.y)),x1:Math.max(...points.map(p=>p.x)),y1:Math.max(...points.map(p=>p.y))});
+const boxesMeet=(a,b)=>a.x0<=b.x1+EPS&&b.x0<=a.x1+EPS&&a.y0<=b.y1+EPS&&b.y0<=a.y1+EPS;
+const featureBox=t=>t.points||t.line?boxOf(t.points??t.line):{x0:t.x-t.r,y0:t.y-t.r,x1:t.x+t.r,y1:t.y+t.r};
+// Where a line a→b crosses the segment p→q, as a fraction of the way from a (−1 if it does not).
+function crossAt(a,b,p,q){const rx=b.x-a.x,ry=b.y-a.y,sx=q.x-p.x,sy=q.y-p.y,den=rx*sy-ry*sx;if(Math.abs(den)<1e-12)return -1;const f=((p.x-a.x)*sy-(p.y-a.y)*sx)/den,g=((p.x-a.x)*ry-(p.y-a.y)*rx)/den;return f>=0&&f<=1&&g>=-1e-9&&g<=1+1e-9?f:-1;}
+// What could stand between u (a unit, or a pose) and t (a unit, or a point): the other units and the
+// terrain near them, with the heights that let a line pass over a unit. A unit entirely on a hill
+// sees over units not on a hill, and over lower ones on its own hill; a unit not on a hill sees a
+// unit entirely on a hill over other units; a Large Target sees and is seen over units that are not.
+function sightContext(s,u,t){
+ const host=v=>v?.joined?getUnit(s,v.joined)??v:v,hu=host(u),ht=t?.id?host(t):null,uHigh=entirelyOnHill(s,hu),tHigh=ht?entirelyOnHill(s,ht):null,uHill=hillUnder(s,hu),uLarge=isLargeTarget(hu),tLarge=!!ht&&isLargeTarget(ht);
+ const box=boxOf([...corners(hu),...(ht?corners(ht):[t])]),skip=new Set([u?.id,hu?.id,t?.id,ht?.id].filter(Boolean));
+ const blockers=combatants(s).filter(v=>v.x!==null&&aliveCount(v)>0&&!skip.has(v.id)).map(v=>{const poly=corners(v),hill=hillUnder(s,v);return {v,poly,box:boxOf(poly),hill,top:hill?Math.hypot(v.x-hillTop(hill).x,v.y-hillTop(hill).y):null,large:isLargeTarget(v)};}).filter(k=>boxesMeet(k.box,box));
+ const top=uHigh?Math.hypot(hu.x-hillTop(uHigh).x,hu.y-hillTop(uHigh).y):null;
+ const over=k=>(uHigh&&(!k.hill||(k.hill.id===uHigh.id&&top<k.top-EPS)))||(tHigh&&!uHill)||((uLarge||tLarge)&&!k.large);
+ const terrain=(s?.terrain??[]).filter(f=>f.sight&&f.sight!=='open'||f.blocksSight).map(f=>({t:f,sight:f.blocksSight?'blocks':f.sight,poly:f.points||f.line?shrink(f.points??f.line,.01):null,box:featureBox(f)})).filter(f=>boxesMeet(f.box,box));
+ return {terrain,blockers:blockers.filter(k=>!over(k)),uHigh,tHigh,uLarge,tLarge};}
+// Whether the segment a–b meets a polygon (or a line): crosses an edge, or lies inside it.
+const segCross=(a,b,c,d)=>{const d1=cross(a,b,c),d2=cross(a,b,d),d3=cross(c,d,a),d4=cross(c,d,b);return (d1>0)!==(d2>0)&&(d3>0)!==(d4>0);};
+function segmentMeets(a,b,poly){if(poly.length>2&&(inside(a,poly)||inside(b,poly)))return true;for(let i=0;i<(poly.length===2?1:poly.length);i++)if(segCross(a,b,poly[i],poly[(i+1)%poly.length]))return true;return false;}
+// Why the line from a (on a looking model centred at ca) to b (on a seen model, or a point, centred at
+// cb) is blocked: {code, feature or unit}; {obscured: feature} when a low obstacle gives cover; null when clear.
+function lineCheck(s,a,b,ca,cb,ctx){
+ const box={x0:Math.min(a.x,b.x),y0:Math.min(a.y,b.y),x1:Math.max(a.x,b.x),y1:Math.max(a.y,b.y)};
+ for(const f of ctx.terrain){if(!boxesMeet(f.box,box))continue;const t=f.t;
+  if(f.sight==='blocks'){if(f.poly?segmentMeets(a,b,f.poly)&&!(t.points&&(inside(a,t.points)||inside(b,t.points))):pointSegment({x:t.x,y:t.y},a,b)<t.r-EPS)return {code:'BLOCKED_BY_TERRAIN',feature:t.id,name:t.name};}
+  else if((f.sight==='wood'||f.sight==='hill')&&t.points&&!inside(ca,t.points)&&!inside(cb,t.points)&&segmentMeets(a,b,f.poly))return {code:f.sight==='wood'?'BLOCKED_BY_WOOD':'BLOCKED_BY_HILL',feature:t.id,name:t.name};}
+ if(s?.vortices?.length&&vortexBlocksSight(s,a,b))return {code:'BLOCKED_BY_TERRAIN',vortex:true,name:'a magical vortex'};
+ for(const k of ctx.blockers)if(boxesMeet(k.box,box)&&segmentMeets(a,b,k.poly))return {code:'BLOCKED_BY_MODEL',unit:k.v.id,name:k.v.name};
+ const wall=ctx.terrain.find(f=>f.sight==='obscures'&&f.t.line&&boxesMeet(f.box,box)&&crossAt(a,b,f.t.line[0],f.t.line[1])>.5);
+ return wall?{code:null,obscured:wall.t.id,name:wall.t.name}:null;}
+// The brief's pointVisibleFromModel: a point on the ground (a cannon's target point) seen from a pose
+// (a war machine, after it pivots). Returns {visible, code, line}.
+export function pointVisible(s,u,point,{ignore=[]}={}){const ctx=sightContext(s,u,point);ctx.blockers=ctx.blockers.filter(k=>!ignore.includes(k.v.id));const m=sightModels(s,u)[0],pose={x:m.centre.x,y:m.centre.y,heading:heading(u)};
+ if(!allRoundVision(u)&&!arcHas(pose,m.w,m.h,point))return {visible:false,code:'OUTSIDE_VISION_ARC'};let code=null;
+ for(const a of lookPoints(m)){const r=lineCheck(s,a,point,m.centre,point,ctx);if(!r?.code)return {visible:true,code:'VISIBLE',line:{from:a,to:point,obscured:!!r}};code??=r.code;}return {visible:false,code,line:null};}
+// Line of sight from unit u to unit t, model by model: the brief's modelCanSeeModel and unitCanSeeUnit.
+// lookers: 'front' (the front rank: a formed unit's rear ranks see only what the front of their file
+// sees), 'all', or a list of model indexes. arc:false ignores vision arcs. Each looker reports whether
+// it sees any model of t, why not (code), and one clear line. visible: at least one looker sees.
+export function sightPlan(s,u,t,{lookers='front',arc=true}={}){
+ if(!u||!t||u.x===null||t.x===null)return {visible:false,code:'BLOCKED_BY_TERRAIN',lookers:[]};
+ const ctx=sightContext(s,u,t),mine=sightModels(s,u),theirs=sightModels(s,t),all=!arc||allRoundVision(u);ctx.mine=mine;ctx.theirs=theirs;
+ const list=lookers==='front'?mine.filter(m=>m.row===0):lookers==='all'?mine:mine.filter(m=>lookers.includes(m.index));
+ // The points looked at: a lone model's centre and corners; a unit's model centres and its four
+ // corners (a line that reaches any part of a unit crosses its edge, and its own models never block).
+ const near=p=>theirs.reduce((b,m)=>Math.hypot(m.centre.x-p.x,m.centre.y-p.y)<Math.hypot(b.centre.x-p.x,b.centre.y-p.y)?m:b,theirs[0]);
+ const targets=!theirs.length?[]:t.role==='warmachine'||isCharacter(t)?seenPoints(theirs[0]).map(p=>({p,c:theirs[0].centre})):[...theirs.map(m=>({p:m.centre,c:m.centre})),...insetTo({x:t.x,y:t.y},corners(t),.05).map(p=>({p,c:near(p).centre}))];
+ const anyInArc=all||withinVisionArc(u,t);
+ const out=list.map(m=>{const pose={x:m.centre.x,y:m.centre.y,heading:heading(u)},from=lookPoints(m);let code='OUTSIDE_VISION_ARC',line=null,by=null;
+  if(anyInArc)look:for(const {p:b,c} of targets){if(!all&&!arcHas(pose,m.w,m.h,b))continue;for(const a of from){const r=lineCheck(s,a,b,m.centre,c,ctx);if(!r?.code){line={from:a,to:b,obscured:!!r};code='VISIBLE';by=null;break look;}if(code==='OUTSIDE_VISION_ARC'){code=r.code;by=r.feature??r.unit??null;}}}
+  return {index:m.index,row:m.row,col:m.col,sees:!!line,code,line,by};});
+ const seeing=out.filter(l=>l.sees),codes=out.map(l=>l.code).filter(c=>c!=='VISIBLE'),code=seeing.length?'VISIBLE':codes.find(c=>c!=='OUTSIDE_VISION_ARC')??codes[0]??'OUTSIDE_VISION_ARC';
+ return {visible:seeing.length>0,code,lookers:out,seeing:seeing.length,ctx};}
+// The brief's coverFromObserver: how much of t the shooting models' view of it is obscured. A rank
+// and file model is obscured when no shooter has a clear line to its centre (half obscured when the
+// only lines cross a low obstacle); a lone model, by the four corners of its base. Up to half: partial
+// cover (exactly half is partial); more than half: full. More than half of t's models (a lone model's
+// centre) in a wood: at least partial cover. A Large Target never has cover.
+export function coverFrom(s,u,t,shooters,ctx=sightContext(s,u,t)){
+ if(isLargeTarget(t))return {cover:'none',code:'VISIBLE',fraction:0,reason:'Large Target: no cover'};
+ const theirs=ctx.theirs??sightModels(s,t),lone=t.role==='warmachine'||isCharacter(t),looks=(ctx.mine??sightModels(s,u)).filter(m=>shooters.includes(m.index));
+ const points=lone?insetTo(theirs[0].centre,theirs[0].poly).map(p=>({p,m:theirs[0]})):theirs.map(m=>({p:m.centre,m})),why=new Map();
+ const hidden=({p,m})=>{let best=1;for(const sh of looks)for(const a of lookPoints(sh)){const r=lineCheck(s,a,p,sh.centre,m.centre,ctx);if(!r)return 0;if(!r.code)best=.5;why.set(r.name,(why.get(r.name)??0)+1);}return best;};
+ const fraction=points.length?points.reduce((n,x)=>n+hidden(x),0)/points.length:0,inWood=lone?woodUnder(s,theirs[0].centre):theirs.filter(m=>woodUnder(s,m.centre)).length*2>theirs.length?woodUnder(s,theirs.find(m=>woodUnder(s,m.centre)).centre):null;
+ let cover=fraction>.5+EPS?'full':fraction>EPS?'partial':'none';const by=[...why.entries()].sort((a,b)=>b[1]-a[1]).map(([n])=>n).filter(Boolean);
+ let reason=cover==='none'?'in the open':`${cover==='full'?'more than':'up to'} half ${lone?'of the model':'of its models'} obscured${by.length?' by '+by.slice(0,2).join(' and '):''}`;
+ if(cover==='none'&&inWood){cover='partial';reason=`more than half ${lone?'of the model':'of its models'} in ${inWood.name}`;}
+ return {cover,fraction,code:cover==='full'?'VISIBLE_FULL_COVER':cover==='partial'?'VISIBLE_PARTIAL_COVER':'VISIBLE',reason};}
+// The models that shoot: the front rank, one more rank for a unit entirely on a hill and one more
+// at a Large Target; with Volley Fire, half of each further rank, unless the unit has moved this
+// turn or is Standing & Shooting.
 const hasMoved=u=>!!u.movedThisTurn||(u.spent??0)>EPS;
-function shootingModels(s,u,{reaction=false}={}){const cells=modelSquares(s,u).filter(m=>!m.dead),volley=missileWeapon(u)?.volley&&!reaction&&!hasMoved(u);return cells.filter(m=>m.row===0||(volley&&cells.filter(v=>v.row===m.row).indexOf(m)<Math.ceil(cells.filter(v=>v.row===m.row).length/2)));}
+function shootingRanks(s,u,t){return 1+(entirelyOnHill(s,u)?1:0)+(isLargeTarget(t)?1:0);}
+function shootingModels(s,u,t,{reaction=false}={}){const cells=modelSquares(s,u).filter(m=>!m.dead),ranks=shootingRanks(s,u,t),volley=missileWeapon(u)?.volley&&!reaction&&!hasMoved(u);return cells.filter(m=>m.row<ranks||(volley&&cells.filter(v=>v.row===m.row).indexOf(m)<Math.ceil(cells.filter(v=>v.row===m.row).length/2)));}
 function shotPoint(u,m){return localPoint(u,m.x+m.size/2,m.y+m.size/2);}
-// A character in a unit sees past its own unit; the unit is seen as a whole.
-function sightBlocked(s,u,t,a,b){return terrainBlocksSight(s,a,b)||vortexBlocksSight(s,a,b)||s.units.some(v=>v.x!==null&&v.id!==u.id&&v.id!==t.id&&!v.joined&&v.id!==u.joined&&v.id!==t.joined&&aliveCount(v)>0&&(()=>{const poly=corners(v);return poly.some((p,i)=>intersects(a,b,p,poly[(i+1)%4]))||inside(a,poly)||inside(b,poly);})());}
-function modelCanSee(s,u,t,m,range){const origin=shotPoint(u,m),a=rad(-heading(u)),targets=[{x:t.x,y:t.y},...corners(t)];return targets.some(point=>{const dx=point.x-origin.x,dy=point.y-origin.y,lx=dx*Math.cos(a)-dy*Math.sin(a),ly=dx*Math.sin(a)+dy*Math.cos(a);return ly<0&&Math.abs(lx)<=-ly+m.size/2+EPS&&Math.hypot(dx,dy)<=range+EPS&&!sightBlocked(s,u,t,origin,point);});}
 export function canShoot(s,u){return s.stage==='shooting'&&u?.team===s.team&&u.role==='missile'&&u.x!==null&&aliveCount(u)>0&&!u.shot&&!u.engaged&&!u.fleeing&&!u.charge&&u.movementMode!=='march'&&!u.raiding;}
 export function shootingPlan(s,u,t,{reaction=false}={}){
  if(!u||!t||u.team===t.team||u.x===null||t.x===null||u.role!=='missile'||aliveCount(u)===0||aliveCount(t)===0)return {error:'Choose an enemy target for a missile regiment.'};
@@ -1171,10 +1281,19 @@ export function shootingPlan(s,u,t,{reaction=false}={}){
  if(reaction){const w=missileWeapon(u);if(u.engaged||u.fleeing)return {error:'Engaged or fleeing regiments cannot Stand & Shoot.'};if(w?.cumbersome)return {error:`${w.name}: a Cumbersome weapon cannot Stand & Shoot.`};if(!w?.quickShot&&gap(u,t)+EPS<profile(t).M)return {error:`Charger is too close for Stand & Shoot (less than M${profile(t).M}″).`};}
  else if(!canShoot(s,u))return {error:'This regiment cannot shoot in this phase.'};
  else if(t.engaged)return {error:'Cannot shoot at a regiment in combat.'};
- else if(screenedCharacter(s,u,t))return {error:SCREENED};
- const weapon=missileWeapon(u),range=weapon.range,half=range/2,clear=shootingModels(s,u,{reaction}).filter(m=>modelCanSee(s,u,t,m,reaction?Math.max(range,gap(u,t)+size(t).w):range));
- if(!clear.length)return {error:'Target is outside the front arc, range, or clear line of sight.',range,half};
- const distance=gap(u,t),models=clear.map(m=>{const point=shotPoint(u,m),poly=corners(t),modelDistance=Math.min(...poly.map((p,i)=>pointSegment(point,p,poly[(i+1)%4])));return {index:m.index,bs:m.command==='C'?championProfile(u).BS:profile(u).BS,distance:modelDistance,long:!reaction&&modelDistance>half+EPS};}),long=models.some(m=>m.long),modifiers=[];
+ // Line of sight first, then whether the target may be chosen. Each shooter needs the sight of the
+ // front model of its file (its own, in the front rank) and the target within its own range;
+ // Stand & Shoot assumes the charger comes into range, but not into sight.
+ const weapon=missileWeapon(u),range=weapon.range,half=range/2,reach=reaction?Math.max(range,gap(u,t)+size(t).w):range,sight=sightPlan(s,u,t),poly=corners(t);
+ if(!sight.visible)return {error:`No line of sight: ${sightText(sight.code)}.`,code:sight.code,sight,range,half};
+ if(!reaction&&screenedCharacter(s,u,t))return {error:SCREENED,code:'VISIBLE_BUT_ILLEGAL_TARGET',sight,range,half};
+ const files=new Map(sight.lookers.map(l=>[l.col,l])),fileView=m=>files.get(m.col)??[...files.values()].sort((a,b)=>Math.abs(a.col-m.col)-Math.abs(b.col-m.col))[0],distanceOf=m=>{const point=shotPoint(u,m);return inside(point,poly)?0:Math.min(...poly.map((p,i)=>pointSegment(point,p,poly[(i+1)%4])));};
+ const clear=shootingModels(s,u,t,{reaction}).filter(m=>fileView(m)?.sees&&distanceOf(m)<=reach+EPS);
+ if(!clear.length)return {error:'Out of range of every model that can see the target.',code:'OUT_OF_RANGE',sight,range,half};
+ const cover=coverFrom(s,u,t,clear.map(m=>m.index),sight.ctx);
+ const distance=gap(u,t),models=clear.map(m=>{const modelDistance=distanceOf(m);return {index:m.index,bs:m.command==='C'?championProfile(u).BS:profile(u).BS,distance:modelDistance,long:!reaction&&modelDistance>half+EPS};}),long=models.some(m=>m.long),modifiers=[];
+ // Cover: −1 To Hit for partial, −2 for full (never both).
+ if(cover.cover!=='none')modifiers.push({label:cover.cover==='full'?'Full cover':'Partial cover',value:cover.cover==='full'?-2:-1,reason:cover.reason});
  // Moving this turn costs −1 to hit; a unit that held its ground has not moved.
  if(!reaction&&hasMoved(u)&&!weapon.ignoreMove&&!weapon.quickShot)modifiers.push({label:weapon.ponderous?'Moved (Ponderous)':'Moved',value:weapon.ponderous?-2:-1});
  if(long)modifiers.push({label:'Long range',value:weapon.ignoreLong?0:-1});
@@ -1182,7 +1301,7 @@ export function shootingPlan(s,u,t,{reaction=false}={}){
  if(weapon.multiple)modifiers.push({label:'Multiple Shots D3',value:0});
  const modifier=modifiers.reduce((n,v)=>n+v.value,0),toHit=Math.max(2,Math.min(7,7-profile(u).BS-modifier));
  const hitNumbers=models.map(m=>Math.max(2,Math.min(7,7-m.bs-(modifier+(long&&!m.long&&!weapon.ignoreLong?1:0)))));
- return {target:t.id,weapon,range,half,distance,band:reaction?'Stand & Shoot':models.every(m=>m.long)?'far':long?'mixed':'close',shooters:clear.length,closeShooters:models.filter(m=>!m.long).length,farShooters:models.filter(m=>m.long).length,models,modifiers,modifier,toHit,hitLabel:Math.min(...hitNumbers)===Math.max(...hitNumbers)?`${hitNumbers[0]}+`:`${Math.min(...hitNumbers)}+–${Math.max(...hitNumbers)}+`,reaction};
+ return {target:t.id,weapon,range,half,distance,cover:cover.cover,coverReason:cover.reason,code:cover.code,lines:sight.lookers.filter(l=>l.line).map(l=>l.line),band:reaction?'Stand & Shoot':models.every(m=>m.long)?'far':long?'mixed':'close',shooters:clear.length,closeShooters:models.filter(m=>!m.long).length,farShooters:models.filter(m=>m.long).length,models,modifiers,modifier,toHit,hitLabel:Math.min(...hitNumbers)===Math.max(...hitNumbers)?`${hitNumbers[0]}+`:`${Math.min(...hitNumbers)}+–${Math.max(...hitNumbers)}+`,reaction};
 }
 // Every enemy unit and war machine (a war machine is shot at its own Toughness and Wounds, with
 // the crew's armour).
@@ -1239,7 +1358,7 @@ function directChargePlan(s,u,t){
  if(u.fleeing||aliveCount(u)===0||aliveCount(t)===0)return {error:'Choose an enemy regiment.'};
  if(gap(u,t)>chargeReach(u)+EPS)return {error:`Beyond the maximum ${chargeReach(u)}″ charge range.`};
  const a=rad(-heading(u)),dx=t.x-u.x,dy=t.y-u.y,lx=dx*Math.cos(a)-dy*Math.sin(a),ly=dx*Math.sin(a)+dy*Math.cos(a);
- if(!inVisionArc(u,t))return {error:'The target is outside the charger’s front arc.'};
+ if(!allRoundVision(u)&&!inVisionArc(u,t))return {error:'The target is outside the charger’s front arc.'};
  const face=chargeFace(u,t),offset={'front':0,'rear':180,'left flank':-90,'right flank':90}[face],out=normalize(heading(t)+offset),desired=normalize(out+180),angle=((desired-heading(u)+540)%360)-180;
  if(Math.abs(angle)>90+EPS)return {error:'This charge needs more than a 90° wheel.'};
  const after=Math.abs(angle)>EPS?wheelPose(u,angle):{...u},a2=rad(desired),f={x:Math.sin(a2),y:-Math.cos(a2)},right={x:Math.cos(a2),y:Math.sin(a2)};
@@ -1304,12 +1423,18 @@ function closeTheDoor(u,t,face){
  const offset=Math.max(-reach,Math.min(reach,along-own.w/2+f*own.w));
  return {...u,x:t.x+normal.x*(own.h+depth)/2+right.x*offset,y:t.y+normal.y*(own.h+depth)/2+right.y*offset,heading:normalize(out+180)};
 }
-export function chargePlan(s,u,t){
+// A charge needs the charger to see its target: one of its front-rank models seeing one model of
+// the target (a unit in Skirmish formation: more than half its models; exactly half is not enough).
+export function chargeSightError(s,u,t){const skirmish=u.formation==='skirmish',sight=sightPlan(s,u,t,{lookers:skirmish?'all':'front'});if(skirmish?sight.seeing*2>sight.lookers.length:sight.visible)return null;return {error:`The charger cannot see its target: ${sightText(sight.code)}.`,code:sight.code};}
+// sight:false for a charge already declared: line of sight is needed only when it is declared.
+export function chargePlan(s,u,t,{sight=true}={}){
  if(u?.joined)return {error:'A character in a unit charges with its unit.'};
  if(u&&hasRule(u,'noCharge'))return {error:'Earthen Ramparts: this unit cannot charge.'};
  if(u&&s.round===1&&(u.scouted||u.vanguarded))return {error:u.scouted?'Deployed as Scouts: it cannot charge in its first turn.':'Made a Vanguard move: it cannot charge in its first turn.'};
- const direct=directChargePlan(s,u,t);if(!direct.error)return direct;
- if(!u||!t||u.x===null||t.x===null||u.team===t.team||u.engaged||u.fleeing||u.rallied||gap(u,t)>chargeReach(u)+EPS||/front arc/.test(direct.error))return direct;
+ const direct=directChargePlan(s,u,t);
+ if(direct.error&&(!u||!t||u.x===null||t.x===null||u.team===t.team||u.engaged||u.fleeing||u.rallied||gap(u,t)>chargeReach(u)+EPS||/front arc/.test(direct.error)))return direct;
+ if(sight){const unseen=chargeSightError(s,u,t);if(unseen)return unseen;}
+ if(!direct.error)return direct;
  const face=chargeFace(u,t),offset={front:0,rear:180,'left flank':-90,'right flank':90}[face],out=normalize(heading(t)+offset),desired=normalize(out+180),own=size(u),theirs=size(t),depth=face.includes('flank')?theirs.w:theirs.h,width=face.includes('flank')?theirs.h:theirs.w;
  const oa=rad(out),normal={x:Math.sin(oa),y:-Math.cos(oa)},right={x:Math.cos(oa),y:Math.sin(oa)},others=combatants(s).filter(v=>v.x!==null&&v.id!==u.id&&v.id!==t.id),limit=chargeReach(u);
  // Two passes: first square up on the face for maximum frontage (with the free alignment) at any
@@ -1422,7 +1547,7 @@ export function resolveCharge(s,id,dice,random=Math.random){
  const u=getUnit(s,id);if(s.stage!=='movement'||s.movementStep!=='charges'||u?.charge?.status!=='declared')throw Error('Select a declared charge to resolve.');
  if(!Array.isArray(dice)||dice.length!==2||dice.some(d=>!Number.isInteger(d)||d<1||d>6))throw Error('A charge roll requires two D6.');
  if(u.charge.reaction==='pending')throw Error('Choose the defender’s reaction first.');
- const t=getUnit(s,u.charge.target),fled=u.charge.reaction==='flee',p=t?.x!==null?chargePlan(s,u,t):{error:'Target fled off the table.'},route=p.error?u.charge.initialPlan:p;
+ const t=getUnit(s,u.charge.target),fled=u.charge.reaction==='flee',p=t?.x!==null?chargePlan(s,u,t,{sight:false}):{error:'Target fled off the table.'},route=p.error?u.charge.initialPlan:p;
  // Charging through a vortex (difficult terrain): Movement −1, and the lower die counts.
  const chargePath=route?.end?[u,...(route.angle?[wheelPose(u,route.angle)]:[]),route.end]:[u],difficult=!!route?.end&&(sweptVortices(s,u,chargePath,{all:true}).length>0||terrainCrossed(s,u,chargePath).length>0),roll=difficult?Math.min(...dice):Math.max(...dice),swiftRoll=swift(u,random),range=Math.max(1,profile(u).M-(difficult&&!unitHasRule(u,'moveThroughCover')?1:0))+roll+swiftRoll,success=!p.error&&range+EPS>=p.cost;
  let end={...u},travel=0,disordered=null;
@@ -1640,7 +1765,8 @@ export function rocketPlan(s,target,{indirect=false}={}){
  const r=s.rocket;if(r.x===null)return {error:'Deploy the launcher first.'};if(!target||target.x===null||target.team==='ash'||aliveCount(target)===0)return {error:'Choose a surviving enemy regiment.'};if(target.engaged)return {error:'Cannot target a regiment in combat.'};if(screenedCharacter(s,r,target))return {error:SCREENED};
  const facing=facingTo(r,target),distance=polygonGap(corners({...r,heading:facing}),corners(target));
  if(distance<12-EPS||distance>48+EPS)return {error:'Target must be between 12″ and 48″ away.',distance};
- if(!indirect&&sightBlocked(s,r,target,{x:r.x,y:r.y},{x:target.x,y:target.y}))return {error:'Another regiment blocks line of sight. Choose Indirect Fire.',distance};
+ // Direct fire needs line of sight from the launcher, pivoted to face the target; Indirect Fire does not.
+ if(!indirect){const sight=sightPlan(s,{...r,heading:facing},target,{lookers:'all'});if(!sight.visible)return {error:`No line of sight: ${sightText(sight.code)}. Choose Indirect Fire.`,code:sight.code,distance};}
  return {target:target.id,distance,aim:{x:target.x,y:target.y},indirect,facing};
 }
 // Every enemy unit, including war machines, is a possible target.
@@ -1695,19 +1821,24 @@ export function cannonPlan(s,id,target,{mode='ball',aimShort=6}={}){
  if(!['ball','grape'].includes(mode))return {error:'Choose cannonball or grapeshot.'};
  const facing=facingTo(c,target),distance=polygonGap(corners({...c,heading:facing}),corners(target)),dx=target.x-c.x,dy=target.y-c.y,range=mode==='ball'?60:12;
  if(distance>range+EPS)return {error:`Target is beyond ${range}″ range.`,distance};
- if(sightBlocked(s,c,target,{x:c.x,y:c.y},{x:target.x,y:target.y}))return {error:'Another regiment blocks line of sight.',distance};
+ // Grapeshot needs line of sight to the target unit; a cannonball, to its target point (below).
+ if(mode==='grape'){const sight=sightPlan(s,{...c,heading:facing},target,{lookers:'all'});if(!sight.visible)return {error:`No line of sight: ${sightText(sight.code)}.`,code:sight.code,distance};}
  if(!Number.isFinite(aimShort)||aimShort<0||aimShort>10)return {error:'Aim from 0″ to 10″ short of the target.'};
  const length=Math.hypot(dx,dy),direction={x:dx/length,y:dy/length},aim={x:target.x-direction.x*aimShort,y:target.y-direction.y*aimShort};
  if(mode==='ball'&&(Math.hypot(aim.x-c.x,aim.y-c.y)>60+EPS||aim.y<0||aim.y>boardOf(s).height||aim.x<0||aim.x>boardOf(s).width||Math.hypot(aim.x-c.x,aim.y-c.y)<CANNON_BASE.h/2))return {error:'Choose an aim point on the battlefield within cannon range.'};
+ // The cannon must see its target point, whether or not it sees the target unit.
+ if(mode==='ball'){const seen=pointVisible(s,{...c,heading:facing},aim,{ignore:[target.id]});if(!seen.visible)return {error:`No line of sight to the target point: ${sightText(seen.code)}.`,code:seen.code,distance};}
  return {id,target:target.id,distance,direction,aim,mode,aimShort,facing};
 }
 export function cannonTargets(s,id,options={}){if(!canFireCannon(s,id))return [];return combatants(s).filter(u=>u.team==='ash'&&u.x!==null&&aliveCount(u)>0).map(unit=>({unit,...cannonPlan(s,id,unit,options)}));}
 function cannonMisfire(s,c,random){const result=rollD6(1,random)[0];if(result===1){c.wounds=0;c.crew=0;c.x=null;c.y=null;}else if(result<=4){c.wounds--;c.crew=Math.min(c.crew,c.wounds);c.disabledUntil=s.round+1;if(c.wounds<=0){c.crew=0;c.x=null;c.y=null;}}return result;}
 // A cannonball's bounce stops at the first impassable terrain in its path (Cannon Fire).
-function stopAtTerrain(s,a,b){let t=1;
+// flight: the ball's flight from its target point to where it strikes, which a feature the target
+// point is on does not stop.
+function stopAtTerrain(s,a,b,{flight=false}={}){let t=1;
  // Polygon and line features: hills, impassable terrain and high walls stop the ball where it meets them.
- for(const k of (s.terrain??[]).filter(k=>(k.points||k.line)&&(featureMovement(k)==='impassable'||k.kind==='hill'||k.high))){const pts=k.points??k.line;if(k.points&&inside(a,k.points)){t=0;break;}for(let i=0;i<(k.line?1:pts.length);i++){const p=pts[i],q=pts[(i+1)%pts.length],r={x:b.x-a.x,y:b.y-a.y},e={x:q.x-p.x,y:q.y-p.y},den=r.x*e.y-r.y*e.x;if(Math.abs(den)<1e-12)continue;const u1=((p.x-a.x)*e.y-(p.y-a.y)*e.x)/den,u2=((p.x-a.x)*r.y-(p.y-a.y)*r.x)/den;if(u1>=0&&u1<t&&u2>=-1e-9&&u2<=1+1e-9)t=u1;}}
- for(const k of (s.terrain??[]).filter(k=>k.impassable&&k.r!==undefined)){const dx=b.x-a.x,dy=b.y-a.y,fx=a.x-k.x,fy=a.y-k.y,A=dx*dx+dy*dy,B=2*(fx*dx+fy*dy),C=fx*fx+fy*fy-k.r*k.r;if(C<=0){t=0;break;}if(A<EPS)continue;const disc=B*B-4*A*C;if(disc<0)continue;const t1=(-B-Math.sqrt(disc))/(2*A);if(t1>=0&&t1<t)t=t1;}return {x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t,stopped:t<1};}
+ for(const k of (s.terrain??[]).filter(k=>(k.points||k.line)&&(featureMovement(k)==='impassable'||k.kind==='hill'||k.high))){const pts=k.points??k.line;if(k.points&&inside(a,k.points)){if(flight)continue;t=0;break;}for(let i=0;i<(k.line?1:pts.length);i++){const p=pts[i],q=pts[(i+1)%pts.length],r={x:b.x-a.x,y:b.y-a.y},e={x:q.x-p.x,y:q.y-p.y},den=r.x*e.y-r.y*e.x;if(Math.abs(den)<1e-12)continue;const u1=((p.x-a.x)*e.y-(p.y-a.y)*e.x)/den,u2=((p.x-a.x)*r.y-(p.y-a.y)*r.x)/den;if(u1>=0&&u1<t&&u2>=-1e-9&&u2<=1+1e-9)t=u1;}}
+ for(const k of (s.terrain??[]).filter(k=>k.impassable&&k.r!==undefined)){const dx=b.x-a.x,dy=b.y-a.y,fx=a.x-k.x,fy=a.y-k.y,A=dx*dx+dy*dy,B=2*(fx*dx+fy*dy),C=fx*fx+fy*fy-k.r*k.r;if(C<=0){if(flight)continue;t=0;break;}if(A<EPS)continue;const disc=B*B-4*A*C;if(disc<0)continue;const t1=(-B-Math.sqrt(disc))/(2*A);if(t1>=0&&t1<t)t=t1;}return {x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t,stopped:t<1};}
 function cannonballCells(s,start,end,direction){const length=Math.hypot(end.x-start.x,end.y-start.y),hits=[];
  for(const unit of allPieces(s).filter(u=>u.x!==null&&aliveCount(u)>0))for(const model of unit.role==='warmachine'?[{index:0,row:0,col:0,x:-size(unit).w/2,y:-size(unit).h/2,size:size(unit).w}]:modelSquares(s,unit).filter(m=>!m.dead)){
   const poly=unit.role==='warmachine'||MOUNTS[unit.mount]?corners(unit):[[model.x,model.y],[model.x+model.size,model.y],[model.x+model.size,model.y+model.size],[model.x,model.y+model.size]].map(([x,y])=>localPoint(unit,x,y));
@@ -1725,7 +1856,9 @@ export function fireCannon(s,id,targetId,mode,dice,random=Math.random,{aimShort=
  if(dice.strike==='misfire'){report.misfire=cannonMisfire(s,c,random);c.lastShot=report;return report;}
  const before=new Map(combatants(s).map(u=>[u.id,aliveCount(u)]));let cells=[];
  if(mode==='grape'){cells=Array.from({length:dice.strike},()=>({unit:target,model:null}));}
- else{report.strike={x:plan.aim.x+plan.direction.x*dice.strike,y:plan.aim.y+plan.direction.y*dice.strike};const bounce=dice.bounce==='misfire'?0:dice.bounce;report.end={x:report.strike.x+plan.direction.x*bounce,y:report.strike.y+plan.direction.y*bounce};{const stop=stopAtTerrain(s,report.strike,report.end);if(stop.stopped){report.end={x:stop.x,y:stop.y};report.stoppedByTerrain=true;}}cells=cannonballCells(s,report.strike,report.end,plan.direction);}
+ else{report.strike={x:plan.aim.x+plan.direction.x*dice.strike,y:plan.aim.y+plan.direction.y*dice.strike};
+  // It cannot fly past blocking terrain on its first roll: it stops there, and does not bounce.
+  {const flight=stopAtTerrain(s,plan.aim,report.strike,{flight:true});if(flight.stopped){report.strike={x:flight.x,y:flight.y};report.stoppedByTerrain=true;report.stoppedInFlight=true;}}const bounce=dice.bounce==='misfire'||report.stoppedInFlight?0:dice.bounce;report.end={x:report.strike.x+plan.direction.x*bounce,y:report.strike.y+plan.direction.y*bounce};{const stop=stopAtTerrain(s,report.strike,report.end);if(stop.stopped){report.end={x:stop.x,y:stop.y};report.stoppedByTerrain=true;}}cells=cannonballCells(s,report.strike,report.end,plan.direction);}
  // A cannonball: Armour Bane (2), so a 6 to wound improves its AP by 2, and Multiple Wounds (D3+1)
  // against a model with several Wounds (a war machine or a character).
  for(const cell of cells){if(aliveCount(cell.unit)===0)continue;report.hits++;{const los=lookOutSir(s,cell,random);if(los)(report.lookOutSir??=[]).push(los);}const ball=mode!=='grape',strength=ball?10:4,ap=ball?3:1,woundRoll=rollD6(1,random)[0],toWound=Math.max(2,Math.min(6,4+shotToughness(cell.unit)-strength)),bane=ball&&woundRoll===6?2:0,saveRoll=woundRoll>=toWound?rollD6(1,random)[0]:null,toSave=Math.max(2,Math.min(7,profileOfSave(cell.unit)+ap+bane)),warding=wardSave(cell.unit),ward=warding<=6&&saveRoll!==null&&saveRoll<toSave?rollD6(1,random)[0]:null,slain=saveRoll!==null&&saveRoll<toSave&&(ward===null||ward<warding);
@@ -1738,13 +1871,27 @@ export function fireCannon(s,id,targetId,mode,dice,random=Math.random,{aimShort=
 }
 function GprofileT(u){return profile(u).T;}
 function profileOfSave(u){return armourSave(u);}
+// ---- High ground ----
+// DIGITAL CONVENTION: a point on a hill stands as high as the fraction of the way it is from the
+// hill's edge to its top (0 at the edge, 1 at the top); off a hill, 0. A unit's fighting rank
+// stands where it meets the enemy: half an inch into the unit from the middle of their contact. A
+// fighting rank at least a tenth of the way higher up than the enemy's holds the high ground.
+export function elevationAt(s,p){let best=0;for(const h of s?.terrain??[]){if(h.kind!=='hill'||!h.points||!inside(p,h.points))continue;const top=hillTop(h),d=Math.hypot(p.x-top.x,p.y-top.y);if(d<EPS)return 1;
+ const far={x:top.x+(p.x-top.x)/d*100,y:top.y+(p.y-top.y)/d*100};let edge=Infinity;for(let i=0;i<h.points.length;i++){const f=crossAt(top,far,h.points[i],h.points[(i+1)%h.points.length]);if(f>1e-9)edge=Math.min(edge,f*100);}
+ best=Math.max(best,Number.isFinite(edge)?Math.max(0,1-d/edge):0);}return best;}
+const nearPoly=(p,poly)=>Math.min(...poly.map((q,i)=>pointSegment(p,q,poly[(i+1)%poly.length])));
+function contactMid(u,e){const pu=corners(u),pe=corners(e),pts=[...pu.filter(p=>nearPoly(p,pe)<.05),...pe.filter(p=>nearPoly(p,pu)<.05)];return pts.length?{x:pts.reduce((n,p)=>n+p.x,0)/pts.length,y:pts.reduce((n,p)=>n+p.y,0)/pts.length}:null;}
+const intoUnit=(p,v)=>{const d=Math.hypot(v.x-p.x,v.y-p.y)||1;return {x:p.x+(v.x-p.x)/d*.5,y:p.y+(v.y-p.y)/d*.5};};
+// Whether u's fighting rank stands higher than that of the enemy e it fights.
+export function highGround(s,u,e){if(!u||!e||u.x===null||e.x===null)return false;const p=contactMid(u,e);return !!p&&elevationAt(s,intoUnit(p,u))>elevationAt(s,intoUnit(p,e))+.1;}
 // ---- Combat result -------------------------------------------------------------------------
 // A combat holds every unit joined by engagements, so a side can have several units. Each side
 // adds up the wounds its units caused. Only its highest rank bonus counts (a unit engaged in its
 // flank or rear by an enemy unit of 10 or more models has none), one standard, flank and rear
 // attacks once per enemy unit, Close Order for every unit that has it, and Massed Infantry once,
 // for the side with the higher Unit Strength. A musician breaks a tie. A Disrupted unit (see
-// disruption) claims no Rank Bonus; the reasons are kept with the score.
+// disruption) claims no Rank Bonus; the reasons are kept with the score. A side with a fighting
+// rank higher than an enemy's it fights claims +1 for the high ground (a combat result, nothing else).
 function sideScores(s,units,stages){
  const unit=id=>getUnit(s,id),live=u=>!!u&&u.x!==null&&aliveCount(u)>0,side=team=>units.map(unit).filter(u=>u?.team===team);
  const strength=team=>side(team).filter(live).reduce((n,u)=>n+unitStrength(u),0);
@@ -1757,8 +1904,8 @@ function sideScores(s,units,stages){
   const closeOrder=alive.filter(u=>aliveCount(u)>=10&&!(u.role==='missile'&&u.faction==='chaos')).length;
   let flank=0;
   for(const e of foes.filter(e=>e.role!=='warmachine')){const faces=alive.filter(u=>u.role!=='warmachine'&&engagedWith(u,e)).map(u=>chargeFace(u,e));if(faces.some(f=>f==='left flank'||f==='right flank'))flank+=1;if(faces.includes('rear'))flank+=2;}
-  const massed=strength(team)>strength(other)?1:0,standard=alive.some(u=>commandAlive(u,'S'))?1:0,overkill=Math.min(5,stages.filter(st=>st.duel&&unit(st.from)?.team===team).reduce((n,st)=>n+(st.overkill??0),0));
-  score[team]={wounds,ranks,closeOrder,flank,massed,standard,overkill,musician:0,total:wounds+ranks+closeOrder+flank+massed+standard+overkill,disrupted:alive.filter(u=>rankBonus(u)>0&&disrupted(u)).map(u=>({unit:u.id,reasons:disruption(s,u).map(r=>r.text)}))};
+  const massed=strength(team)>strength(other)?1:0,standard=alive.some(u=>commandAlive(u,'S'))?1:0,high=alive.some(u=>!u.joined&&u.role!=='warmachine'&&foes.some(e=>live(e)&&engagedWith(u,e)&&highGround(s,u,e)))?1:0,overkill=Math.min(5,stages.filter(st=>st.duel&&unit(st.from)?.team===team).reduce((n,st)=>n+(st.overkill??0),0));
+  score[team]={wounds,ranks,closeOrder,flank,massed,standard,high,overkill,musician:0,total:wounds+ranks+closeOrder+flank+massed+standard+high+overkill,disrupted:alive.filter(u=>rankBonus(u)>0&&disrupted(u)).map(u=>({unit:u.id,reasons:disruption(s,u).map(r=>r.text)}))};
  }
  if(score.ash.total===score.iron.total){const music=team=>side(team).filter(live).some(u=>commandAlive(u,'M'));if(music('ash')!==music('iron')){const team=music('ash')?'ash':'iron';score[team].musician=1;score[team].total++;}}
  return score;

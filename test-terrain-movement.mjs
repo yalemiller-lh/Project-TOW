@@ -29,7 +29,7 @@ test('Move Through Cover removes the Movement penalty, not the terrain',()=>{
 });
 test('charging through difficult terrain keeps the lower die and Movement − 1',()=>{
  const s=battle();clearExcept(s,['A1','I1','A6']);const ch=G.getUnit(s,'A1'),tg=G.getUnit(s,'I1');Object.assign(G.getUnit(s,'A6'),{x:4,y:44});Object.assign(ch,{x:30,y:36,heading:0});Object.assign(tg,{x:30,y:24,heading:180});
- s.terrain=[wood('T1',rect(25,29,35,31))];Object.assign(s,{stage:'movement',team:'ash',movementStep:'declare'});G.declareCharge(s,'A1','I1');G.chargeReaction(s,'A1','hold');G.finishDeclarations(s);
+ s.terrain=[feature('W1','wall',30,30)];Object.assign(s,{stage:'movement',team:'ash',movementStep:'declare'});G.declareCharge(s,'A1','I1');G.chargeReaction(s,'A1','hold');G.finishDeclarations(s);
  const out=G.resolveCharge(s,'A1',[2,6],dice(3));assert.equal(out.difficult,true);assert.equal(out.roll,2,'the lower die');assert.equal(out.range,(3-1)+2);
 });
 test('dangerous terrain: a test for each model whose base touches it, once per feature; two features test separately',()=>{

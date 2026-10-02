@@ -78,7 +78,7 @@ function heldValue(s,u){const o=s.objectives?.items.find(o=>!o.removed&&BM.contr
 // played out (with the bot's charges already declared at that target), a unit left stranded when
 // it falls short, the objective it would leave, and what waiting to be charged by it would cost.
 function chargeChoices(s){
- const declared=s.units.filter(u=>u.team===ME&&u.charge?.status==='declared').map(u=>{const t=G.getUnit(s,u.charge.target);return {u,t,plan:t?G.chargePlan(s,u,t):{error:true}};}).filter(d=>d.t&&!d.plan.error);
+ const declared=s.units.filter(u=>u.team===ME&&u.charge?.status==='declared').map(u=>{const t=G.getUnit(s,u.charge.target);return {u,t,plan:t?G.chargePlan(s,u,t,{sight:false}):{error:true}};}).filter(d=>d.t&&!d.plan.error);
  const out=[];
  for(const u of s.units.filter(u=>u.team===ME&&G.canAct(s,u)&&!u.charge)){
   // Frenzy, or an Orc Mob that failed its Impetuous test, must charge if it can.
@@ -442,7 +442,7 @@ export function takeStep(s,random=Math.random){
   G.finishDeclarations(s,random);return {message:'The bot finishes charge declarations.'};
  }
  if(s.stage==='movement'&&s.movementStep==='charges'){
-  const u=s.units.find(u=>u.team===ME&&u.charge?.status==='declared');if(u){s.selected=u.id;const target=G.getUnit(s,u.charge.target),plan=target?.x!==null?G.chargePlan(s,u,target):{error:true},first=roll(random),reroll=u.faction==='orc'&&!plan.error&&G.profile(u).M+Math.max(...first)<plan.cost,dice=reroll?roll(random):first,out=G.resolveCharge(s,u.id,dice,random);return {message:`${u.id} ${out.success?'charge succeeds':out.pursuit?'pursues fleeing target':'charge fails'} (${reroll?'Warband reroll · ':''}${dice.join(', ')}).`,roll:{label:`${u.id} · Charge roll · keep highest`,dice,team:ME}};}
+  const u=s.units.find(u=>u.team===ME&&u.charge?.status==='declared');if(u){s.selected=u.id;const target=G.getUnit(s,u.charge.target),plan=target?.x!==null?G.chargePlan(s,u,target,{sight:false}):{error:true},first=roll(random),reroll=u.faction==='orc'&&!plan.error&&G.profile(u).M+Math.max(...first)<plan.cost,dice=reroll?roll(random):first,out=G.resolveCharge(s,u.id,dice,random);return {message:`${u.id} ${out.success?'charge succeeds':out.pursuit?'pursues fleeing target':'charge fails'} (${reroll?'Warband reroll · ':''}${dice.join(', ')}).`,roll:{label:`${u.id} · Charge roll · keep highest`,dice,team:ME}};}
   G.enterRemaining(s,random);return {message:'The bot begins remaining moves.'};
  }
  if(s.stage==='movement'){

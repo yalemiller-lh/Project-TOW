@@ -40,7 +40,7 @@ test('every unit that cannot be targeted says why',()=>{
  const s=battle();Object.assign(s,{stage:'shooting',team:'ash'});clearExcept(s,['A6','A1','I1','I2','I3']);const w=G.getUnit(s,'A6');Object.assign(w,{x:30,y:30,heading:0,spells:['fireball'],castThisTurn:[]});
  Object.assign(G.getUnit(s,'I1'),{x:30,y:2,heading:180});Object.assign(G.getUnit(s,'I2'),{x:48,y:30,heading:270});Object.assign(G.getUnit(s,'I3'),{x:22,y:20,heading:180});G.getUnit(s,'I3').engaged=['A1'];Object.assign(G.getUnit(s,'A1'),{x:22,y:24});
  const why=Object.fromEntries(G.spellTargetOptions(s,'A6','fireball').map(o=>[o.unit.id,o.reason]));
- assert.match(why.A1,/enemy/);assert.match(why.I1,/range/);assert.match(why.I2,/vision arc/);assert.match(why.I3,/Engaged/);
+ assert.match(why.A1,/enemy/);assert.match(why.I1,/range/);assert.equal(why.I2,null,'a Lone wizard sees all round');assert.match(why.I3,/Engaged/);
 });
 test('the Fated Dispel is once per turn for each side',()=>{
  // Red dispels Blue's Pillar with its Fated Dispel in its own Strategy phase; Blue keeps its own for Red's spells.

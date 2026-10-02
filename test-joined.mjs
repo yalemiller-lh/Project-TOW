@@ -22,7 +22,7 @@ test('joining in deployment: a front-rank place beside the command group; the bl
 });
 test('the character moves with its unit, cannot be given orders, and casts as itself',()=>{
  const s=joined();G.begin(s,()=>0,{firstPlayer:'ash'});const a=G.getUnit(s,'A1'),w=G.getUnit(s,'A6'),y=w.y;Object.assign(s,{stage:'movement',movementStep:'remaining'});
- assert.equal(G.canAct(s,w),false);assert.match(G.inactionReason(s,w)??'',/Joined to/);G.commitOrder(s,'A1',{kind:'advance',mode:'advance',distance:2});assert.ok(near(w.y,y-2,1e-9));
+ assert.equal(G.canAct(s,w),false);assert.equal(G.inactionReason(s,w),null,'it may cast Steed of Shadows on its own unit, which it always sees');G.commitOrder(s,'A1',{kind:'advance',mode:'advance',distance:2});assert.ok(near(w.y,y-2,1e-9));assert.match(G.inactionReason(s,w)??'',/Joined to/,'its unit has moved');
  w.spells=['darkness'];w.castThisTurn=[];s.stage='strategy';const e=G.getUnit(s,'I1');Object.assign(e,{x:a.x,y:a.y-14,heading:180});assert.equal(G.castBlockReason(s,'A6','darkness'),null);assert.equal(G.targetReason(s,'A6','darkness',e),null,'its own unit does not block it');
 });
 test('shooting: the character is no target; with fewer than five rank and file the hits are shared',()=>{
