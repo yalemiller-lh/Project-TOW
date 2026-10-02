@@ -6,7 +6,7 @@ export const THEMES={
 
 // How each Break test outcome and each destruction reads to the player.
 export const OUTCOME_LABEL={'give-ground':'Gave Ground','fall-back':'Fell Back in Good Order',break:'Broke and fled'};
-export const DESTRUCTION_LABEL={COMBAT_CASUALTIES:'Wiped out by attacks',RUN_DOWN:'Run down',FLED_OFF_TABLE:'Fled off the battlefield',SPECIAL_RULE:'Destroyed (special rule)'};
+export const DESTRUCTION_LABEL={COMBAT_CASUALTIES:'Wiped out by attacks',RUN_DOWN:'Run down',FLED_OFF_TABLE:'Fled off the battlefield',FELL_BACK_OFF_TABLE:'Fell back off the battlefield',SPECIAL_RULE:'Destroyed (special rule)'};
 export const PHASE_SUBSTEPS={
  strategy:['Start of turn & magic','Rally fleeing troops'],
  movement:['Declare charges','Charge reactions','Roll charges','Remaining moves & magic'],

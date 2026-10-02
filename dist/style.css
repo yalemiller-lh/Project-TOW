@@ -294,6 +294,8 @@ input[type=range]{accent-color:var(--army-primary)}.charge-step{background:var(-
 .terrain-line{fill:none;stroke:#b7a98a;stroke-width:6px;stroke-linecap:round}
 .terrain-line.high{stroke:#4b4a47;stroke-width:9px}
 .terrain-label{font:600 10px/1 system-ui,sans-serif;fill:#f6efd9;paint-order:stroke;stroke:#00000099;stroke-width:3px;pointer-events:none}
+[data-unit].panic-candidate{filter:drop-shadow(0 0 5px #ffb347) drop-shadow(0 0 2px #ffb347);cursor:pointer}
+.panic-controls{display:grid;gap:6px;margin:6px 0}
 .sight-line{stroke:#9be27a;stroke-width:1.5px;stroke-opacity:.8;pointer-events:none}
 .sight-line.obscured{stroke:#f2c14e;stroke-dasharray:4 3}
 .sight-blocker .terrain-area,.sight-blocker .terrain-line{stroke:#ff6b6b;stroke-width:3px}

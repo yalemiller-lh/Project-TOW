@@ -115,7 +115,7 @@ export function startOfTurn(s,team){
 // cost, rounded up. A unit only ever scores the larger award.
 export function casualtyVP(u){
  const cost=u.cost??0;if(!cost)return {vp:0,reason:null};
- if(u.destroyed||u.role==='warmachine'&&u.wounds<=0)return {vp:cost,reason:u.leftBoard==='fled'?'fled off the battlefield':'destroyed'};
+ if(u.destroyed||u.role==='warmachine'&&u.wounds<=0)return {vp:cost,reason:u.leftBoard==='fled'?'fled off the battlefield':u.leftBoard==='fell back'?'fell back off the battlefield':'destroyed'};
  if(u.fleeing)return {vp:Math.ceil(cost/2),reason:'fleeing'};
  const startUS=G.startingUnitStrength(u),startW=G.startingWounds(u),byWounds=startUS===startW;
  // Surviving strength, wherever the unit is (a pursuer can be off the table for a moment).
@@ -130,7 +130,7 @@ export function score(s,{final=s.stage==='finished'}={}){
  for(const t of s.trophies??[])lines[t.team].push({kind:'standard',vp:BONUS_VP.standard,detail:`Captured the standard of ${label(G.getUnit(s,t.unit))}`,round:t.round,committed:true});
  for(const u of G.allPieces(s)){
   const scorer=other(u.team),c=casualtyVP(u);if(c.vp)lines[scorer].push({kind:'casualty',vp:c.vp,detail:`${label(u)} ${c.reason} (${c.vp===u.cost?'full':'half of'} ${u.cost} pts)`,committed:final});
-  const gone=u.destroyed?(u.leftBoard==='fled'?'fled off the battlefield':'slain'):u.fleeing?'fleeing':null;
+  const gone=u.destroyed?(u.leftBoard==='fled'?'fled off the battlefield':u.leftBoard==='fell back'?'fell back off the battlefield':'slain'):u.fleeing?'fleeing':null;
   if(u.general&&gone)lines[scorer].push({kind:'general',vp:BONUS_VP.general,detail:`Enemy General ${label(u)} ${gone}`,committed:final});
   if(u.battleStandard&&gone)lines[scorer].push({kind:'battleStandard',vp:BONUS_VP.battleStandard,detail:`Enemy Battle Standard Bearer ${label(u)} ${gone}`,committed:final});
  }

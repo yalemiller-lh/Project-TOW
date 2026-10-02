@@ -295,6 +295,8 @@ input[type=range]{accent-color:var(--army-primary)}.charge-step{background:var(-
 .terrain-line{fill:none;stroke:#b7a98a;stroke-width:6px;stroke-linecap:round}
 .terrain-line.high{stroke:#4b4a47;stroke-width:9px}
 .terrain-label{font:600 10px/1 system-ui,sans-serif;fill:#f6efd9;paint-order:stroke;stroke:#00000099;stroke-width:3px;pointer-events:none}
+[data-unit].panic-candidate{filter:drop-shadow(0 0 5px #ffb347) drop-shadow(0 0 2px #ffb347);cursor:pointer}
+.panic-controls{display:grid;gap:6px;margin:6px 0}
 .sight-line{stroke:#9be27a;stroke-width:1.5px;stroke-opacity:.8;pointer-events:none}
 .sight-line.obscured{stroke:#f2c14e;stroke-dasharray:4 3}
 .sight-blocker .terrain-area,.sight-blocker .terrain-line{stroke:#ff6b6b;stroke-width:3px}
@@ -813,7 +815,7 @@ function claimStandard(s,u,by){if(u&&!u.standardClaimed&&commandAlive(u,'S')){u.
 function destroyUnit(s,u,reason='COMBAT_CASUALTIES',random=Math.random){if(!u)return;const pose=u.x!==null?{...u}:null,start=s&&pose?phaseStart(s,u):null,us=start?start.us:aliveCount(u)>0?unitStrength(u):(u.usBeforeLoss??0);
  // Characters in a unit that flees off the battlefield or is run down are lost with it; otherwise
  // they stand on as lone characters. A character slain in a unit leaves its place.
- for(const c of s?s.units.filter(c=>c.joined===u.id):[]){c.joined=null;if(reason==='FLED_OFF_TABLE'||reason==='RUN_DOWN')destroyUnit(s,c,reason,random);}if(u.charSlots)delete u.charSlots;if(s&&u.joined)detach(s,u);Object.assign(u,{x:null,y:null,destroyed:true,fleeing:false,engaged:null,raiding:null});u.destroyedBy??=reason;if(reason==='FLED_OFF_TABLE')u.leftBoard='fled';if(s)s.vortices=(s.vortices??[]).filter(v=>v.caster!==u.id);if(s&&pose&&us>=5)nearbyPanic(s,u,pose,'Nearby Friend Destroyed',random);}
+ for(const c of s?s.units.filter(c=>c.joined===u.id):[]){c.joined=null;if(reason==='FLED_OFF_TABLE'||reason==='FELL_BACK_OFF_TABLE'||reason==='RUN_DOWN')destroyUnit(s,c,reason,random);}if(u.charSlots)delete u.charSlots;if(s&&u.joined)detach(s,u);Object.assign(u,{x:null,y:null,destroyed:true,fleeing:false,engaged:null,raiding:null});u.destroyedBy??=reason;if(reason==='FLED_OFF_TABLE')u.leftBoard='fled';if(reason==='FELL_BACK_OFF_TABLE')u.leftBoard='fell back';if(s)s.vortices=(s.vortices??[]).filter(v=>v.caster!==u.id);if(s&&pose&&us>=5)nearbyPanic(s,u,pose,'Nearby Friend Destroyed',random);}
 // The prototype keeps 1″ between units. A unit that already stands closer than that to another
 // (friends left shoulder to shoulder after a combat) may move along or away from it, but never into it.
 // Only friends: an enemy is never reached by an ordinary move, only by a charge.
@@ -1185,7 +1187,7 @@ function leaveSpot(s,charId){const c=getUnit(s,charId),u=getUnit(s,c?.joined);if
  const ok=out.map(p=>({...p,heading:heading(u)})).sort((p,q)=>Math.hypot(p.x-c.x,p.y-c.y)-Math.hypot(q.x-c.x,q.y-c.y)).find(p=>!leaveError(s,charId,p));return ok??null;}
 function remember(s,u){s.history.push({id:u.id,x:u.x,y:u.y,heading:heading(u),moved:u.moved,spent:u.spent??0,movementMode:u.movementMode??null,movementMedium:u.movementMedium??null,movementFly:u.movementFly??null,difficultThisMove:!!u.difficultThisMove,movedThisTurn:!!u.movedThisTurn,marchRequired:u.marchRequired??null});}
 // A flyer that crosses a vortex is struck by it as well; its Movement suffers only for landing in it.
-function commitOrder(s,id,order,random=Math.random){const u=getUnit(s,id);const error=orderError(s,u,order);if(error)throw Error(error);const medium=order.medium??u.movementMedium??'ground',fly=medium==='fly'?(order.fly??u.movementFly??flyValues(u)[0]):null,plan=planMove(u,order),vortices=sweptVortices(s,u,movePoses(plan)),crossedTerrain=terrainCrossed(s,u,movePoses(plan),{fly:medium==='fly'}),entered=(medium==='fly'?vortexUnder(s,u,plan.start)||vortexUnder(s,u,plan.end):sweptVortices(s,u,movePoses(plan),{all:true}).length>0)||crossedTerrain.length>0,difficult=!!u.difficultThisMove||entered;if(s.stage==='movement')enterRemaining(s,random);remember(s,u);
+function commitOrder(s,id,order,random=Math.random){panicGate(s);const u=getUnit(s,id);const error=orderError(s,u,order);if(error)throw Error(error);const medium=order.medium??u.movementMedium??'ground',fly=medium==='fly'?(order.fly??u.movementFly??flyValues(u)[0]):null,plan=planMove(u,order),vortices=sweptVortices(s,u,movePoses(plan)),crossedTerrain=terrainCrossed(s,u,movePoses(plan),{fly:medium==='fly'}),entered=(medium==='fly'?vortexUnder(s,u,plan.start)||vortexUnder(s,u,plan.end):sweptVortices(s,u,movePoses(plan),{all:true}).length>0)||crossedTerrain.length>0,difficult=!!u.difficultThisMove||entered;if(s.stage==='movement')enterRemaining(s,random);remember(s,u);
  // A flyer suffers dangerous terrain only where it takes off or lands.
  const lands=v=>[plan.start,plan.end].some(p=>circleGap(corners(p),{x:v.x,y:v.y,r:v.radius??1.5})<EPS),struck=medium==='fly'?vortices.filter(v=>!VORTEX_RULES[v.spell]?.dangerous||lands(v)):vortices;const marchRequired=medium==='fly'?false:needsMarchTest(s,u),spent=(u.spent??0)+plan.cost,allowance=moveAllowance(u,{mode:plan.mode,medium,fly,difficult});Object.assign(u,{x:plan.end.x,y:plan.end.y,heading:plan.end.heading,spent,movementMode:plan.mode,movementMedium:medium,movementFly:fly,marchRequired,moved:plan.kind==='pivot'||spent>=allowance-EPS,movedThisTurn:true});if(entered)u.difficultThisMove=true;s.lastVortexHits=vortexMoveHits(s,u,struck,random,medium==='fly'?[plan.end]:movePoses(plan));
  // Dangerous terrain: the tests for each feature crossed (a flyer: where it takes off or lands).
@@ -1217,7 +1219,7 @@ function nextTurn(s,random=Math.random){if(s.stage!=='combat')throw Error('Finis
  // Start of Turn, in this order: (1) effects lasting until the casting side's next Start of Turn
  // end; (2) vortices move; (3) the format's start of turn (Raid & Burn).
  expireEffects(s,'start',`${s.round}:${s.team}`);s.vortexReports=driftVortices(s,random);s.reserveReports=reserveRolls(s,s.team,random);s.rocket.shot=false;s.rocket.lastShot=null;s.cannons.forEach(c=>{c.shot=false;c.lastShot=null;});s.history=[];s.selected=s.units.find(u=>u.team===s.team).id;formatRules(s)?.startOfTurn?.(s,s.team,random);}
-function nextPhase(s,random=Math.random){if(s.stage==='finished')throw Error('The battle is over.');if(s.pendingSpell)throw Error('Resolve the dispel of the spell just cast first.');if(s.stage==='strategy'&&s.units.some(u=>u.team===s.team&&u.x!==null&&u.fleeing&&!u.rallyAttempted))throw Error('Attempt to rally every fleeing regiment first.');if(s.units.some(u=>u.charge?.status==='declared'))throw Error('Resolve all declared charges first.');if(s.stage==='combat'&&(s.combatSession||s.pendingCombat||combatPairs(s).length))throw Error('Resolve every combat and its outcome first.');const i=PHASES.indexOf(s.stage);if(i<0)throw Error('Begin the battle first.');if(s.stage==='movement')for(const u of arrivals(s)){if(firstReinforcementSpot(s,u.id))throw Error(`Place ${u.name} first: it arrives as reinforcements this turn.`);u.reserve.arriving=null;}if(s.stage==='movement')for(const u of s.units.filter(u=>u.team===s.team&&u.movedThisTurn))endOfMove(s,u,random);s.reformOffers=null;s.movementReopened=false;s.movementHistory=i===1?s.history:i===2?s.movementHistory:null;if(i===3)nextTurn(s,random);else{s.stage=PHASES[i+1];s.history=[];if(s.stage==='movement'){s.movementStep='declare';if(!s.units.some(u=>u.team===s.team&&canAct(s,u)&&availableCharges(s,u).length))beginRemaining(s,random);}s.shootingSkipped=false;if(s.stage==='shooting'&&!phaseHasActions(s)){s.stage='combat';s.shootingSkipped=true;}if(s.stage==='combat')combatants(s).forEach(u=>u.combatResolved=false);}return s.stage;}
+function nextPhase(s,random=Math.random){if(s.stage==='finished')throw Error('The battle is over.');panicGate(s);if(s.pendingSpell)throw Error('Resolve the dispel of the spell just cast first.');if(s.stage==='strategy'&&s.units.some(u=>u.team===s.team&&u.x!==null&&u.fleeing&&!u.rallyAttempted))throw Error('Attempt to rally every fleeing regiment first.');if(s.units.some(u=>u.charge?.status==='declared'))throw Error('Resolve all declared charges first.');if(s.stage==='combat'&&(s.combatSession||s.pendingCombat||combatPairs(s).length))throw Error('Resolve every combat and its outcome first.');const i=PHASES.indexOf(s.stage);if(i<0)throw Error('Begin the battle first.');if(s.stage==='movement')for(const u of arrivals(s)){if(firstReinforcementSpot(s,u.id))throw Error(`Place ${u.name} first: it arrives as reinforcements this turn.`);u.reserve.arriving=null;}if(s.stage==='movement')for(const u of s.units.filter(u=>u.team===s.team&&u.movedThisTurn))endOfMove(s,u,random);s.reformOffers=null;s.movementReopened=false;s.movementHistory=i===1?s.history:i===2?s.movementHistory:null;if(i===3)nextTurn(s,random);else{s.stage=PHASES[i+1];s.history=[];if(s.stage==='movement'){s.movementStep='declare';if(!s.units.some(u=>u.team===s.team&&canAct(s,u)&&availableCharges(s,u).length))beginRemaining(s,random);}s.shootingSkipped=false;if(s.stage==='shooting'&&!phaseHasActions(s)){s.stage='combat';s.shootingSkipped=true;}if(s.stage==='combat')combatants(s).forEach(u=>u.combatResolved=false);}return s.stage;}
 // Movement can be reopened until the active army acts in Shooting (or, when Shooting
 // was skipped, in Combat). Its undo history is kept so the last moves can be taken back.
 function castIn(s,phase){return s.units.some(u=>u.team===s.team&&u.role==='wizard'&&u.castThisTurn.some(key=>SPELLS[key]?.phase===phase));}
@@ -1231,7 +1233,7 @@ function returnToMovement(s){if(!canReturnToMovement(s))throw Error('Movement ca
 // by its own Wizardly dispel when in range, or by the side's unused Fated Dispel.
 function canDispelAVortex(s,u){return (s.vortices??[]).some(v=>canDispelVortex(s,v.id??v.caster)&&(vortexDispellers(s,v.id??v.caster).some(w=>w.id===u.id)||fatedDispelAvailable(s,s.team)));}
 function phaseHasActions(s){
- if(s.stage==='deployment'||s.stage==='finished'||s.pendingSpell)return true;
+ if(s.stage==='deployment'||s.stage==='finished'||s.pendingSpell||s.panicPending)return true;
  // A reform still to choose keeps the phase open.
  if((s.reformOffers??[]).some(o=>reformOffer(s,o.unit)))return true;
  const active=s.units.filter(u=>u.team===s.team&&u.x!==null&&aliveCount(u)>0);
@@ -1526,7 +1528,7 @@ function castSpell(s,id,key,targetId,random=Math.random,{dispel='none',dispeller
 // kept apart in the report. A natural double 6 always succeeds and cannot be dispelled at once;
 // a natural double 1 miscasts.
 function attemptSpell(s,id,key,targetId,random=Math.random,{point=null}={}){
- const spell=SPELLS[key],block=castBlockReason(s,id,key);if(block)throw Error(block);
+ panicGate(s);const spell=SPELLS[key],block=castBlockReason(s,id,key);if(block)throw Error(block);
  if(targetless(spell))targetId??=id;
  const u=getUnit(s,id),t=getUnit(s,targetId),why=targetReason(s,id,key,t);if(why)throw Error(why);
  if(spell.template){const bad=templatePlacementError(s,id,key,point);if(bad)throw Error(bad);}
@@ -1905,7 +1907,7 @@ function characterHits(s,u,c,n,weapon,random){const toWound=Math.max(2,Math.min(
 // "Look Out, Sir!": a character in a unit with five or more rank and file, hit by shooting, is hit
 // on a 1; on a 2+ a member of the unit is hit in its place.
 function lookOutSir(s,cell,random){const c=cell.unit;if(!c?.joined)return null;const host=getUnit(s,c.joined);if(!host||aliveCount(host)<5)return null;const roll=rollD6(1,random)[0],saved=roll>=2;if(saved){cell.unit=host;cell.model=null;}return {character:c.id,roll,saved};}
-function shoot(s,id,target,random=Math.random){const u=getUnit(s,id),t=getUnit(s,target),plan=shootingPlan(s,u,t);if(plan.error)throw Error(plan.error);const result=fireMissiles(s,u,t,plan,random);u.shot=true;s.lastShooting=result;return result;}
+function shoot(s,id,target,random=Math.random){panicGate(s);const u=getUnit(s,id),t=getUnit(s,target),plan=shootingPlan(s,u,t);if(plan.error)throw Error(plan.error);const result=fireMissiles(s,u,t,plan,random);u.shot=true;s.lastShooting=result;return result;}
 
 // Charge routes use one measured leading-corner wheel, then a free alignment wheel.
 // Face selection is fixed by the charger's starting position.
@@ -2041,7 +2043,7 @@ function chargePlan(s,u,t,{sight=true}={}){
  return search(false)??search(true)??direct;
 }
 function declareCharge(s,id,target){
- const u=getUnit(s,id),t=getUnit(s,target);
+ panicGate(s);const u=getUnit(s,id),t=getUnit(s,target);
  if(s.stage!=='movement'||s.movementStep!=='declare'||!canAct(s,u))throw Error('Declare charges before Remaining Moves with an unengaged regiment.');
  if(isImpetuous(s,u)&&u.impetuousTest===null)throw Error(`${u.name} is Impetuous: roll its Impetuous test before declaring a charge.`);
  const p=chargePlan(s,u,t);if(p.error)throw Error(p.error);
@@ -2249,8 +2251,12 @@ function quickTerrain(s,random=Math.random){
  for(let guard=0;guard<40&&terrainPending(s);guard++){const ts=s.terrainSetup;
   if(ts.scatter){if(ts.scatter.count===null)scatterTerrainCount(s,random);const ids=[...ts.placed].sort(()=>random()-.5).slice(0,ts.scatter.count);scatterTerrain(s,ts.scatter.by,ids,random);continue;}
   if(ts.method!=='free'&&!ts.rollOff){terrainRollOff(s,random);continue;}
-  const team=ts.method==='free'?'ash':ts.next;if(!autoPlaceTerrain(s,team,random))passTerrain(s,team);}
+  const team=ts.method==='free'?'ash':ts.next;if(!autoPlaceTerrain(s,team,random,{score:(k,x,y)=>terrainCentrality(s,k,x,y)+random()*.05}))passTerrain(s,team);}
  return s.terrain;}
+// How central a spot is for a feature (higher is better), for the bot and Quick terrain: as near the
+// centre as the 12″ rule allows, measured against the board's half-width and half-height (so the
+// midfield between the long edges comes first), and out of both deployment zones.
+function terrainCentrality(s,key,x,y){const b=boardOf(s),d=Math.hypot((x-b.width/2)/(b.width/2),(y-b.height/2)/(b.height/2));let zone=false;try{zone=['ash','iron'].some(t=>{const z=zoneOf(s,t);return z?.length>2&&inside({x,y},z);});}catch{}return -d-(zone?1:0);}
 // One piece placed for a side at a random legal spot (the first piece in its selection that fits).
 function autoPlaceTerrain(s,team,random=Math.random,{key=null,score=null}={}){
  const ts=s.terrainSetup,b=boardOf(s),keys=key?[key]:[...new Set(ts.pool)];
@@ -2356,7 +2362,7 @@ function blastCells(s,point,radius){const out=[];for(const unit of allPieces(s).
  }
  }return out;}
 function fireRocket(s,targetId,profileKey,dice,random=Math.random,{indirect=false}={}){
- if(!canFireRocket(s))throw Error('The Deathshrieker cannot fire in this Shooting phase.');
+ panicGate(s);if(!canFireRocket(s))throw Error('The Deathshrieker cannot fire in this Shooting phase.');
  const profile=ROCKET_PROFILES[profileKey],target=getUnit(s,targetId),plan=rocketPlan(s,target,{indirect});if(!profile)throw Error('Choose a rocket profile.');if(plan.error)throw Error(plan.error);
  if(!dice||!([2,4,6,8,10,'misfire'].includes(dice.artillery))||!(dice.scatter==='hit'||Number.isInteger(dice.scatter)&&dice.scatter>=0&&dice.scatter<360))throw Error('Roll valid Artillery and Scatter dice.');
  const report={profile:profileKey,from:'A5',target:targetId,aim:plan.aim,impact:null,template:profile.template,artillery:dice.artillery,scatter:dice.scatter,indirect,misfire:null,affected:[],hits:0,unsaved:0};
@@ -2545,7 +2551,7 @@ function declineChallenges(s){const c=s.combatSession;while(c?.challenge?.stage=
 // A challenge choice is waiting: to issue (or not), to accept or refuse, or to name who retires.
 function challengePending(s){return ['issue','accept','nominate'].includes(s.combatSession?.challenge?.stage);}
 function beginCombat(s,id){
- if(s.stage!=='combat'||s.combatSession||s.pendingCombat)throw Error('Finish the current combat first.');
+ panicGate(s);if(s.stage!=='combat'||s.combatSession||s.pendingCombat)throw Error('Finish the current combat first.');
  const first=getUnit(s,id),units=first?.engaged&&first.x!==null?combatGroup(s,first).filter(u=>u.x!==null&&aliveCount(u)>0):[];
  if(units.length<2||!units.some(u=>!u.combatResolved))throw Error('Select an unresolved engaged regiment.');
  // A mounted character's mount strikes at its own Initiative (keyed "id:mount").
@@ -2655,10 +2661,10 @@ function fleeMove(s,u,distance,random=Math.random,depth=0){
  if(!clearOf(start))for(let turn=5;turn<=90;turn+=5){const l={...start,heading:normalize(heading(start)-turn)},r={...start,heading:normalize(heading(start)+turn)};if(clearOf(l)){start.heading=l.heading;break;}if(clearOf(r)){start.heading=r.heading;break;}}
  u.heading=start.heading;
  let travel=distance,end=forwardPose(start,travel);
- while(!offBoard(end,s)&&(others.some(v=>gap(end,v)<1-EPS)||terrainBlocks(s,corners(end),u))){travel+=.05;end=forwardPose(start,travel);}
+ while(!retreatOffBoard(s,start,end)&&(others.some(v=>gap(end,v)<1-EPS)||terrainBlocks(s,corners(end),u))){travel+=.05;end=forwardPose(start,travel);}
  const leave=forwardPose(start,Math.min(.02,travel)),path=hull([...corners(leave),...corners(end)]),crossed=others.filter(v=>polygonGap(path,corners(v))<EPS);
- const report={unit:u.id,distance:travel,passedThrough:crossed.map(v=>v.id),peril:[],panic:[],fledOffBoard:offBoard(end,s)};
- if(report.fledOffBoard)destroyUnit(s,u,'FLED_OFF_TABLE',random);
+ const report={unit:u.id,distance:travel,passedThrough:crossed.map(v=>v.id),peril:[],panic:[],fledOffBoard:retreatOffBoard(s,start,end)};
+ if(report.fledOffBoard)destroyUnit(s,u,u.fallingBack?'FELL_BACK_OFF_TABLE':'FLED_OFF_TABLE',random);
  else{
   const square=(pose,m)=>[[m.x,m.y],[m.x+m.size,m.y],[m.x+m.size,m.y+m.size],[m.x,m.y+m.size]].map(([x,y])=>localPoint(pose,x,y)),models=modelSquares(s,u).filter(m=>!m.dead);
   for(const enemy of crossed.filter(v=>v.team!==u.team))for(const m of models){
@@ -2728,7 +2734,9 @@ function isImpetuous(s,u){if(!u)return false;if(FACTIONS[u.faction??'chaos']?.im
 // of the phase ('phaseStart'). The FAQ settles the timing only for a destroyed unit (phase start).
 const PANIC_POLICY={loserStrength:'current'};
 // Tests one side makes together are taken nearest the cause first, then by unit id: the bot's
-// order and this build's default (a player cannot yet pick another).
+// order. A side whose player picks the order (s.panicChooser[team], set by the page for each side a
+// person commands) waits in s.panicPending when two or more of its units must test together, and
+// each test is taken when its player clicks the unit (choosePanic).
 const phaseId=s=>`${s.round}:${s.team}:${s.stage}`;
 // A unit as it stood at the start of this phase: its models and Unit Strength, recorded before its
 // first loss or removal in the phase (nothing else changes them mid-phase).
@@ -2754,14 +2762,28 @@ function queuePanic(s,event){if(event?.unit)(s.panicQueue??=[]).push(event);}
 // Take the queued tests (see above); returns the log entries made, in order. While a shot or blast
 // is still being resolved (s.panicHold) the tests wait for it.
 function resolvePanic(s,random=Math.random){
- if(s.panicResolving||s.panicHold)return [];s.panicResolving=true;const out=[];
- try{while(s.panicQueue?.length){const batch=s.panicQueue.splice(0),tests=[];
+ if(s.panicResolving||s.panicHold||s.panicPending)return [];s.panicResolving=true;const out=[];
+ try{while(s.panicQueue?.length){const batch=s.panicQueue.splice(0),seen=new Set();
   const order=batch.map((e,i)=>({e,i})).sort((a,b)=>(a.e.distance??0)-(b.e.distance??0)||String(a.e.unit).localeCompare(String(b.e.unit))||a.i-b.i).map(x=>x.e);
-  for(const ev of order){const u=getUnit(s,ev.unit);if(!u||panicExempt(s,u))continue;tests.push(takePanic(s,u,ev,random));}
-  for(const entry of tests)if(!entry.passed)panicRetreat(s,getUnit(s,entry.unit),entry,random);
-  out.push(...tests);}}
+  const ready=order.filter(ev=>{const u=getUnit(s,ev.unit);if(!u||seen.has(ev.unit)||panicExempt(s,u))return false;seen.add(ev.unit);return true;});
+  const count=team=>ready.filter(ev=>getUnit(s,ev.unit).team===team).length,chooses=ev=>{const team=getUnit(s,ev.unit).team;return !!s.panicChooser?.[team]&&count(team)>1;};
+  const tests=ready.filter(ev=>!chooses(ev)).map(ev=>takePanic(s,getUnit(s,ev.unit),ev,random)),waiting=ready.filter(chooses);out.push(...tests);
+  if(waiting.length){s.panicPending={tests:tests.map(e=>s.panicLog.indexOf(e)),waiting};break;}
+  panicRetreats(s,tests,random);}}
  finally{s.panicResolving=false;}
  return out;}
+function panicRetreats(s,tests,random){for(const entry of tests)if(!entry.passed)panicRetreat(s,getUnit(s,entry.unit),entry,random);}
+// The units whose player is to pick which tests next (null when none waits).
+function panicChoice(s){const p=s.panicPending;if(!p?.waiting?.length)return null;return {team:getUnit(s,p.waiting[0].unit)?.team,units:p.waiting.map(e=>e.unit),waiting:p.waiting.map(e=>({unit:e.unit,cause:e.cause,source:e.source??null}))};}
+// The player takes one waiting unit's test. Once the last is taken, the failed units retreat in the
+// order their tests were taken, and anything their retreats set off follows.
+function choosePanic(s,id,random=Math.random){
+ const p=s.panicPending,ev=p?.waiting.find(e=>e.unit===id);if(!ev)throw Error('That unit has no Panic test waiting.');
+ p.waiting=p.waiting.filter(e=>e!==ev);const u=getUnit(s,id),entry=u&&!panicExempt(s,u)?takePanic(s,u,ev,random):null;if(entry)p.tests.push(s.panicLog.indexOf(entry));
+ if(!p.waiting.length){delete s.panicPending;s.panicResolving=true;try{panicRetreats(s,p.tests.map(i=>s.panicLog[i]).filter(Boolean),random);}finally{s.panicResolving=false;}resolvePanic(s,random);}
+ return entry;}
+const PANIC_WAIT='Take the waiting Panic tests first: click each highlighted unit.';
+function panicGate(s){if(s?.panicPending)throw Error(PANIC_WAIT);}
 function takePanic(s,u,ev,random){
  u.panicTested=phaseId(s);const start=phaseStart(s,u),src=ev.source?getUnit(s,ev.source):null;
  const entry={unit:u.id,name:u.name,cause:ev.cause,source:ev.source??null,sourceName:src?.name??null,away:ev.away??null,phase:phaseId(s),phaseStartModels:start.models,phaseStartStrength:start.us,models:aliveCount(u),startModels:isCharacter(u)?1:startingModels(u),...(ev.distance!=null?{distance:ev.distance}:{}),...(ev.lost!=null?{lost:ev.lost}:{}),...(ev.killed!=null?{killed:ev.killed}:{})};
@@ -2779,7 +2801,7 @@ function panicRetreat(s,u,entry,random){
  const awayFrom=typeof entry.away==='string'?getUnit(s,entry.away):entry.away,from=awayFrom&&awayFrom.x!=null&&!awayFrom.destroyed&&(awayFrom.id?awayFrom.team!==u.team:true)?awayFrom:steadyEnemy(s,u);
  if(from)u.heading=normalize(Math.atan2(u.x-from.x,-(u.y-from.y))*180/Math.PI);
  const good=entry.models*2>entry.startModels,dice=rollD6(2,random),extra=swift(u,random),distance=(good?Math.max(...dice):dice[0]+dice[1])+extra;
- u.fleeing=true;u.moved=true;const move=fleeMove(s,u,distance,random);if(good&&u.x!==null)u.fleeing=false;syncJoined(s,u);
+ u.fleeing=true;u.moved=true;if(good)u.fallingBack=true;const move=fleeMove(s,u,distance,random);delete u.fallingBack;if(good)u.fleeing=false;syncJoined(s,u);
  Object.assign(entry,{outcome:good?'fall-back':'flee',retreatFrom:from?.id??null,fleeDice:dice,...(extra?{swift:extra}:{}),moved:move.distance,crossed:move.passedThrough.filter(id=>getUnit(s,id)?.team===u.team),fledOffBoard:move.fledOffBoard,destroyed:!!u.destroyed,move,
   ...(u.destroyed?{destroyedReason:move.fledOffBoard?(good?'fell back off the battlefield':'fled off the battlefield'):'lost to Peril or Dangerous Terrain tests while retreating'}:{})});
  return entry;}
@@ -2798,14 +2820,14 @@ function heavyCasualties(s,u,before=null,source=null,random=Math.random){const l
 function nearbyPanic(s,u,pose,cause,random=Math.random,{levies=false}={}){
  for(const f of s.units.filter(f=>f.team===u.team&&f.id!==u.id&&f.x!==null&&!f.joined&&aliveCount(f)>0&&(!levies||unitHasRule(f,'levies')))){const d=gap(f,pose);if(d<=6+EPS)queuePanic(s,{unit:f.id,cause,source:u.id,distance:d});}
  return resolvePanic(s,random).filter(e=>e.cause===cause&&e.source===u.id);}
-// One line of the Panic log, for the battle report.
-function panicText(e){
- const fmt=n=>Math.round(n*100)/100,why=`${e.cause}${e.sourceName&&e.cause!=='Heavy Casualties'?` (${e.sourceName}${e.distance!=null?`, ${fmt(e.distance)}″ away`:''})`:''}${e.lost?`: ${e.lost} of ${e.phaseStartModels} models lost this phase`:''}${e.killed?`: ${e.killed} model${e.killed===1?'':'s'} killed`:''}`;
- if(e.auto)return `${e.name}: Panic (${why}) passed automatically (${e.auto}).`;
- let t=`${e.name}: Panic (${why}), Leadership ${e.ld}, rolled ${e.dice.join('+')}${e.natural?` (${e.natural})`:''}${e.reroll?`, re-rolled ${e.reroll.join('+')} (Hold Your Ground)`:''}: ${e.passed?'passed':'failed'}.`;
+// One line of the Panic log, for the battle report; label(id) names units (default: their names).
+function panicText(e,label=null){
+ const fmt=n=>Math.round(n*100)/100,name=label?label(e.unit):e.name,sourceName=label&&e.source?label(e.source):e.sourceName,why=`${e.cause}${sourceName&&e.cause!=='Heavy Casualties'?` (${sourceName}${e.distance!=null?`, ${fmt(e.distance)}″ away`:''})`:''}${e.lost?`: ${e.lost} of ${e.phaseStartModels} models lost this phase`:''}${e.killed?`: ${e.killed} model${e.killed===1?'':'s'} killed`:''}`;
+ if(e.auto)return `${name}: Panic (${why}) passed automatically (${e.auto}).`;
+ let t=`${name}: Panic (${why}), Leadership ${e.ld}, rolled ${e.dice.join('+')}${e.natural?` (${e.natural})`:''}${e.reroll?`, re-rolled ${e.reroll.join('+')} (Hold Your Ground)`:''}: ${e.passed?'passed':'failed'}.`;
  if(e.passed||!e.outcome)return t;
  t+=` ${e.models}/${e.startModels} remain: ${e.outcome==='fall-back'?'Fall Back in Good Order':'flee'}. Movement dice ${e.fleeDice.join(',')}${e.swift?` + ${e.swift} Swiftstride`:''}: retreat ${fmt(e.moved)}″.`;
- if(e.crossed?.length)t+=` Fled through ${e.crossed.join(', ')}.`;if(e.destroyed)t+=` Destroyed: ${e.destroyedReason}.`;else if(e.outcome==='fall-back')t+=' It rallies.';
+ if(e.crossed?.length)t+=` Fled through ${e.crossed.map(id=>label?label(id):id).join(', ')}.`;if(e.destroyed)t+=` Destroyed: ${e.destroyedReason}.`;else if(e.outcome==='fall-back')t+=' It rallies.';
  return t;}
 // A broken unit turns directly away from the victor and flees.
 function fleeFrom(s,u,enemy,distance,random){
@@ -2817,6 +2839,11 @@ function stillTouching(a,b){return a.x!==null&&b.x!==null&&aliveCount(a)>0&&aliv
 // Units touching a mover when it sets off (the rest of its combat) only stop it if it would
 // move into them; everything else keeps the usual 1" away.
 const touchingAtStart=(s,u)=>new Set(combatants(s).filter(v=>v.id!==u.id&&v.x!==null&&aliveCount(v)>0&&gap(u,v)<EPS).map(v=>v.id));
+// A flee or a Fall Back in Good Order leaves the battlefield, and the whole unit is lost, when any
+// part of its footprint ends the move in contact with or beyond an edge (one it was not already
+// touching when it set off).
+function retreatOffBoard(s,start,end){const T=1e-6,b=boardOf(s),a=rectangle(start),r=rectangle(end),touch=x=>[x.left<=T,x.right>=b.width-T,x.top<=T,x.bottom>=b.height-T],was=touch(a);
+ return r.left< -T||r.right>b.width+T||r.top< -T||r.bottom>b.height+T||touch(r).some((t,i)=>t&&!was[i]);}
 function retreatPose(s,u,enemy,distance,stopNear=true){
  const dx=u.x-enemy.x,dy=u.y-enemy.y,len=Math.hypot(dx,dy)||1,dir={x:dx/len,y:dy/len},start={x:u.x,y:u.y},touching=touchingAtStart(s,u);let moved=0;
  for(let i=1;i<=Math.ceil(distance*20);i++){
@@ -2961,10 +2988,13 @@ function moveCombatLoser(s,random=Math.random){
  if(['break','fall-back'].includes(p.outcome)&&(PANIC_POLICY.loserStrength==='phaseStart'?phaseStart(s,loser).us:unitStrength(loser))>=5)p.panic=nearbyPanic(s,loser,{...loser},'Nearby Friend Flees Combat',random,{levies:p.outcome==='break'&&unitHasRule(loser,'levies')});
  release(s,loser);
  const dice=p.outcome==='give-ground'?null:combatDice(2,random),distance=p.outcome==='give-ground'?2:Math.max(1,(p.outcome==='fall-back'?Math.max(...dice):dice[0]+dice[1])-(FACTIONS[loser.faction??'chaos'].resolute?1:0)+(p.outcome==='give-ground'?0:swift(loser,random)));
- // Only a unit that Breaks can leave the battlefield (fleeing off it, it is lost); one that Gives
- // Ground or Falls Back in Good Order stops at the edge.
- const before={...loser},retreat=p.outcome==='break'?fleeFrom(s,loser,winner,distance,random):retreatPose(s,loser,winner,distance);if(retreat.offBoard&&loser.x!==null)destroyUnit(s,loser,'FLED_OFF_TABLE',random);
- if(p.outcome!=='break'&&loser.x!==null){const crossed=sweptVortices(s,loser,[before,{...loser}]);if(crossed.length)retreat.vortexHits=vortexMoveHits(s,loser,crossed,random,[before,{...loser}]);retreat.terrainHits=terrainMoveTests(s,loser,terrainCrossed(s,loser,[before,{...loser}]),[before,{...loser}],random);}
+ // A unit that Breaks flees. One that Falls Back in Good Order moves exactly like a fleeing unit
+ // (through units, and off the battlefield, lost, if it reaches the edge) and rallies if it
+ // survives. Only a Give Ground stops at the edge.
+ const before={...loser},flees=p.outcome!=='give-ground';if(flees){loser.fleeing=true;if(p.outcome==='fall-back')loser.fallingBack=true;}
+ const retreat=flees?fleeFrom(s,loser,winner,distance,random):retreatPose(s,loser,winner,distance);delete loser.fallingBack;if(retreat.offBoard&&loser.x!==null)destroyUnit(s,loser,p.outcome==='fall-back'?'FELL_BACK_OFF_TABLE':'FLED_OFF_TABLE',random);
+ if(p.outcome==='fall-back')loser.fleeing=false;
+ if(!flees&&loser.x!==null){const crossed=sweptVortices(s,loser,[before,{...loser}]);if(crossed.length)retreat.vortexHits=vortexMoveHits(s,loser,crossed,random,[before,{...loser}]);retreat.terrainHits=terrainMoveTests(s,loser,terrainCrossed(s,loser,[before,{...loser}]),[before,{...loser}],random);}
  if(p.outcome==='break'&&loser.x!==null)loser.fleeing=true;
  // Each Break outcome is kept as its own record, apart from the fleeing flag (a unit that Falls Back rallies).
  loser.combatOutcome={kind:{'give-ground':'GAVE_GROUND','fall-back':'FELL_BACK',break:'BROKE'}[p.outcome],round:s.round,outnumbered:!!p.outnumbered};
@@ -3072,7 +3102,7 @@ function finishCombat(s,choice='follow',random=Math.random,reformHeading=null){
  return out??s.lastCombat?.aftermath;
 }
 
-return {BATTLE_MAGIC,BOARD,CANNON_BASE,CHARACTERS,COMMAND_RANGE,COMMAND_SLOTS,DAEMONOLOGY,DARK_MAGIC,ELEMENTALISM,FACTIONS,FLAME_TEMPLATE,LORES,MISSILE,MOUNTS,PANIC_POLICY,PHASES,PROFILE,ROCKET_BASE,ROCKET_PROFILES,SAVE_VERSION,SIGNATURE_SPELLS,SIZE,SPELLS,SPELL_ROLL,SPELL_TEXT,TROOP_TYPES,VORTEX_RULES,WAR_MACHINE_CREW,WAR_MACHINE_STATS,WIZARDS,activeSpells,addEffect,aliveCount,allPieces,allRoundVision,answerChallenge,apBonus,armourPenalty,armourSave,armyName,arrivals,assailmentWaiting,attackAllocation,attemptSpell,autoDeploy,autoPlaceTerrain,autoReinforce,availableCharges,availableShots,baseProfile,baseSize,begin,beginCombat,beginVanguard,blocksRule,boardOf,canAct,canCast,canDispelVortex,canEndVortex,canEngineerReroll,canExchangeSignature,canFireCannon,canFireRocket,canRefuseChallenge,canReturnToMovement,canShoot,canStandShoot,cancelCharge,cannonFootprint,cannonPlan,cannonTargets,castBlockReason,castSpell,challengeCandidates,challengePending,championProfile,chargeFace,chargePlan,chargeReach,chargeReaction,chargeSightError,checkPosition,chooseDeploymentOrder,chooseDeploymentZone,chooseFirstTurn,chooseLoserAction,circleGap,combatGroup,combatPairs,combatants,combats,commandAlive,commandSlots,commitOrder,compareCombat,confirmDeployment,corners,coverFrom,createCannons,createGame,createWizard,declareCharge,declarePursuit,declineChallenges,declineReform,defendedObstacle,deployError,deploymentBatch,deploymentComplete,deploymentFacing,deploymentPieces,deploymentRollOff,deploymentTurn,deploymentZoneChooser,destroyUnit,difficultGround,dispelOptions,dispelVortex,disruption,driftVortices,duelist,effectRule,elevationAt,endOfPlayerTurn,endVanguard,endVortex,engagedWith,engineerReroll,enterRemaining,entirelyOnHill,equipment,exchangeSignature,expiryAt,fatedDispelAvailable,featureDistance,featureGap,featureMovement,featuresGap,fightCombatStep,filesOf,finishCombat,finishDeclarations,finishGame,finishReactions,finishShooting,fireCannon,fireRocket,firstReinforcementSpot,firstTurnRollOff,flameTemplate,flyValues,followingTurn,forwardPose,gap,generalOf,generateSpells,getUnit,hasRule,hasShield,heading,heavyCasualties,highGround,hillUnder,hitTarget,hold,holdInReserve,impetuousTest,inReserve,inVisionArc,inZone,inactionReason,insideZone,inspiringPresence,isCavalry,isCharacter,isDisrupted,isImpetuous,isLargeTarget,issueChallenge,joinError,joinUnit,joinedCharacters,leadership,leaveError,leaveSpot,leaveUnit,loadGame,localPoint,lookOutSir,machineReady,magicResistance,makeFeature,marchTest,maxWheel,missileWeapon,modelSquares,modelsInDifficult,mountProxy,move,moveAllowance,moveCombatLoser,moveTerrain,moveValue,movementError,movementOf,movementRemaining,needsMarchTest,nextPhase,nextTurn,nextTurnOf,nominateRetiree,normalize,opponentIds,opponents,orderError,overlaps,panicExempt,panicTest,panicText,passAssailment,passTerrain,phaseComplete,phaseHasActions,phaseStart,place,placeAt,placeCannon,placeReinforcement,placeRocket,placeTerrain,planMove,pointVisible,polygonGap,profile,pursuitTargets,quickTerrain,rally,ranksOf,rectangle,reformError,reformOffer,reformUnit,registerFormatRules,reinforcementError,reinforcementPose,relocationError,remainingWounds,removeCasualties,removeEffects,resolveCharge,resolveCombat,resolveDispel,resolvePanic,returnToMovement,rocketFootprint,rocketPlan,rocketTargets,rollCannonDice,rollCombatBreak,rollD6,rollRocketDice,rollScatter,rollSpells,saveGame,saveSummary,saveTarget,scatterTerrain,scatterTerrainCount,scoutPhase,scoutRollOff,screenedCharacter,setOpponent,shoot,shootingPlan,shootingTargets,shotToughness,sightPlan,sightText,signatureChoices,size,skipEmptySteps,spellRangeLabel,spellTargetOptions,spellTargets,standShootTooClose,startTerrain,startingModels,startingUnitStrength,startingWounds,syncJoined,targetReason,templatePlacementError,terrainBlocks,terrainCrossed,terrainGeometry,terrainPending,terrainPlacementError,terrainRollOff,troopType,turnDeployed,undo,unitHasRule,unitStrength,unitStrengthWith,unplace,vanguardPending,vanguardRollOff,vanguardState,vanguardUnits,vortexDispellers,wardSave,wheelCost,wheelPose,winnerCombat,withinVisionArc,woundTarget,zoneBounds,zoneOf};})();
+return {BATTLE_MAGIC,BOARD,CANNON_BASE,CHARACTERS,COMMAND_RANGE,COMMAND_SLOTS,DAEMONOLOGY,DARK_MAGIC,ELEMENTALISM,FACTIONS,FLAME_TEMPLATE,LORES,MISSILE,MOUNTS,PANIC_POLICY,PHASES,PROFILE,ROCKET_BASE,ROCKET_PROFILES,SAVE_VERSION,SIGNATURE_SPELLS,SIZE,SPELLS,SPELL_ROLL,SPELL_TEXT,TROOP_TYPES,VORTEX_RULES,WAR_MACHINE_CREW,WAR_MACHINE_STATS,WIZARDS,activeSpells,addEffect,aliveCount,allPieces,allRoundVision,answerChallenge,apBonus,armourPenalty,armourSave,armyName,arrivals,assailmentWaiting,attackAllocation,attemptSpell,autoDeploy,autoPlaceTerrain,autoReinforce,availableCharges,availableShots,baseProfile,baseSize,begin,beginCombat,beginVanguard,blocksRule,boardOf,canAct,canCast,canDispelVortex,canEndVortex,canEngineerReroll,canExchangeSignature,canFireCannon,canFireRocket,canRefuseChallenge,canReturnToMovement,canShoot,canStandShoot,cancelCharge,cannonFootprint,cannonPlan,cannonTargets,castBlockReason,castSpell,challengeCandidates,challengePending,championProfile,chargeFace,chargePlan,chargeReach,chargeReaction,chargeSightError,checkPosition,chooseDeploymentOrder,chooseDeploymentZone,chooseFirstTurn,chooseLoserAction,choosePanic,circleGap,combatGroup,combatPairs,combatants,combats,commandAlive,commandSlots,commitOrder,compareCombat,confirmDeployment,corners,coverFrom,createCannons,createGame,createWizard,declareCharge,declarePursuit,declineChallenges,declineReform,defendedObstacle,deployError,deploymentBatch,deploymentComplete,deploymentFacing,deploymentPieces,deploymentRollOff,deploymentTurn,deploymentZoneChooser,destroyUnit,difficultGround,dispelOptions,dispelVortex,disruption,driftVortices,duelist,effectRule,elevationAt,endOfPlayerTurn,endVanguard,endVortex,engagedWith,engineerReroll,enterRemaining,entirelyOnHill,equipment,exchangeSignature,expiryAt,fatedDispelAvailable,featureDistance,featureGap,featureMovement,featuresGap,fightCombatStep,filesOf,finishCombat,finishDeclarations,finishGame,finishReactions,finishShooting,fireCannon,fireRocket,firstReinforcementSpot,firstTurnRollOff,flameTemplate,flyValues,followingTurn,forwardPose,gap,generalOf,generateSpells,getUnit,hasRule,hasShield,heading,heavyCasualties,highGround,hillUnder,hitTarget,hold,holdInReserve,impetuousTest,inReserve,inVisionArc,inZone,inactionReason,insideZone,inspiringPresence,isCavalry,isCharacter,isDisrupted,isImpetuous,isLargeTarget,issueChallenge,joinError,joinUnit,joinedCharacters,leadership,leaveError,leaveSpot,leaveUnit,loadGame,localPoint,lookOutSir,machineReady,magicResistance,makeFeature,marchTest,maxWheel,missileWeapon,modelSquares,modelsInDifficult,mountProxy,move,moveAllowance,moveCombatLoser,moveTerrain,moveValue,movementError,movementOf,movementRemaining,needsMarchTest,nextPhase,nextTurn,nextTurnOf,nominateRetiree,normalize,opponentIds,opponents,orderError,overlaps,panicChoice,panicExempt,panicTest,panicText,passAssailment,passTerrain,phaseComplete,phaseHasActions,phaseStart,place,placeAt,placeCannon,placeReinforcement,placeRocket,placeTerrain,planMove,pointVisible,polygonGap,profile,pursuitTargets,quickTerrain,rally,ranksOf,rectangle,reformError,reformOffer,reformUnit,registerFormatRules,reinforcementError,reinforcementPose,relocationError,remainingWounds,removeCasualties,removeEffects,resolveCharge,resolveCombat,resolveDispel,resolvePanic,returnToMovement,rocketFootprint,rocketPlan,rocketTargets,rollCannonDice,rollCombatBreak,rollD6,rollRocketDice,rollScatter,rollSpells,saveGame,saveSummary,saveTarget,scatterTerrain,scatterTerrainCount,scoutPhase,scoutRollOff,screenedCharacter,setOpponent,shoot,shootingPlan,shootingTargets,shotToughness,sightPlan,sightText,signatureChoices,size,skipEmptySteps,spellRangeLabel,spellTargetOptions,spellTargets,standShootTooClose,startTerrain,startingModels,startingUnitStrength,startingWounds,syncJoined,targetReason,templatePlacementError,terrainBlocks,terrainCentrality,terrainCrossed,terrainGeometry,terrainPending,terrainPlacementError,terrainRollOff,troopType,turnDeployed,undo,unitHasRule,unitStrength,unitStrengthWith,unplace,vanguardPending,vanguardRollOff,vanguardState,vanguardUnits,vortexDispellers,wardSave,wheelCost,wheelPose,winnerCombat,withinVisionArc,woundTarget,zoneBounds,zoneOf};})();
 const BM=(()=>{// Battle March rules layered on the core engine: objectives, objective control, scoring and the
 // end of the game. The engine calls these hooks through registerFormatRules; the UI and the bot
 // call the same functions.
@@ -3188,7 +3218,7 @@ function startOfTurn(s,team){
 // cost, rounded up. A unit only ever scores the larger award.
 function casualtyVP(u){
  const cost=u.cost??0;if(!cost)return {vp:0,reason:null};
- if(u.destroyed||u.role==='warmachine'&&u.wounds<=0)return {vp:cost,reason:u.leftBoard==='fled'?'fled off the battlefield':'destroyed'};
+ if(u.destroyed||u.role==='warmachine'&&u.wounds<=0)return {vp:cost,reason:u.leftBoard==='fled'?'fled off the battlefield':u.leftBoard==='fell back'?'fell back off the battlefield':'destroyed'};
  if(u.fleeing)return {vp:Math.ceil(cost/2),reason:'fleeing'};
  const startUS=G.startingUnitStrength(u),startW=G.startingWounds(u),byWounds=startUS===startW;
  // Surviving strength, wherever the unit is (a pursuer can be off the table for a moment).
@@ -3203,7 +3233,7 @@ function score(s,{final=s.stage==='finished'}={}){
  for(const t of s.trophies??[])lines[t.team].push({kind:'standard',vp:BONUS_VP.standard,detail:`Captured the standard of ${label(G.getUnit(s,t.unit))}`,round:t.round,committed:true});
  for(const u of G.allPieces(s)){
   const scorer=other(u.team),c=casualtyVP(u);if(c.vp)lines[scorer].push({kind:'casualty',vp:c.vp,detail:`${label(u)} ${c.reason} (${c.vp===u.cost?'full':'half of'} ${u.cost} pts)`,committed:final});
-  const gone=u.destroyed?(u.leftBoard==='fled'?'fled off the battlefield':'slain'):u.fleeing?'fleeing':null;
+  const gone=u.destroyed?(u.leftBoard==='fled'?'fled off the battlefield':u.leftBoard==='fell back'?'fell back off the battlefield':'slain'):u.fleeing?'fleeing':null;
   if(u.general&&gone)lines[scorer].push({kind:'general',vp:BONUS_VP.general,detail:`Enemy General ${label(u)} ${gone}`,committed:final});
   if(u.battleStandard&&gone)lines[scorer].push({kind:'battleStandard',vp:BONUS_VP.battleStandard,detail:`Enemy Battle Standard Bearer ${label(u)} ${gone}`,committed:final});
  }
@@ -3239,7 +3269,7 @@ const P=(()=>{const THEMES={
 
 // How each Break test outcome and each destruction reads to the player.
 const OUTCOME_LABEL={'give-ground':'Gave Ground','fall-back':'Fell Back in Good Order',break:'Broke and fled'};
-const DESTRUCTION_LABEL={COMBAT_CASUALTIES:'Wiped out by attacks',RUN_DOWN:'Run down',FLED_OFF_TABLE:'Fled off the battlefield',SPECIAL_RULE:'Destroyed (special rule)'};
+const DESTRUCTION_LABEL={COMBAT_CASUALTIES:'Wiped out by attacks',RUN_DOWN:'Run down',FLED_OFF_TABLE:'Fled off the battlefield',FELL_BACK_OFF_TABLE:'Fell back off the battlefield',SPECIAL_RULE:'Destroyed (special rule)'};
 const PHASE_SUBSTEPS={
  strategy:['Start of turn & magic','Rally fleeing troops'],
  movement:['Declare charges','Charge reactions','Roll charges','Remaining moves & magic'],
@@ -3336,7 +3366,7 @@ function playFight(s,charges,firstId,team=ME,n=SIMS){
 function fightOut(s,charges,firstId,team,n){
  let total=0,wins=0,played=0;
  for(let i=0;i<n;i++){
-  const c=structuredClone(s);Object.assign(c,{stage:'combat',team,pendingSpell:null,combatSession:null,pendingCombat:null});
+  const c=sim(s);Object.assign(c,{stage:'combat',team,pendingSpell:null,combatSession:null,pendingCombat:null});
   for(const {u,t,plan}of charges){const cu=G.getUnit(c,u.id),ct=G.getUnit(c,t.id);Object.assign(cu,{x:plan.end.x,y:plan.end.y,heading:G.heading(plan.end)});cu.engaged=[...new Set([...asList(cu.engaged),ct.id])];ct.engaged=[...new Set([...asList(ct.engaged),cu.id])];cu.charge={target:ct.id,status:'success',distance:plan.cost??0,face:plan.face??'front'};}
   for(const v of G.combatants(c))v.combatResolved=false;
   const r=seeded(i+1);
@@ -3399,8 +3429,8 @@ function waiting(s,u,t){if(t.role==='warmachine'||t.engaged||t.fleeing)return 0;
 // (Missile troops never charge as the lesser evil: they can shoot, or Stand & Shoot.)
 const worthCharging=o=>o.ev>Math.max(0,o.wait)+.02*points(o.u)||o.u.role==='infantry'&&o.wait<-.25*points(o.u)&&o.ev>o.wait+.15*points(o.u);
 // A volley played out: what it costs the enemy.
-function shotValue(s,u,t){let v=0;for(let i=0;i<6;i++){const c=structuredClone(s);try{G.shoot(c,u.id,t.id,seeded(i+31));v+=swing(s,c)/6;}catch{}}return v;}
-function cannonValue(s,c,t,mode){let v=0;for(let i=0;i<6;i++){const k=structuredClone(s),r=seeded(i+41);try{G.fireCannon(k,c.id,t.id,mode,G.rollCannonDice(r),r,{aimShort:6});v+=swing(s,k)/6;}catch{}}return v;}
+function shotValue(s,u,t){let v=0;for(let i=0;i<6;i++){const c=sim(s);try{G.shoot(c,u.id,t.id,seeded(i+31));v+=swing(s,c)/6;}catch{}}return v;}
+function cannonValue(s,c,t,mode){let v=0;for(let i=0;i<6;i++){const k=sim(s),r=seeded(i+41);try{G.fireCannon(k,c.id,t.id,mode,G.rollCannonDice(r),r,{aimShort:6});v+=swing(s,k)/6;}catch{}}return v;}
 // In its Strategy phase the bot tries to dispel an enemy vortex near its units: its wizard when
 // in range, otherwise the side's Fated Dispel.
 function dispelVortices(s,random){
@@ -3512,13 +3542,13 @@ function takeDeploymentStep(s,random=null){
  if(choice==='vanguard'){const u=G.vanguardUnits(s,ME)[0];G.endVanguard(s,u.id,false);return {message:`The bot keeps ${u.name} where it was deployed (no Vanguard move).`};}
  return null;
 }
-// Terrain: hills near its own zone (where its guns and shooters stand), the rest away from its own
-// lines; scattering, it moves the features nearest its own zone.
+// Terrain: every feature as near the centre as the rules allow, in the midfield rather than either
+// deployment zone (the user's choice, 2 October 2026); scattering, it moves the features nearest its own zone.
 function terrainStep(s,random){
  const ts=s.terrainSetup,z=G.zoneOf(s,ME),zone={x:z.reduce((n,p)=>n+p.x,0)/z.length,y:z.reduce((n,p)=>n+p.y,0)/z.length},near=t=>Math.hypot(t.x-zone.x,t.y-zone.y);
  if(ts.scatter){if(ts.scatter.count===null){const n=G.scatterTerrainCount(s,random);return {message:`The bot rolls to scatter: ${n} feature${n===1?'':'s'}.`};}
   const ids=ts.placed.map(id=>s.terrain.find(t=>t.id===id)).sort((a,b)=>near(a)-near(b)).slice(0,ts.scatter.count).map(t=>t.id),out=G.scatterTerrain(s,ME,ids,random);return {message:`The bot scatters ${out.length} feature${out.length===1?'':'s'}: ${out.map(r=>`${s.terrain.find(t=>t.id===r.id).name} ${r.hit?'stays':'moves '+Math.round(r.moved*10)/10+'″'}`).join(', ')}.`};}
- const f=G.autoPlaceTerrain(s,ME,random,{score:(k,x,y)=>(G.makeFeature(k,0,0).kind==='hill'?-1:1)*Math.hypot(x-zone.x,y-zone.y)+random()*2});
+ const roll=random??Math.random,f=G.autoPlaceTerrain(s,ME,roll,{score:(k,x,y)=>G.terrainCentrality(s,k,x,y)+roll()*.05});
  if(f)return {message:`The bot places ${f.name}.`};G.passTerrain(s,ME);return {message:'The bot places no more terrain.'};}
 // The bot plans its whole remaining deployment against what is on the table now, then places
 // the first unit of that plan: war machines and shooters first for a gun line, blocks first
@@ -3526,7 +3556,7 @@ function terrainStep(s,random){
 const PLAN_ORDER={empire:['warmachine','missile','infantry','character','wizard'],other:['infantry','missile','warmachine','character','wizard']};
 function deployNext(s,random=null){
  if(G.deploymentTurn(s)!==ME)throw Error('It is not the bot’s turn to deploy.');
- const trial=structuredClone(s);trial.deployOrder.auto=true;
+ const trial=sim(s);trial.deployOrder.auto=true;
  for(const p of G.deploymentPieces(trial,ME))if(!p.deployed){p.x=null;p.y=null;}
  try{deployOpponent(trial,random);}catch{}
  const order=PLAN_ORDER[s.units.find(u=>u.team===ME)?.faction==='empire'?'empire':'other'];
@@ -3562,7 +3592,11 @@ function aiChallenge(s){
   if(!G.canRefuseChallenge(s)||best.v>-5){G.answerChallenge(s,best.k);return {message:`${name(best.k)} accepts ${name(ch.challenger)}’s challenge.`};}G.answerChallenge(s,null);return {message:`The bot refuses ${name(ch.challenger)}’s challenge.`};}
  // A refused challenge: the most dangerous enemy fighter retires.
  const pick=G.challengeCandidates(s,ch.refusedBy).sort((a,b)=>duelWorth(s,b)-duelWorth(s,a))[0];G.nominateRetiree(s,pick);return {message:`${name(pick)} must retire to the rear.`};}
+// A copy of the battle for the bot to play out: it never waits for the player to pick Panic tests.
+const sim=s=>{const c=structuredClone(s);delete c.panicChooser;return c;};
 function humanDecision(s){
+ // Two or more of the player's units must test for Panic together: the player clicks each in turn.
+ {const c=G.panicChoice(s);if(c)return {id:c.units[0],kind:'panic',message:`Panic: ${c.units.length} of your units must test together. Click each highlighted unit to take its test, in the order you choose.`};}
  {const o=(s.reformOffers??[]).find(o=>G.getUnit(s,o.unit)?.team===THEM&&G.reformOffer(s,o.unit));if(o)return {id:o.unit,kind:'reform',message:'Choose a facing to reform, or keep it.'};}
  if(G.challengePending(s)&&s.combatSession.challenge.team===THEM){const ch=s.combatSession.challenge;return {id:s.selected,kind:'challenge',message:ch.stage==='issue'?'Issue a challenge, or fight on without one.':ch.stage==='accept'?'Accept the challenge, or refuse it.':'Name the model that must retire.'};}
  if(s.pendingSpell&&G.getUnit(s,s.pendingSpell.caster)?.team===ME)return {id:s.pendingSpell.caster,kind:'dispel',message:`Choose how to dispel ${G.SPELLS[s.pendingSpell.key].name}.`};
@@ -3601,7 +3635,7 @@ function resolveCombatDecision(s,random){
 }
 
 function shouldAct(s){
- if(s.stage==='deployment'||s.stage==='finished')return false;
+ if(s.stage==='deployment'||s.stage==='finished'||s.panicPending)return false;
  if(s.pendingSpell)return G.getUnit(s,s.pendingSpell.caster)?.team===THEM;
  if(s.team===ME)return !humanDecision(s);
  return s.stage==='movement'&&s.movementStep==='reactions'&&s.units.some(u=>u.team===THEM&&u.charge?.status==='declared'&&u.charge.reaction==='pending'&&G.getUnit(s,u.charge.target)?.team===ME)||!!combatDecision(s)||G.assailmentWaiting(s,ME).length>0||G.challengePending(s)&&s.combatSession.challenge.team===ME||myReform(s);
@@ -3692,7 +3726,7 @@ function describeOrder(o){return o.kind==='pivot'?'reforms':o.kind==='side'?`ste
 // tried for anything that matters; the side's one Fated Dispel is kept for spells that hurt.
 function spellHarm(s){
  const p=s.pendingSpell,key=p.key,spell=G.SPELLS[key];let harm=0;
- for(let i=0;i<6;i++){const c=structuredClone(s);try{G.resolveDispel(c,'none',seeded(i+11));harm+=-swing(s,c)/6;}catch{}}
+ for(let i=0;i<6;i++){const c=sim(s);try{G.resolveDispel(c,'none',seeded(i+11));harm+=-swing(s,c)/6;}catch{}}
  const lasting={arrow:6,shield:5,ashStorm:8,urgency:8,darkness:12,vessel:10,vigour:10,steed:10,pillar:15,vortexChaos:15,stormCall:8,plagueRust:10,ramparts:10,pathway:8,elementalSpirit:15,wordOfPain:12,gateway:8,phantasmagoria:15,battleLust:12};
  return harm+(lasting[key]??(spell.type==='assailment'?8:0));
 }
@@ -3794,7 +3828,7 @@ function spellValue(s,w,key,target,point){
  if(key==='battleLust')return target.role==='infantry'&&!target.engaged&&s.units.some(t=>t.team===THEM&&alive(t)&&!t.fleeing&&G.gap(target,t)<=G.profile(target).M+6)?8:0;
  if(G.SPELLS[key].relocate)return 0;
  if(spell.template)return point?10:0;
- let v=0;for(let i=0;i<6;i++){const c=structuredClone(s);try{G.castSpell(c,w.id,key,target.id,seeded(i+21),{point,dispel:'none'});v+=swing(s,c)/6;}catch{}}
+ let v=0;for(let i=0;i<6;i++){const c=sim(s);try{G.castSpell(c,w.id,key,target.id,seeded(i+21),{point,dispel:'none'});v+=swing(s,c)/6;}catch{}}
  return v;
 }
 function aiSpell(s,random){const wizard=s.units.find(u=>u.team===ME&&u.role==='wizard'&&alive(u));if(!wizard)return null;let pick=null;for(const key of wizard.spells){const spell=G.SPELLS[key];if(G.castBlockReason(s,wizard.id,key))continue;const point=spell.template?templatePoint(s,wizard,key):null;if(spell.template&&!point)continue;for(const t of G.spellTargets(s,wizard.id,key)){const value=spellValue(s,wizard,key,t,point);if(value>1&&(!pick||value>pick.value))pick={key,spell,target:t,point,value};}}
@@ -3892,7 +3926,7 @@ function resetOrder(){const u=G.getUnit(state);mode=u?.movementMode??'advance';m
 const moving=()=>kind==='advance'||kind==='wheel';
 function setTurn(value){angle=value;if(moving())kind=angle===0?'advance':'wheel';}
 // Panic tests taken since the last message are added to it.
-function panicNews(){const log=state.panicLog??[],fresh=log.slice(state.panicSeen??0);state.panicSeen=log.length;return fresh.map(e=>G.panicText(e)+' ').join('');}
+function panicNews(){if(G.panicChoice(state))return '';const log=state.panicLog??[],fresh=log.slice(state.panicSeen??0);state.panicSeen=log.length;return fresh.map(e=>G.panicText(e,id=>pieceName(id))+' ').join('');}
 function notify(text,error=false){if(!error){const panic=panicNews();if(panic)text=String(text)+' '+panic;}const display=String(text).replace(/\b(?:A|I)[1-7]\b/g,id=>{const u=G.getUnit(state,id),c=state.cannons.find(c=>c.id===id);return id==='A5'?'Deathshrieker':c?c.name:u?P.unitName(u):id;});$('notice').textContent=display;$('notice').classList.toggle('error',error);$('battleHint').textContent=display;$('battleHint').classList.toggle('error',error);}
 function safely(fn){try{fn();render();return true;}catch(e){notify(e.message,true);$('orderFeedback').textContent=e.message;return false;}}
 function actionCandidates(){
@@ -3979,7 +4013,7 @@ function drawUnit(u,layer,ghost=false){
 }
 function draw(){
   hideUnitTooltip();const layer=$('unitsLayer'),measure=$('measureLayer'),rocketLayer=$('rocketLayer');layer.replaceChildren();measure.replaceChildren();rocketLayer.replaceChildren();drawTerrain();drawObjectives();
-  state.units.filter(u=>u.x!==null).forEach(u=>drawUnit(u,layer));drawRocket(layer);drawCannons(layer);drawRocketTemplate(rocketLayer);drawCannonTrace(rocketLayer);for(const r of state.vortexReports??[]){if(r.distance>0)svg('line',{x1:r.from.x*S,y1:r.from.y*S,x2:r.to.x*S,y2:r.to.y*S,class:'vortex-trail'},rocketLayer);else if(r.hit)svg('text',{x:r.from.x*S,y:(r.from.y+.6)*S,'text-anchor':'middle',class:'measure-label'},rocketLayer,'HIT · STAYS');}
+  state.units.filter(u=>u.x!==null).forEach(u=>drawUnit(u,layer));{const pc=G.panicChoice(state);if(pc)for(const id of pc.units)layer.querySelector(`[data-unit="${id}"]`)?.classList.add('panic-candidate');}drawRocket(layer);drawCannons(layer);drawRocketTemplate(rocketLayer);drawCannonTrace(rocketLayer);for(const r of state.vortexReports??[]){if(r.distance>0)svg('line',{x1:r.from.x*S,y1:r.from.y*S,x2:r.to.x*S,y2:r.to.y*S,class:'vortex-trail'},rocketLayer);else if(r.hit)svg('text',{x:r.from.x*S,y:(r.from.y+.6)*S,'text-anchor':'middle',class:'measure-label'},rocketLayer,'HIT · STAYS');}
   if(templatePick&&state.selected===templatePick.caster&&G.SPELLS[templatePick.key]?.phase===state.stage)drawPlacement(templatePick,rocketLayer);
   // A Phantasmagoria's 12″ reach: enemies ending a move inside it test for Panic.
   for(const v of state.vortices)if(G.VORTEX_RULES[v.spell]?.panicRange)svg('circle',{cx:v.x*S,cy:v.y*S,r:((v.radius??1.5)+G.VORTEX_RULES[v.spell].panicRange)*S,class:'phantasm-ring'},rocketLayer);
@@ -4247,6 +4281,8 @@ function showResult(){
 }
 function renderEndControls(){$('endBattle').hidden=state.format.id!=='battle-march'||['deployment','finished'].includes(state.stage);}
 function render(){
+  // The sides a person commands pick the order of Panic tests their units take together.
+  state.panicChooser={ash:humanSide('ash'),iron:humanSide('iron')};
   autosave();layoutBoard();botDeploy();const skipped=G.skipEmptySteps(state);if(skipped.length){ordersOpen=false;rocketSelected=false;cannonSelected=null;declinedCharges.clear();}
   // A new phase or step selects its first unit to act, left to right.
   const stepKey=stepNow();
@@ -4302,7 +4338,7 @@ function renderOrders(){
   const u=G.getUnit(state),deploy=state.stage==='deployment',active=G.canAct(state,u);
   renderMovementBar(u);$('unitBadge').textContent=u.team==='ash'?'CHAOS DWARFS':armyName('iron').toUpperCase();$('unitName').textContent=P.unitName(u);$('unitSubtitle').textContent=`${armyName(u.team)} · ${G.isCharacter(u)?u.wounds+' / '+G.startingWounds(u)+' W'+(u.role==='wizard'?', Level 2 wizard':'')+(u.general?', General':''):G.aliveCount(u)+' / '+G.startingModels(u)+' surviving'} · facing ${Math.round(G.heading(u))}°`;
   const p=G.profile(u),f=G.FACTIONS[u.faction],keys=['M','WS','BS','S','T','W','I','A','Ld'];$('profileTitle').textContent=u.name+' profile';$('profileSave').textContent=p.save<=6?p.save+'+ armour':'No armour';$('profileStats').replaceChildren();keys.forEach(k=>{const cell=document.createElement('td');cell.textContent=statText(u,k);$('profileStats').append(cell);});$('profileEquipment').textContent=`${G.equipment(u)} · ${f.base} × ${f.base} mm base${u.role==='wizard'?' · one character':'s · 5 files × 4 ranks'}`;
-  const vanguardMove=deploy&&state.vanguard?.active===u.id;$('deployControls').hidden=!deploy||vanguardMove;$('moveControls').hidden=!vanguardMove&&(state.stage!=='movement'||state.movementStep!=='remaining');renderSpecialDeploy(u);renderArrival(u);renderJoinControls(u);renderReformControls(u);renderChargeControls(u);renderShootingControls(u);renderCombatControls(u);renderMagicControls(u);renderDispelControls(u);renderRaidControls(u);
+  const vanguardMove=deploy&&state.vanguard?.active===u.id;$('deployControls').hidden=!deploy||vanguardMove;$('moveControls').hidden=!vanguardMove&&(state.stage!=='movement'||state.movementStep!=='remaining');renderSpecialDeploy(u);renderArrival(u);renderJoinControls(u);renderPanicControls();renderReformControls(u);renderChargeControls(u);renderShootingControls(u);renderCombatControls(u);renderMagicControls(u);renderDispelControls(u);renderRaidControls(u);
   const strip=$('unitOrders').querySelector('.move-step-strip');strip.hidden=state.stage!=='movement';for(const [i,cell]of [...strip.children].entries()){const active={declare:0,reactions:1,charges:2,remaining:3}[state.movementStep]??3;cell.className=i===active?'active':i<active?'complete':'';}
   $('rallyControls').hidden=state.stage!=='strategy'||u.team!==state.team||u.x===null||!u.fleeing;
   $('rallyButton').disabled=!!u.rallyAttempted;
@@ -4341,7 +4377,7 @@ function renderRocketOrders(){const panel=$('rocketOrders'),r=state.rocket;panel
  $('rocketDemolition').setAttribute('aria-pressed',String(rocketProfile==='demolition'));$('rocketIncendiary').setAttribute('aria-pressed',String(rocketProfile==='incendiary'));$('rocketIndirect').checked=rocketIndirect;
  const p=G.ROCKET_PROFILES[rocketProfile];$('rocketStats').textContent=`${p.name} · R 12–48″ · ${p.template}″ blast · S${p.strength}${p.centreStrength!==p.strength?` (centre S${p.centreStrength})`:''} · AP ${p.ap?'-'+p.ap:'–'}${p.centreAp?` (centre −${p.centreAp})`:''}. ${rocketProfile==='demolition'?'Centre: Multiple Wounds (D6).':'Flaming Attacks; casualties trigger a Panic test.'}`;
  $('rocketTargets').replaceChildren();for(const {unit,error,distance} of G.rocketTargets(state,{indirect:rocketIndirect})){const b=document.createElement('button');b.className='charge-choice';b.textContent=P.unitName(unit)+' · '+(error??fmt(distance)+'″');b.disabled=!!error;b.setAttribute('aria-pressed',String(rocketTarget===unit.id));b.onclick=()=>{rocketTarget=unit.id;render();};$('rocketTargets').append(b);}foldUnavailable($('rocketTargets'));
- const target=G.getUnit(state,rocketTarget),plan=target?G.rocketPlan(state,target,{indirect:rocketIndirect}):null;$('rocketPreview').textContent=!G.canFireRocket(state)?r.shot?'Already fired this turn.':r.disabledUntil>=state.round?`Malfunction: cannot fire until after round ${r.disabledUntil}.`:'Launcher cannot fire.':plan?.error??(plan?`Template centred on ${target.id}, ${fmt(plan.distance)}″ away. Roll Artillery + Scatter to find impact.`:'Select a legal target.');$('rocketFireButton').disabled=!G.canFireRocket(state)||!plan||!!plan.error;$('rocketSkip').disabled=!G.canFireRocket(state);const last=r.lastShot;$('rocketReport').textContent=last?last.misfire?`MISFIRE ${last.misfire}: ${last.misfire===1?'launcher destroyed':last.misfire<=4?'malfunction; 1 W lost and next round missed':'Pffft; shot lost'}.`:`Last shot: ${last.profile==='demolition'?'Demolition':'Incendiaries'} · ${last.scatter==='hit'?'HIT':last.scatter+'° / '+last.scatterDistance+'″ scatter'} · ${last.hits} hits · ${last.unsaved} unsaved wound${last.unsaved===1?'':'s'}.${P.rocketCasualties(last)}${last.panic?.length?' '+last.panic.map(G.panicText).join(' '):''}`:'';
+ const target=G.getUnit(state,rocketTarget),plan=target?G.rocketPlan(state,target,{indirect:rocketIndirect}):null;$('rocketPreview').textContent=!G.canFireRocket(state)?r.shot?'Already fired this turn.':r.disabledUntil>=state.round?`Malfunction: cannot fire until after round ${r.disabledUntil}.`:'Launcher cannot fire.':plan?.error??(plan?`Template centred on ${target.id}, ${fmt(plan.distance)}″ away. Roll Artillery + Scatter to find impact.`:'Select a legal target.');$('rocketFireButton').disabled=!G.canFireRocket(state)||!plan||!!plan.error;$('rocketSkip').disabled=!G.canFireRocket(state);const last=r.lastShot;$('rocketReport').textContent=last?last.misfire?`MISFIRE ${last.misfire}: ${last.misfire===1?'launcher destroyed':last.misfire<=4?'malfunction; 1 W lost and next round missed':'Pffft; shot lost'}.`:`Last shot: ${last.profile==='demolition'?'Demolition':'Incendiaries'} · ${last.scatter==='hit'?'HIT':last.scatter+'° / '+last.scatterDistance+'″ scatter'} · ${last.hits} hits · ${last.unsaved} unsaved wound${last.unsaved===1?'':'s'}.${P.rocketCasualties(last)}${last.panic?.length?' '+last.panic.map(e=>G.panicText(e,id=>pieceName(id))).join(' '):''}`:'';
  const rect=panel.getBoundingClientRect();panel.style.left=Math.max(8,innerWidth-rect.width-18)+'px';panel.style.top=Math.max(90,document.querySelector('.phase-ribbon').getBoundingClientRect().bottom+10)+'px';panel.style.maxHeight=Math.max(180,innerHeight-110)+'px';}
 function renderCannonOrders(){const panel=$('cannonOrders'),c=state.cannons.find(c=>c.id===cannonSelected);panel.hidden=!c||state.stage==='deployment';if(!c)return;const deploy=state.stage==='deployment',shoot=state.stage==='shooting'&&state.team==='iron';$('cannonTitle').textContent=c.name;$('cannonDeploy').hidden=!deploy;$('cannonFire').hidden=!shoot;$('cannonIdle').hidden=deploy||shoot;$('cannonIdle').textContent=c.x===null?'Deploy this cannon before the battle.':c.wounds<=0?'This cannon was destroyed.':'Empire Great Cannons fire in the Empire Shooting phase.';$('cannonX').value=c.x??(c.id==='I5'?8:45);$('cannonY').value=c.y??6;
  $('cannonBall').setAttribute('aria-pressed',String(cannonMode==='ball'));$('cannonGrape').setAttribute('aria-pressed',String(cannonMode==='grape'));$('cannonAimControls').hidden=cannonMode!=='ball';$('cannonAim').value=cannonAimShort;$('cannonAimLabel').textContent=fmt(cannonAimShort)+'″';$('cannonStats').textContent=cannonMode==='ball'?'Cannonball · R60″ · S10 · AP −3 · first Artillery die sets strike, second sets bounce. One model per rank or file.':'Grapeshot · R12″ · S4 · AP −1 · Artillery die gives automatic hits.';
@@ -4440,6 +4476,7 @@ $('board').addEventListener('pointerdown',e=>{
   // A missile regiment may shoot at an enemy war machine: clicking it picks it as the target.
   if(machineId&&state.stage==='shooting'&&ordersOpen&&!rocketSelected&&!cannonSelected&&G.canShoot(state,G.getUnit(state))&&G.getUnit(state,machineId)?.team!==state.team){shootTarget=machineId;render();return;}if(machineId&&state.stage==='shooting'&&rocketSelected&&cannon){rocketTarget=machineId;render();return;}if(machineId&&state.stage==='shooting'&&cannonSelected&&rocket){cannonTarget=machineId;render();return;}if(machineId&&state.stage==='movement'&&state.movementStep==='declare'&&ordersOpen&&G.getUnit(state)?.team===state.team&&G.getUnit(state,machineId)?.team!==state.team){chargeTarget=machineId;render();return;}if(machineId&&state.stage==='deployment'){selectPiece(machineId);const m=G.getUnit(state,machineId);if(m.x!==null&&!m.deployed&&!botOwns(machineId)&&deployPiece()){const p=point(e);drag={id:machineId,dx:p.x-m.x,dy:p.y-m.y,startX:e.clientX,startY:e.clientY,moving:false,pointerId:e.pointerId};$('board').setPointerCapture(e.pointerId);}render();return;}
 if(rocket){rocketSelected=true;cannonSelected=null;ordersOpen=false;rocketTarget=null;render();return;}if(cannon){cannonSelected=cannon.dataset.cannon;rocketSelected=false;ordersOpen=false;cannonTarget=null;render();return;}const g=e.target.closest('[data-unit]'),p=point(e);hideUnitTooltip();
+  if(g&&G.panicChoice(state)?.units.includes(g.dataset.unit)&&humanSide(G.getUnit(state,g.dataset.unit)?.team)){takePanicTest(g.dataset.unit);return;}
   if(g){const id=g.dataset.unit;select(id,state.stage!=='deployment');if(state.stage==='deployment')deployFocus=id;if(state.stage==='deployment'&&!botOwns(id)&&!G.getUnit(state,id).deployed){const u=G.getUnit(state);drag={id,dx:p.x-u.x,dy:p.y-u.y,startX:e.clientX,startY:e.clientY,moving:false,pointerId:e.pointerId};$('board').setPointerCapture(e.pointerId);}}
   else if(state.stage==='deployment'){const piece=deployPiece(),at={x:Math.round(p.x*2)/2,y:Math.round(p.y*2)/2};if(!piece){notify(state.deployOrder?.alternate&&!humanSide(state.deployOrder.next)?'The bot is placing a unit.':'Choose a unit to place in the deployment tray first.',true);return;}safely(()=>{G.placeAt(state,piece.id,at.x,at.y);deployFocus=piece.id;ordersOpen=false;$('adjustError').textContent='';notify(`${pieceName(piece.id)} placed: drag it, nudge it or turn it, then Confirm.`);});}else{rocketSelected=false;cannonSelected=null;closeOrders();render();}
 });
@@ -4562,6 +4599,20 @@ new ResizeObserver(()=>{const width=$('board').getBoundingClientRect().width;$('
 // A reform the unit has earned: after a passed Restraint test (free), or after running down a
 // fleeing enemy (a Leadership test). The player picks the facing, or keeps the unit's own.
 let reformFacing=null;
+// Panic tests to take together: the player clicks each highlighted unit (or its button here) in the
+// order they choose; the failed ones retreat once all are taken.
+function renderPanicControls(){
+ let box=$('panicControls');if(!box){$('unitOrders').querySelector('.panel-kicker').insertAdjacentHTML('afterend','<div id="panicControls" class="panic-controls" hidden></div>');box=$('panicControls');}
+ const c=G.panicChoice(state);box.replaceChildren();box.hidden=!c||!humanSide(c.team);if(box.hidden)return;
+ const intro=document.createElement('p');intro.className='control-help';intro.textContent=`Panic: these units must test together. Click each one on the board, or here, in the order you choose; any that fail retreat once all have tested.`;box.append(intro);
+ for(const w of c.waiting){const u=G.getUnit(state,w.unit),b=document.createElement('button');b.className='charge-choice';b.textContent=`${P.shortName(u)} · ${w.cause}${w.source&&G.getUnit(state,w.source)?` (${P.shortName(G.getUnit(state,w.source))})`:''} · Leadership ${G.leadership(u,'normal',state)}`;b.onclick=()=>takePanicTest(w.unit);box.append(b);}
+}
+// One Panic test the player chose to take now.
+async function takePanicTest(id){if(rolling)return;try{const u=G.getUnit(state,id),entry=G.choosePanic(state,id);
+ if(entry?.dice?.length)await animatedRoll(2,P.shortName(u)+' · Panic',entry.dice);if(entry?.reroll)await animatedRoll(2,P.shortName(u)+' · Hold Your Ground re-roll',entry.reroll);
+ const left=G.panicChoice(state),said=!entry?`${P.shortName(u)} no longer needs to test.`:entry.auto?`${P.shortName(u)} passes automatically (${entry.auto}).`:`${P.shortName(u)} rolls ${(entry.reroll??entry.dice).join('+')} against Leadership ${entry.ld}: ${entry.passed?'passed':'failed'}.`;
+ render();notify(said+(left?` ${left.units.length} more to test: click ${left.units.length===1?'the highlighted unit':'each highlighted unit'}.`:''));
+ if(!left){openDecision();render();continueCombat();scheduleAi();}}catch(e){notify(e.message,true);}}
 function renderReformControls(u){
  let box=$('reformControls');if(!box){$('unitOrders').querySelector('.panel-kicker').insertAdjacentHTML('afterend','<div id="reformControls" class="reform-controls" hidden></div>');box=$('reformControls');}
  const o=u&&G.reformOffer(state,u.id);box.replaceChildren();box.hidden=!o||!humanSide(u.team);if(box.hidden){reformFacing=null;return;}
@@ -4646,7 +4697,7 @@ let resumeCombat=null;
 // A choice still to make: Shieldwall, a pursuit declaration, an overrun; or a step the bot takes.
 // Also a wizard at its Initiative step who may cast an Assailment, and a spell waiting for a dispel.
 const reformWaiting=()=>(state.reformOffers??[]).some(o=>G.reformOffer(state,o.unit)&&(humanSide(G.getUnit(state,o.unit)?.team)||aiMode==='ai'));
-const combatWaits=()=>{const p=state.pendingCombat,auto=p?.stage==='winner-choice'&&!!p.declarations?.[p.winner];return G.challengePending(state)||reformWaiting()||!!p&&(['loser-choice','declare'].includes(p.stage)||p.stage==='winner-choice'&&!auto)||aiMode==='ai'&&!auto&&!!AI.combatDecision(state)||!!state.pendingSpell||G.assailmentWaiting(state).length>0;};
+const combatWaits=()=>{const p=state.pendingCombat,auto=p?.stage==='winner-choice'&&!!p.declarations?.[p.winner];return !!G.panicChoice(state)||G.challengePending(state)||reformWaiting()||!!p&&(['loser-choice','declare'].includes(p.stage)||p.stage==='winner-choice'&&!auto)||aiMode==='ai'&&!auto&&!!AI.combatDecision(state)||!!state.pendingSpell||G.assailmentWaiting(state).length>0;};
 function continueCombat(){if(resumeCombat===null||autoResolving||rolling)return;const p=state.pendingCombat;if(!p&&!state.combatSession){resumeCombat=null;return;}if(combatWaits())return;const mode=resumeCombat;resumeCombat=null;autoCombat(mode);}
 async function autoCombat(animated){if(autoResolving||rolling)return;autoResolving=true;resumeCombat=null;try{for(let step=0;step<24;step++){
  const p=state.pendingCombat;if(combatWaits()){resumeCombat=animated;const ro=(state.reformOffers??[]).find(o=>G.reformOffer(state,o.unit)&&humanSide(G.getUnit(state,o.unit)?.team));if(ro){state.selected=ro.unit;ordersOpen=true;}break;}

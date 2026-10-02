@@ -42,6 +42,12 @@ test('an agreed layout has no placement restrictions; treasure troves then keep 
  const b=s.terrain.find(f=>f.key==='building');assert.ok(G.featureDistance(b,t)-t.r>=3-1e-6,'shifted the least distance to clear the trove');assert.equal(b.shifted,true);
  assert.match(BM.objectivePlacementError(s,t.id,b.x,b.y-3)??'',/3″/);
 });
+test('the bot and Quick terrain place each feature as near the centre as the 12″ rule allows, in the midfield',()=>{
+ const s=game();G.terrainRollOff(s,dice(6,1));const c={x:s.board.width/2,y:s.board.height/2};
+ const f=G.autoPlaceTerrain(s,'ash',()=>.5,{score:(k,x,y)=>G.terrainCentrality(s,k,x,y)});assert.ok(G.featureDistance(f,c)>12&&G.featureDistance(f,c)<13.5,`${G.featureDistance(f,c)}″ from the centre`);
+ assert.ok(f.y>7.5&&f.y<s.board.height-7.5,'between the deployment zones, not in one');
+ const q=game();G.quickTerrain(q,dice(3));for(const t of q.terrain)assert.ok(G.featureDistance(t,c)<15,`${t.name} ${G.featureDistance(t,c)}″ from the centre`);
+});
 test('deployment waits for the terrain; Quick deploy places it first; a landmark and troves are set apart',()=>{
  const s=game();assert.throws(()=>G.chooseDeploymentZone(s,'iron','A'),/terrain/);assert.equal(BM.canPlaceObjectives(s),false,'objectives come after terrain');
  G.autoDeploy(s,{random:dice(3)});assert.equal(G.terrainPending(s),false);assert.ok(s.terrain.length>=1);assert.equal(G.deploymentComplete(s),true);

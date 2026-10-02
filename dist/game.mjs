@@ -246,7 +246,7 @@ function claimStandard(s,u,by){if(u&&!u.standardClaimed&&commandAlive(u,'S')){u.
 export function destroyUnit(s,u,reason='COMBAT_CASUALTIES',random=Math.random){if(!u)return;const pose=u.x!==null?{...u}:null,start=s&&pose?phaseStart(s,u):null,us=start?start.us:aliveCount(u)>0?unitStrength(u):(u.usBeforeLoss??0);
  // Characters in a unit that flees off the battlefield or is run down are lost with it; otherwise
  // they stand on as lone characters. A character slain in a unit leaves its place.
- for(const c of s?s.units.filter(c=>c.joined===u.id):[]){c.joined=null;if(reason==='FLED_OFF_TABLE'||reason==='RUN_DOWN')destroyUnit(s,c,reason,random);}if(u.charSlots)delete u.charSlots;if(s&&u.joined)detach(s,u);Object.assign(u,{x:null,y:null,destroyed:true,fleeing:false,engaged:null,raiding:null});u.destroyedBy??=reason;if(reason==='FLED_OFF_TABLE')u.leftBoard='fled';if(s)s.vortices=(s.vortices??[]).filter(v=>v.caster!==u.id);if(s&&pose&&us>=5)nearbyPanic(s,u,pose,'Nearby Friend Destroyed',random);}
+ for(const c of s?s.units.filter(c=>c.joined===u.id):[]){c.joined=null;if(reason==='FLED_OFF_TABLE'||reason==='FELL_BACK_OFF_TABLE'||reason==='RUN_DOWN')destroyUnit(s,c,reason,random);}if(u.charSlots)delete u.charSlots;if(s&&u.joined)detach(s,u);Object.assign(u,{x:null,y:null,destroyed:true,fleeing:false,engaged:null,raiding:null});u.destroyedBy??=reason;if(reason==='FLED_OFF_TABLE')u.leftBoard='fled';if(reason==='FELL_BACK_OFF_TABLE')u.leftBoard='fell back';if(s)s.vortices=(s.vortices??[]).filter(v=>v.caster!==u.id);if(s&&pose&&us>=5)nearbyPanic(s,u,pose,'Nearby Friend Destroyed',random);}
 // The prototype keeps 1″ between units. A unit that already stands closer than that to another
 // (friends left shoulder to shoulder after a combat) may move along or away from it, but never into it.
 // Only friends: an enemy is never reached by an ordinary move, only by a charge.
@@ -618,7 +618,7 @@ export function leaveSpot(s,charId){const c=getUnit(s,charId),u=getUnit(s,c?.joi
  const ok=out.map(p=>({...p,heading:heading(u)})).sort((p,q)=>Math.hypot(p.x-c.x,p.y-c.y)-Math.hypot(q.x-c.x,q.y-c.y)).find(p=>!leaveError(s,charId,p));return ok??null;}
 function remember(s,u){s.history.push({id:u.id,x:u.x,y:u.y,heading:heading(u),moved:u.moved,spent:u.spent??0,movementMode:u.movementMode??null,movementMedium:u.movementMedium??null,movementFly:u.movementFly??null,difficultThisMove:!!u.difficultThisMove,movedThisTurn:!!u.movedThisTurn,marchRequired:u.marchRequired??null});}
 // A flyer that crosses a vortex is struck by it as well; its Movement suffers only for landing in it.
-export function commitOrder(s,id,order,random=Math.random){const u=getUnit(s,id);const error=orderError(s,u,order);if(error)throw Error(error);const medium=order.medium??u.movementMedium??'ground',fly=medium==='fly'?(order.fly??u.movementFly??flyValues(u)[0]):null,plan=planMove(u,order),vortices=sweptVortices(s,u,movePoses(plan)),crossedTerrain=terrainCrossed(s,u,movePoses(plan),{fly:medium==='fly'}),entered=(medium==='fly'?vortexUnder(s,u,plan.start)||vortexUnder(s,u,plan.end):sweptVortices(s,u,movePoses(plan),{all:true}).length>0)||crossedTerrain.length>0,difficult=!!u.difficultThisMove||entered;if(s.stage==='movement')enterRemaining(s,random);remember(s,u);
+export function commitOrder(s,id,order,random=Math.random){panicGate(s);const u=getUnit(s,id);const error=orderError(s,u,order);if(error)throw Error(error);const medium=order.medium??u.movementMedium??'ground',fly=medium==='fly'?(order.fly??u.movementFly??flyValues(u)[0]):null,plan=planMove(u,order),vortices=sweptVortices(s,u,movePoses(plan)),crossedTerrain=terrainCrossed(s,u,movePoses(plan),{fly:medium==='fly'}),entered=(medium==='fly'?vortexUnder(s,u,plan.start)||vortexUnder(s,u,plan.end):sweptVortices(s,u,movePoses(plan),{all:true}).length>0)||crossedTerrain.length>0,difficult=!!u.difficultThisMove||entered;if(s.stage==='movement')enterRemaining(s,random);remember(s,u);
  // A flyer suffers dangerous terrain only where it takes off or lands.
  const lands=v=>[plan.start,plan.end].some(p=>circleGap(corners(p),{x:v.x,y:v.y,r:v.radius??1.5})<EPS),struck=medium==='fly'?vortices.filter(v=>!VORTEX_RULES[v.spell]?.dangerous||lands(v)):vortices;const marchRequired=medium==='fly'?false:needsMarchTest(s,u),spent=(u.spent??0)+plan.cost,allowance=moveAllowance(u,{mode:plan.mode,medium,fly,difficult});Object.assign(u,{x:plan.end.x,y:plan.end.y,heading:plan.end.heading,spent,movementMode:plan.mode,movementMedium:medium,movementFly:fly,marchRequired,moved:plan.kind==='pivot'||spent>=allowance-EPS,movedThisTurn:true});if(entered)u.difficultThisMove=true;s.lastVortexHits=vortexMoveHits(s,u,struck,random,medium==='fly'?[plan.end]:movePoses(plan));
  // Dangerous terrain: the tests for each feature crossed (a flyer: where it takes off or lands).
@@ -650,7 +650,7 @@ export function nextTurn(s,random=Math.random){if(s.stage!=='combat')throw Error
  // Start of Turn, in this order: (1) effects lasting until the casting side's next Start of Turn
  // end; (2) vortices move; (3) the format's start of turn (Raid & Burn).
  expireEffects(s,'start',`${s.round}:${s.team}`);s.vortexReports=driftVortices(s,random);s.reserveReports=reserveRolls(s,s.team,random);s.rocket.shot=false;s.rocket.lastShot=null;s.cannons.forEach(c=>{c.shot=false;c.lastShot=null;});s.history=[];s.selected=s.units.find(u=>u.team===s.team).id;formatRules(s)?.startOfTurn?.(s,s.team,random);}
-export function nextPhase(s,random=Math.random){if(s.stage==='finished')throw Error('The battle is over.');if(s.pendingSpell)throw Error('Resolve the dispel of the spell just cast first.');if(s.stage==='strategy'&&s.units.some(u=>u.team===s.team&&u.x!==null&&u.fleeing&&!u.rallyAttempted))throw Error('Attempt to rally every fleeing regiment first.');if(s.units.some(u=>u.charge?.status==='declared'))throw Error('Resolve all declared charges first.');if(s.stage==='combat'&&(s.combatSession||s.pendingCombat||combatPairs(s).length))throw Error('Resolve every combat and its outcome first.');const i=PHASES.indexOf(s.stage);if(i<0)throw Error('Begin the battle first.');if(s.stage==='movement')for(const u of arrivals(s)){if(firstReinforcementSpot(s,u.id))throw Error(`Place ${u.name} first: it arrives as reinforcements this turn.`);u.reserve.arriving=null;}if(s.stage==='movement')for(const u of s.units.filter(u=>u.team===s.team&&u.movedThisTurn))endOfMove(s,u,random);s.reformOffers=null;s.movementReopened=false;s.movementHistory=i===1?s.history:i===2?s.movementHistory:null;if(i===3)nextTurn(s,random);else{s.stage=PHASES[i+1];s.history=[];if(s.stage==='movement'){s.movementStep='declare';if(!s.units.some(u=>u.team===s.team&&canAct(s,u)&&availableCharges(s,u).length))beginRemaining(s,random);}s.shootingSkipped=false;if(s.stage==='shooting'&&!phaseHasActions(s)){s.stage='combat';s.shootingSkipped=true;}if(s.stage==='combat')combatants(s).forEach(u=>u.combatResolved=false);}return s.stage;}
+export function nextPhase(s,random=Math.random){if(s.stage==='finished')throw Error('The battle is over.');panicGate(s);if(s.pendingSpell)throw Error('Resolve the dispel of the spell just cast first.');if(s.stage==='strategy'&&s.units.some(u=>u.team===s.team&&u.x!==null&&u.fleeing&&!u.rallyAttempted))throw Error('Attempt to rally every fleeing regiment first.');if(s.units.some(u=>u.charge?.status==='declared'))throw Error('Resolve all declared charges first.');if(s.stage==='combat'&&(s.combatSession||s.pendingCombat||combatPairs(s).length))throw Error('Resolve every combat and its outcome first.');const i=PHASES.indexOf(s.stage);if(i<0)throw Error('Begin the battle first.');if(s.stage==='movement')for(const u of arrivals(s)){if(firstReinforcementSpot(s,u.id))throw Error(`Place ${u.name} first: it arrives as reinforcements this turn.`);u.reserve.arriving=null;}if(s.stage==='movement')for(const u of s.units.filter(u=>u.team===s.team&&u.movedThisTurn))endOfMove(s,u,random);s.reformOffers=null;s.movementReopened=false;s.movementHistory=i===1?s.history:i===2?s.movementHistory:null;if(i===3)nextTurn(s,random);else{s.stage=PHASES[i+1];s.history=[];if(s.stage==='movement'){s.movementStep='declare';if(!s.units.some(u=>u.team===s.team&&canAct(s,u)&&availableCharges(s,u).length))beginRemaining(s,random);}s.shootingSkipped=false;if(s.stage==='shooting'&&!phaseHasActions(s)){s.stage='combat';s.shootingSkipped=true;}if(s.stage==='combat')combatants(s).forEach(u=>u.combatResolved=false);}return s.stage;}
 // Movement can be reopened until the active army acts in Shooting (or, when Shooting
 // was skipped, in Combat). Its undo history is kept so the last moves can be taken back.
 function castIn(s,phase){return s.units.some(u=>u.team===s.team&&u.role==='wizard'&&u.castThisTurn.some(key=>SPELLS[key]?.phase===phase));}
@@ -664,7 +664,7 @@ export function returnToMovement(s){if(!canReturnToMovement(s))throw Error('Move
 // by its own Wizardly dispel when in range, or by the side's unused Fated Dispel.
 function canDispelAVortex(s,u){return (s.vortices??[]).some(v=>canDispelVortex(s,v.id??v.caster)&&(vortexDispellers(s,v.id??v.caster).some(w=>w.id===u.id)||fatedDispelAvailable(s,s.team)));}
 export function phaseHasActions(s){
- if(s.stage==='deployment'||s.stage==='finished'||s.pendingSpell)return true;
+ if(s.stage==='deployment'||s.stage==='finished'||s.pendingSpell||s.panicPending)return true;
  // A reform still to choose keeps the phase open.
  if((s.reformOffers??[]).some(o=>reformOffer(s,o.unit)))return true;
  const active=s.units.filter(u=>u.team===s.team&&u.x!==null&&aliveCount(u)>0);
@@ -959,7 +959,7 @@ export function castSpell(s,id,key,targetId,random=Math.random,{dispel='none',di
 // kept apart in the report. A natural double 6 always succeeds and cannot be dispelled at once;
 // a natural double 1 miscasts.
 export function attemptSpell(s,id,key,targetId,random=Math.random,{point=null}={}){
- const spell=SPELLS[key],block=castBlockReason(s,id,key);if(block)throw Error(block);
+ panicGate(s);const spell=SPELLS[key],block=castBlockReason(s,id,key);if(block)throw Error(block);
  if(targetless(spell))targetId??=id;
  const u=getUnit(s,id),t=getUnit(s,targetId),why=targetReason(s,id,key,t);if(why)throw Error(why);
  if(spell.template){const bad=templatePlacementError(s,id,key,point);if(bad)throw Error(bad);}
@@ -1338,7 +1338,7 @@ function characterHits(s,u,c,n,weapon,random){const toWound=Math.max(2,Math.min(
 // "Look Out, Sir!": a character in a unit with five or more rank and file, hit by shooting, is hit
 // on a 1; on a 2+ a member of the unit is hit in its place.
 export function lookOutSir(s,cell,random){const c=cell.unit;if(!c?.joined)return null;const host=getUnit(s,c.joined);if(!host||aliveCount(host)<5)return null;const roll=rollD6(1,random)[0],saved=roll>=2;if(saved){cell.unit=host;cell.model=null;}return {character:c.id,roll,saved};}
-export function shoot(s,id,target,random=Math.random){const u=getUnit(s,id),t=getUnit(s,target),plan=shootingPlan(s,u,t);if(plan.error)throw Error(plan.error);const result=fireMissiles(s,u,t,plan,random);u.shot=true;s.lastShooting=result;return result;}
+export function shoot(s,id,target,random=Math.random){panicGate(s);const u=getUnit(s,id),t=getUnit(s,target),plan=shootingPlan(s,u,t);if(plan.error)throw Error(plan.error);const result=fireMissiles(s,u,t,plan,random);u.shot=true;s.lastShooting=result;return result;}
 
 // Charge routes use one measured leading-corner wheel, then a free alignment wheel.
 // Face selection is fixed by the charger's starting position.
@@ -1474,7 +1474,7 @@ export function chargePlan(s,u,t,{sight=true}={}){
  return search(false)??search(true)??direct;
 }
 export function declareCharge(s,id,target){
- const u=getUnit(s,id),t=getUnit(s,target);
+ panicGate(s);const u=getUnit(s,id),t=getUnit(s,target);
  if(s.stage!=='movement'||s.movementStep!=='declare'||!canAct(s,u))throw Error('Declare charges before Remaining Moves with an unengaged regiment.');
  if(isImpetuous(s,u)&&u.impetuousTest===null)throw Error(`${u.name} is Impetuous: roll its Impetuous test before declaring a charge.`);
  const p=chargePlan(s,u,t);if(p.error)throw Error(p.error);
@@ -1682,8 +1682,12 @@ export function quickTerrain(s,random=Math.random){
  for(let guard=0;guard<40&&terrainPending(s);guard++){const ts=s.terrainSetup;
   if(ts.scatter){if(ts.scatter.count===null)scatterTerrainCount(s,random);const ids=[...ts.placed].sort(()=>random()-.5).slice(0,ts.scatter.count);scatterTerrain(s,ts.scatter.by,ids,random);continue;}
   if(ts.method!=='free'&&!ts.rollOff){terrainRollOff(s,random);continue;}
-  const team=ts.method==='free'?'ash':ts.next;if(!autoPlaceTerrain(s,team,random))passTerrain(s,team);}
+  const team=ts.method==='free'?'ash':ts.next;if(!autoPlaceTerrain(s,team,random,{score:(k,x,y)=>terrainCentrality(s,k,x,y)+random()*.05}))passTerrain(s,team);}
  return s.terrain;}
+// How central a spot is for a feature (higher is better), for the bot and Quick terrain: as near the
+// centre as the 12″ rule allows, measured against the board's half-width and half-height (so the
+// midfield between the long edges comes first), and out of both deployment zones.
+export function terrainCentrality(s,key,x,y){const b=boardOf(s),d=Math.hypot((x-b.width/2)/(b.width/2),(y-b.height/2)/(b.height/2));let zone=false;try{zone=['ash','iron'].some(t=>{const z=zoneOf(s,t);return z?.length>2&&inside({x,y},z);});}catch{}return -d-(zone?1:0);}
 // One piece placed for a side at a random legal spot (the first piece in its selection that fits).
 export function autoPlaceTerrain(s,team,random=Math.random,{key=null,score=null}={}){
  const ts=s.terrainSetup,b=boardOf(s),keys=key?[key]:[...new Set(ts.pool)];
@@ -1789,7 +1793,7 @@ function blastCells(s,point,radius){const out=[];for(const unit of allPieces(s).
  }
  }return out;}
 export function fireRocket(s,targetId,profileKey,dice,random=Math.random,{indirect=false}={}){
- if(!canFireRocket(s))throw Error('The Deathshrieker cannot fire in this Shooting phase.');
+ panicGate(s);if(!canFireRocket(s))throw Error('The Deathshrieker cannot fire in this Shooting phase.');
  const profile=ROCKET_PROFILES[profileKey],target=getUnit(s,targetId),plan=rocketPlan(s,target,{indirect});if(!profile)throw Error('Choose a rocket profile.');if(plan.error)throw Error(plan.error);
  if(!dice||!([2,4,6,8,10,'misfire'].includes(dice.artillery))||!(dice.scatter==='hit'||Number.isInteger(dice.scatter)&&dice.scatter>=0&&dice.scatter<360))throw Error('Roll valid Artillery and Scatter dice.');
  const report={profile:profileKey,from:'A5',target:targetId,aim:plan.aim,impact:null,template:profile.template,artillery:dice.artillery,scatter:dice.scatter,indirect,misfire:null,affected:[],hits:0,unsaved:0};
@@ -1978,7 +1982,7 @@ export function declineChallenges(s){const c=s.combatSession;while(c?.challenge?
 // A challenge choice is waiting: to issue (or not), to accept or refuse, or to name who retires.
 export function challengePending(s){return ['issue','accept','nominate'].includes(s.combatSession?.challenge?.stage);}
 export function beginCombat(s,id){
- if(s.stage!=='combat'||s.combatSession||s.pendingCombat)throw Error('Finish the current combat first.');
+ panicGate(s);if(s.stage!=='combat'||s.combatSession||s.pendingCombat)throw Error('Finish the current combat first.');
  const first=getUnit(s,id),units=first?.engaged&&first.x!==null?combatGroup(s,first).filter(u=>u.x!==null&&aliveCount(u)>0):[];
  if(units.length<2||!units.some(u=>!u.combatResolved))throw Error('Select an unresolved engaged regiment.');
  // A mounted character's mount strikes at its own Initiative (keyed "id:mount").
@@ -2088,10 +2092,10 @@ function fleeMove(s,u,distance,random=Math.random,depth=0){
  if(!clearOf(start))for(let turn=5;turn<=90;turn+=5){const l={...start,heading:normalize(heading(start)-turn)},r={...start,heading:normalize(heading(start)+turn)};if(clearOf(l)){start.heading=l.heading;break;}if(clearOf(r)){start.heading=r.heading;break;}}
  u.heading=start.heading;
  let travel=distance,end=forwardPose(start,travel);
- while(!offBoard(end,s)&&(others.some(v=>gap(end,v)<1-EPS)||terrainBlocks(s,corners(end),u))){travel+=.05;end=forwardPose(start,travel);}
+ while(!retreatOffBoard(s,start,end)&&(others.some(v=>gap(end,v)<1-EPS)||terrainBlocks(s,corners(end),u))){travel+=.05;end=forwardPose(start,travel);}
  const leave=forwardPose(start,Math.min(.02,travel)),path=hull([...corners(leave),...corners(end)]),crossed=others.filter(v=>polygonGap(path,corners(v))<EPS);
- const report={unit:u.id,distance:travel,passedThrough:crossed.map(v=>v.id),peril:[],panic:[],fledOffBoard:offBoard(end,s)};
- if(report.fledOffBoard)destroyUnit(s,u,'FLED_OFF_TABLE',random);
+ const report={unit:u.id,distance:travel,passedThrough:crossed.map(v=>v.id),peril:[],panic:[],fledOffBoard:retreatOffBoard(s,start,end)};
+ if(report.fledOffBoard)destroyUnit(s,u,u.fallingBack?'FELL_BACK_OFF_TABLE':'FLED_OFF_TABLE',random);
  else{
   const square=(pose,m)=>[[m.x,m.y],[m.x+m.size,m.y],[m.x+m.size,m.y+m.size],[m.x,m.y+m.size]].map(([x,y])=>localPoint(pose,x,y)),models=modelSquares(s,u).filter(m=>!m.dead);
   for(const enemy of crossed.filter(v=>v.team!==u.team))for(const m of models){
@@ -2161,7 +2165,9 @@ export function isImpetuous(s,u){if(!u)return false;if(FACTIONS[u.faction??'chao
 // of the phase ('phaseStart'). The FAQ settles the timing only for a destroyed unit (phase start).
 export const PANIC_POLICY={loserStrength:'current'};
 // Tests one side makes together are taken nearest the cause first, then by unit id: the bot's
-// order and this build's default (a player cannot yet pick another).
+// order. A side whose player picks the order (s.panicChooser[team], set by the page for each side a
+// person commands) waits in s.panicPending when two or more of its units must test together, and
+// each test is taken when its player clicks the unit (choosePanic).
 const phaseId=s=>`${s.round}:${s.team}:${s.stage}`;
 // A unit as it stood at the start of this phase: its models and Unit Strength, recorded before its
 // first loss or removal in the phase (nothing else changes them mid-phase).
@@ -2187,14 +2193,28 @@ function queuePanic(s,event){if(event?.unit)(s.panicQueue??=[]).push(event);}
 // Take the queued tests (see above); returns the log entries made, in order. While a shot or blast
 // is still being resolved (s.panicHold) the tests wait for it.
 export function resolvePanic(s,random=Math.random){
- if(s.panicResolving||s.panicHold)return [];s.panicResolving=true;const out=[];
- try{while(s.panicQueue?.length){const batch=s.panicQueue.splice(0),tests=[];
+ if(s.panicResolving||s.panicHold||s.panicPending)return [];s.panicResolving=true;const out=[];
+ try{while(s.panicQueue?.length){const batch=s.panicQueue.splice(0),seen=new Set();
   const order=batch.map((e,i)=>({e,i})).sort((a,b)=>(a.e.distance??0)-(b.e.distance??0)||String(a.e.unit).localeCompare(String(b.e.unit))||a.i-b.i).map(x=>x.e);
-  for(const ev of order){const u=getUnit(s,ev.unit);if(!u||panicExempt(s,u))continue;tests.push(takePanic(s,u,ev,random));}
-  for(const entry of tests)if(!entry.passed)panicRetreat(s,getUnit(s,entry.unit),entry,random);
-  out.push(...tests);}}
+  const ready=order.filter(ev=>{const u=getUnit(s,ev.unit);if(!u||seen.has(ev.unit)||panicExempt(s,u))return false;seen.add(ev.unit);return true;});
+  const count=team=>ready.filter(ev=>getUnit(s,ev.unit).team===team).length,chooses=ev=>{const team=getUnit(s,ev.unit).team;return !!s.panicChooser?.[team]&&count(team)>1;};
+  const tests=ready.filter(ev=>!chooses(ev)).map(ev=>takePanic(s,getUnit(s,ev.unit),ev,random)),waiting=ready.filter(chooses);out.push(...tests);
+  if(waiting.length){s.panicPending={tests:tests.map(e=>s.panicLog.indexOf(e)),waiting};break;}
+  panicRetreats(s,tests,random);}}
  finally{s.panicResolving=false;}
  return out;}
+function panicRetreats(s,tests,random){for(const entry of tests)if(!entry.passed)panicRetreat(s,getUnit(s,entry.unit),entry,random);}
+// The units whose player is to pick which tests next (null when none waits).
+export function panicChoice(s){const p=s.panicPending;if(!p?.waiting?.length)return null;return {team:getUnit(s,p.waiting[0].unit)?.team,units:p.waiting.map(e=>e.unit),waiting:p.waiting.map(e=>({unit:e.unit,cause:e.cause,source:e.source??null}))};}
+// The player takes one waiting unit's test. Once the last is taken, the failed units retreat in the
+// order their tests were taken, and anything their retreats set off follows.
+export function choosePanic(s,id,random=Math.random){
+ const p=s.panicPending,ev=p?.waiting.find(e=>e.unit===id);if(!ev)throw Error('That unit has no Panic test waiting.');
+ p.waiting=p.waiting.filter(e=>e!==ev);const u=getUnit(s,id),entry=u&&!panicExempt(s,u)?takePanic(s,u,ev,random):null;if(entry)p.tests.push(s.panicLog.indexOf(entry));
+ if(!p.waiting.length){delete s.panicPending;s.panicResolving=true;try{panicRetreats(s,p.tests.map(i=>s.panicLog[i]).filter(Boolean),random);}finally{s.panicResolving=false;}resolvePanic(s,random);}
+ return entry;}
+const PANIC_WAIT='Take the waiting Panic tests first: click each highlighted unit.';
+function panicGate(s){if(s?.panicPending)throw Error(PANIC_WAIT);}
 function takePanic(s,u,ev,random){
  u.panicTested=phaseId(s);const start=phaseStart(s,u),src=ev.source?getUnit(s,ev.source):null;
  const entry={unit:u.id,name:u.name,cause:ev.cause,source:ev.source??null,sourceName:src?.name??null,away:ev.away??null,phase:phaseId(s),phaseStartModels:start.models,phaseStartStrength:start.us,models:aliveCount(u),startModels:isCharacter(u)?1:startingModels(u),...(ev.distance!=null?{distance:ev.distance}:{}),...(ev.lost!=null?{lost:ev.lost}:{}),...(ev.killed!=null?{killed:ev.killed}:{})};
@@ -2212,7 +2232,7 @@ function panicRetreat(s,u,entry,random){
  const awayFrom=typeof entry.away==='string'?getUnit(s,entry.away):entry.away,from=awayFrom&&awayFrom.x!=null&&!awayFrom.destroyed&&(awayFrom.id?awayFrom.team!==u.team:true)?awayFrom:steadyEnemy(s,u);
  if(from)u.heading=normalize(Math.atan2(u.x-from.x,-(u.y-from.y))*180/Math.PI);
  const good=entry.models*2>entry.startModels,dice=rollD6(2,random),extra=swift(u,random),distance=(good?Math.max(...dice):dice[0]+dice[1])+extra;
- u.fleeing=true;u.moved=true;const move=fleeMove(s,u,distance,random);if(good&&u.x!==null)u.fleeing=false;syncJoined(s,u);
+ u.fleeing=true;u.moved=true;if(good)u.fallingBack=true;const move=fleeMove(s,u,distance,random);delete u.fallingBack;if(good)u.fleeing=false;syncJoined(s,u);
  Object.assign(entry,{outcome:good?'fall-back':'flee',retreatFrom:from?.id??null,fleeDice:dice,...(extra?{swift:extra}:{}),moved:move.distance,crossed:move.passedThrough.filter(id=>getUnit(s,id)?.team===u.team),fledOffBoard:move.fledOffBoard,destroyed:!!u.destroyed,move,
   ...(u.destroyed?{destroyedReason:move.fledOffBoard?(good?'fell back off the battlefield':'fled off the battlefield'):'lost to Peril or Dangerous Terrain tests while retreating'}:{})});
  return entry;}
@@ -2231,14 +2251,14 @@ export function heavyCasualties(s,u,before=null,source=null,random=Math.random){
 function nearbyPanic(s,u,pose,cause,random=Math.random,{levies=false}={}){
  for(const f of s.units.filter(f=>f.team===u.team&&f.id!==u.id&&f.x!==null&&!f.joined&&aliveCount(f)>0&&(!levies||unitHasRule(f,'levies')))){const d=gap(f,pose);if(d<=6+EPS)queuePanic(s,{unit:f.id,cause,source:u.id,distance:d});}
  return resolvePanic(s,random).filter(e=>e.cause===cause&&e.source===u.id);}
-// One line of the Panic log, for the battle report.
-export function panicText(e){
- const fmt=n=>Math.round(n*100)/100,why=`${e.cause}${e.sourceName&&e.cause!=='Heavy Casualties'?` (${e.sourceName}${e.distance!=null?`, ${fmt(e.distance)}″ away`:''})`:''}${e.lost?`: ${e.lost} of ${e.phaseStartModels} models lost this phase`:''}${e.killed?`: ${e.killed} model${e.killed===1?'':'s'} killed`:''}`;
- if(e.auto)return `${e.name}: Panic (${why}) passed automatically (${e.auto}).`;
- let t=`${e.name}: Panic (${why}), Leadership ${e.ld}, rolled ${e.dice.join('+')}${e.natural?` (${e.natural})`:''}${e.reroll?`, re-rolled ${e.reroll.join('+')} (Hold Your Ground)`:''}: ${e.passed?'passed':'failed'}.`;
+// One line of the Panic log, for the battle report; label(id) names units (default: their names).
+export function panicText(e,label=null){
+ const fmt=n=>Math.round(n*100)/100,name=label?label(e.unit):e.name,sourceName=label&&e.source?label(e.source):e.sourceName,why=`${e.cause}${sourceName&&e.cause!=='Heavy Casualties'?` (${sourceName}${e.distance!=null?`, ${fmt(e.distance)}″ away`:''})`:''}${e.lost?`: ${e.lost} of ${e.phaseStartModels} models lost this phase`:''}${e.killed?`: ${e.killed} model${e.killed===1?'':'s'} killed`:''}`;
+ if(e.auto)return `${name}: Panic (${why}) passed automatically (${e.auto}).`;
+ let t=`${name}: Panic (${why}), Leadership ${e.ld}, rolled ${e.dice.join('+')}${e.natural?` (${e.natural})`:''}${e.reroll?`, re-rolled ${e.reroll.join('+')} (Hold Your Ground)`:''}: ${e.passed?'passed':'failed'}.`;
  if(e.passed||!e.outcome)return t;
  t+=` ${e.models}/${e.startModels} remain: ${e.outcome==='fall-back'?'Fall Back in Good Order':'flee'}. Movement dice ${e.fleeDice.join(',')}${e.swift?` + ${e.swift} Swiftstride`:''}: retreat ${fmt(e.moved)}″.`;
- if(e.crossed?.length)t+=` Fled through ${e.crossed.join(', ')}.`;if(e.destroyed)t+=` Destroyed: ${e.destroyedReason}.`;else if(e.outcome==='fall-back')t+=' It rallies.';
+ if(e.crossed?.length)t+=` Fled through ${e.crossed.map(id=>label?label(id):id).join(', ')}.`;if(e.destroyed)t+=` Destroyed: ${e.destroyedReason}.`;else if(e.outcome==='fall-back')t+=' It rallies.';
  return t;}
 // A broken unit turns directly away from the victor and flees.
 function fleeFrom(s,u,enemy,distance,random){
@@ -2250,6 +2270,11 @@ function stillTouching(a,b){return a.x!==null&&b.x!==null&&aliveCount(a)>0&&aliv
 // Units touching a mover when it sets off (the rest of its combat) only stop it if it would
 // move into them; everything else keeps the usual 1" away.
 const touchingAtStart=(s,u)=>new Set(combatants(s).filter(v=>v.id!==u.id&&v.x!==null&&aliveCount(v)>0&&gap(u,v)<EPS).map(v=>v.id));
+// A flee or a Fall Back in Good Order leaves the battlefield, and the whole unit is lost, when any
+// part of its footprint ends the move in contact with or beyond an edge (one it was not already
+// touching when it set off).
+function retreatOffBoard(s,start,end){const T=1e-6,b=boardOf(s),a=rectangle(start),r=rectangle(end),touch=x=>[x.left<=T,x.right>=b.width-T,x.top<=T,x.bottom>=b.height-T],was=touch(a);
+ return r.left< -T||r.right>b.width+T||r.top< -T||r.bottom>b.height+T||touch(r).some((t,i)=>t&&!was[i]);}
 function retreatPose(s,u,enemy,distance,stopNear=true){
  const dx=u.x-enemy.x,dy=u.y-enemy.y,len=Math.hypot(dx,dy)||1,dir={x:dx/len,y:dy/len},start={x:u.x,y:u.y},touching=touchingAtStart(s,u);let moved=0;
  for(let i=1;i<=Math.ceil(distance*20);i++){
@@ -2394,10 +2419,13 @@ export function moveCombatLoser(s,random=Math.random){
  if(['break','fall-back'].includes(p.outcome)&&(PANIC_POLICY.loserStrength==='phaseStart'?phaseStart(s,loser).us:unitStrength(loser))>=5)p.panic=nearbyPanic(s,loser,{...loser},'Nearby Friend Flees Combat',random,{levies:p.outcome==='break'&&unitHasRule(loser,'levies')});
  release(s,loser);
  const dice=p.outcome==='give-ground'?null:combatDice(2,random),distance=p.outcome==='give-ground'?2:Math.max(1,(p.outcome==='fall-back'?Math.max(...dice):dice[0]+dice[1])-(FACTIONS[loser.faction??'chaos'].resolute?1:0)+(p.outcome==='give-ground'?0:swift(loser,random)));
- // Only a unit that Breaks can leave the battlefield (fleeing off it, it is lost); one that Gives
- // Ground or Falls Back in Good Order stops at the edge.
- const before={...loser},retreat=p.outcome==='break'?fleeFrom(s,loser,winner,distance,random):retreatPose(s,loser,winner,distance);if(retreat.offBoard&&loser.x!==null)destroyUnit(s,loser,'FLED_OFF_TABLE',random);
- if(p.outcome!=='break'&&loser.x!==null){const crossed=sweptVortices(s,loser,[before,{...loser}]);if(crossed.length)retreat.vortexHits=vortexMoveHits(s,loser,crossed,random,[before,{...loser}]);retreat.terrainHits=terrainMoveTests(s,loser,terrainCrossed(s,loser,[before,{...loser}]),[before,{...loser}],random);}
+ // A unit that Breaks flees. One that Falls Back in Good Order moves exactly like a fleeing unit
+ // (through units, and off the battlefield, lost, if it reaches the edge) and rallies if it
+ // survives. Only a Give Ground stops at the edge.
+ const before={...loser},flees=p.outcome!=='give-ground';if(flees){loser.fleeing=true;if(p.outcome==='fall-back')loser.fallingBack=true;}
+ const retreat=flees?fleeFrom(s,loser,winner,distance,random):retreatPose(s,loser,winner,distance);delete loser.fallingBack;if(retreat.offBoard&&loser.x!==null)destroyUnit(s,loser,p.outcome==='fall-back'?'FELL_BACK_OFF_TABLE':'FLED_OFF_TABLE',random);
+ if(p.outcome==='fall-back')loser.fleeing=false;
+ if(!flees&&loser.x!==null){const crossed=sweptVortices(s,loser,[before,{...loser}]);if(crossed.length)retreat.vortexHits=vortexMoveHits(s,loser,crossed,random,[before,{...loser}]);retreat.terrainHits=terrainMoveTests(s,loser,terrainCrossed(s,loser,[before,{...loser}]),[before,{...loser}],random);}
  if(p.outcome==='break'&&loser.x!==null)loser.fleeing=true;
  // Each Break outcome is kept as its own record, apart from the fleeing flag (a unit that Falls Back rallies).
  loser.combatOutcome={kind:{'give-ground':'GAVE_GROUND','fall-back':'FELL_BACK',break:'BROKE'}[p.outcome],round:s.round,outnumbered:!!p.outnumbered};

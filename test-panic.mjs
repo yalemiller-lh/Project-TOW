@@ -99,3 +99,37 @@ test('L: a Fall Back in Good Order across the battlefield edge removes the unit,
  assert.equal(p.outcome,'fall-back');assert.equal(p.fledOffBoard,true);assert.equal(p.destroyed,true);assert.equal(p.destroyedReason,'fell back off the battlefield');assert.equal(t.destroyed,true);
  assert.match(G.panicText(p),/Destroyed: fell back off the battlefield/);
 });
+// The user's battlefield-edge correction of 2 October 2026: fleeing and both kinds of Fall Back in
+// Good Order share one edge rule.
+test('edge 1: a combat Fall Back in Good Order that reaches the edge loses the whole unit',()=>{
+ const e=G.createGame('empire');G.autoDeploy(e);G.begin(e,()=>0,{firstPlayer:'ash'});for(const u of e.units)u.charge=null;only(e,['A1','I1']);
+ const w=G.getUnit(e,'A1'),b=G.getUnit(e,'I1');Object.assign(w,{x:30,y:8,heading:0});Object.assign(b,{x:30,y:8-G.size(w).h,heading:180});w.engaged=['I1'];b.engaged=['A1'];
+ Object.assign(e,{stage:'combat',team:'ash'});e.lastCombat={winnerSide:'ash'};e.combatHistory=[e.lastCombat];e.pendingCombat={winner:'A1',loser:'I1',margin:1,stage:'retreat',outcome:'fall-back'};
+ G.moveCombatLoser(e,()=>face(6));assert.equal(b.destroyed,true);assert.equal(b.destroyedBy,'FELL_BACK_OFF_TABLE');assert.equal(b.fleeing,false,'not rallied: destroyed');assert.equal(G.aliveCount(b),0);
+});
+test('edge 2 and 3: a Panic Fall Back reaching the edge is lost the same way; one that stops short survives and rallies',()=>{
+ const s=shooting(),t=G.getUnit(s,'I1');Object.assign(t,{x:30,y:5,heading:180});G.fireRocket(s,'I1','incendiary',{artillery:2,scatter:'hit'},split(s,oneKill,[5,5,5,5]));
+ assert.equal(t.destroyedBy,'FELL_BACK_OFF_TABLE');
+ const short=lostCombat('fall-back'),l=G.getUnit(short.s,'I1');assert.equal(l.destroyed,undefined);assert.notEqual(l.x,null);assert.equal(l.fleeing,false,'it rallies at the end of the move');
+});
+test('edge 4: a corner touching the edge loses the unit though its centre is still on the table',()=>{
+ const s=shooting(['I1']),t=G.getUnit(s,'I1'),e=G.getUnit(s,'A1');Object.assign(t,{x:5,y:22,heading:0});Object.assign(e,{x:15,y:32,heading:0});
+ const f=[5,5,3,3];let i=0;const p=G.panicTest(s,t,{away:e,random:()=>face(f[Math.min(i++,f.length-1)])});
+ assert.equal(p.outcome,'fall-back');assert.equal(p.fledOffBoard,true);assert.ok(5-Math.SQRT1_2*p.moved>0,`its centre ended ${5-Math.SQRT1_2*p.moved}″ in from the edge`);assert.equal(t.destroyed,true);assert.equal(p.destroyedReason,'fell back off the battlefield');
+});
+// The user's request of 2 October 2026: when several of a player's units must test together, the
+// player clicks each in the order they choose.
+function twoFriends(chooser){const s=G.createGame('empire');G.autoDeploy(s);G.begin(s,()=>0,{firstPlayer:'iron'});G.nextPhase(s);G.nextPhase(s);for(const u of s.units)u.charge=null;only(s,['A1','A2','A3','I1']);if(chooser)s.panicChooser=chooser;
+ const d=G.getUnit(s,'A2'),w=G.size(d).w;Object.assign(d,{x:30,y:30,heading:0});Object.assign(G.getUnit(s,'A1'),{x:30-w-3,y:30,heading:0});Object.assign(G.getUnit(s,'A3'),{x:30+w+3,y:30,heading:0});Object.assign(G.getUnit(s,'I1'),{x:30,y:6,heading:180});
+ G.removeCasualties(s,d,20);G.destroyUnit(s,d,'COMBAT_CASUALTIES',()=>face(6));return s;}
+test('two of your units must test together: they wait for you to click each, in your order; then the failed ones retreat',()=>{
+ const s=twoFriends({ash:true});const c=G.panicChoice(s);assert.deepEqual(c.units.slice().sort(),['A1','A3']);assert.equal(c.team,'ash');assert.equal(entries(s,'A1').length+entries(s,'A3').length,0,'nothing rolled yet');
+ assert.throws(()=>G.nextPhase(s),/Panic/);assert.throws(()=>G.commitOrder(s,'A1',{kind:'advance',mode:'advance',distance:1}),/Panic/);
+ const a3=G.getUnit(s,'A3'),x3=a3.x;const first=G.choosePanic(s,'A3',()=>face(6));assert.equal(first.passed,false);assert.equal(a3.x,x3,'it waits for the other test before it retreats');assert.deepEqual(G.panicChoice(s).units,['A1']);
+ assert.throws(()=>G.choosePanic(s,'A3'),/no Panic test waiting/);G.choosePanic(s,'A1',()=>face(1));assert.equal(G.panicChoice(s),null);assert.equal(s.panicPending,undefined);
+ assert.deepEqual(s.panicLog.filter(e=>['A1','A3'].includes(e.unit)).map(e=>e.unit),['A3','A1'],'in the order clicked');assert.notEqual(a3.x,x3,'then A3 retreats');assert.equal(entries(s,'A3')[0].outcome,'fall-back');
+});
+test('the bot\'s units, or a single unit, test at once without waiting',()=>{
+ const s=twoFriends({iron:true});assert.equal(G.panicChoice(s),null,'Red is the bot here');assert.equal(entries(s,'A1').length+entries(s,'A3').length,2);
+ const one=shooting(['I1']);one.panicChooser={iron:true};const t=G.getUnit(one,'I1');Object.assign(t,{x:30,y:22,heading:180});G.removeCasualties(one,t,6);assert.ok(G.heavyCasualties(one,t,null,null,()=>face(6)),'a lone test is taken at once');assert.equal(G.panicChoice(one),null);
+});

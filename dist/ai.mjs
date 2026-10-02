@@ -41,7 +41,7 @@ export function playFight(s,charges,firstId,team=ME,n=SIMS){
 function fightOut(s,charges,firstId,team,n){
  let total=0,wins=0,played=0;
  for(let i=0;i<n;i++){
-  const c=structuredClone(s);Object.assign(c,{stage:'combat',team,pendingSpell:null,combatSession:null,pendingCombat:null});
+  const c=sim(s);Object.assign(c,{stage:'combat',team,pendingSpell:null,combatSession:null,pendingCombat:null});
   for(const {u,t,plan}of charges){const cu=G.getUnit(c,u.id),ct=G.getUnit(c,t.id);Object.assign(cu,{x:plan.end.x,y:plan.end.y,heading:G.heading(plan.end)});cu.engaged=[...new Set([...asList(cu.engaged),ct.id])];ct.engaged=[...new Set([...asList(ct.engaged),cu.id])];cu.charge={target:ct.id,status:'success',distance:plan.cost??0,face:plan.face??'front'};}
   for(const v of G.combatants(c))v.combatResolved=false;
   const r=seeded(i+1);
@@ -104,8 +104,8 @@ function waiting(s,u,t){if(t.role==='warmachine'||t.engaged||t.fleeing)return 0;
 // (Missile troops never charge as the lesser evil: they can shoot, or Stand & Shoot.)
 const worthCharging=o=>o.ev>Math.max(0,o.wait)+.02*points(o.u)||o.u.role==='infantry'&&o.wait<-.25*points(o.u)&&o.ev>o.wait+.15*points(o.u);
 // A volley played out: what it costs the enemy.
-function shotValue(s,u,t){let v=0;for(let i=0;i<6;i++){const c=structuredClone(s);try{G.shoot(c,u.id,t.id,seeded(i+31));v+=swing(s,c)/6;}catch{}}return v;}
-function cannonValue(s,c,t,mode){let v=0;for(let i=0;i<6;i++){const k=structuredClone(s),r=seeded(i+41);try{G.fireCannon(k,c.id,t.id,mode,G.rollCannonDice(r),r,{aimShort:6});v+=swing(s,k)/6;}catch{}}return v;}
+function shotValue(s,u,t){let v=0;for(let i=0;i<6;i++){const c=sim(s);try{G.shoot(c,u.id,t.id,seeded(i+31));v+=swing(s,c)/6;}catch{}}return v;}
+function cannonValue(s,c,t,mode){let v=0;for(let i=0;i<6;i++){const k=sim(s),r=seeded(i+41);try{G.fireCannon(k,c.id,t.id,mode,G.rollCannonDice(r),r,{aimShort:6});v+=swing(s,k)/6;}catch{}}return v;}
 // In its Strategy phase the bot tries to dispel an enemy vortex near its units: its wizard when
 // in range, otherwise the side's Fated Dispel.
 function dispelVortices(s,random){
@@ -217,13 +217,13 @@ export function takeDeploymentStep(s,random=null){
  if(choice==='vanguard'){const u=G.vanguardUnits(s,ME)[0];G.endVanguard(s,u.id,false);return {message:`The bot keeps ${u.name} where it was deployed (no Vanguard move).`};}
  return null;
 }
-// Terrain: hills near its own zone (where its guns and shooters stand), the rest away from its own
-// lines; scattering, it moves the features nearest its own zone.
+// Terrain: every feature as near the centre as the rules allow, in the midfield rather than either
+// deployment zone (the user's choice, 2 October 2026); scattering, it moves the features nearest its own zone.
 function terrainStep(s,random){
  const ts=s.terrainSetup,z=G.zoneOf(s,ME),zone={x:z.reduce((n,p)=>n+p.x,0)/z.length,y:z.reduce((n,p)=>n+p.y,0)/z.length},near=t=>Math.hypot(t.x-zone.x,t.y-zone.y);
  if(ts.scatter){if(ts.scatter.count===null){const n=G.scatterTerrainCount(s,random);return {message:`The bot rolls to scatter: ${n} feature${n===1?'':'s'}.`};}
   const ids=ts.placed.map(id=>s.terrain.find(t=>t.id===id)).sort((a,b)=>near(a)-near(b)).slice(0,ts.scatter.count).map(t=>t.id),out=G.scatterTerrain(s,ME,ids,random);return {message:`The bot scatters ${out.length} feature${out.length===1?'':'s'}: ${out.map(r=>`${s.terrain.find(t=>t.id===r.id).name} ${r.hit?'stays':'moves '+Math.round(r.moved*10)/10+'″'}`).join(', ')}.`};}
- const f=G.autoPlaceTerrain(s,ME,random,{score:(k,x,y)=>(G.makeFeature(k,0,0).kind==='hill'?-1:1)*Math.hypot(x-zone.x,y-zone.y)+random()*2});
+ const roll=random??Math.random,f=G.autoPlaceTerrain(s,ME,roll,{score:(k,x,y)=>G.terrainCentrality(s,k,x,y)+roll()*.05});
  if(f)return {message:`The bot places ${f.name}.`};G.passTerrain(s,ME);return {message:'The bot places no more terrain.'};}
 // The bot plans its whole remaining deployment against what is on the table now, then places
 // the first unit of that plan: war machines and shooters first for a gun line, blocks first
@@ -231,7 +231,7 @@ function terrainStep(s,random){
 const PLAN_ORDER={empire:['warmachine','missile','infantry','character','wizard'],other:['infantry','missile','warmachine','character','wizard']};
 export function deployNext(s,random=null){
  if(G.deploymentTurn(s)!==ME)throw Error('It is not the bot’s turn to deploy.');
- const trial=structuredClone(s);trial.deployOrder.auto=true;
+ const trial=sim(s);trial.deployOrder.auto=true;
  for(const p of G.deploymentPieces(trial,ME))if(!p.deployed){p.x=null;p.y=null;}
  try{deployOpponent(trial,random);}catch{}
  const order=PLAN_ORDER[s.units.find(u=>u.team===ME)?.faction==='empire'?'empire':'other'];
@@ -267,7 +267,11 @@ function aiChallenge(s){
   if(!G.canRefuseChallenge(s)||best.v>-5){G.answerChallenge(s,best.k);return {message:`${name(best.k)} accepts ${name(ch.challenger)}’s challenge.`};}G.answerChallenge(s,null);return {message:`The bot refuses ${name(ch.challenger)}’s challenge.`};}
  // A refused challenge: the most dangerous enemy fighter retires.
  const pick=G.challengeCandidates(s,ch.refusedBy).sort((a,b)=>duelWorth(s,b)-duelWorth(s,a))[0];G.nominateRetiree(s,pick);return {message:`${name(pick)} must retire to the rear.`};}
+// A copy of the battle for the bot to play out: it never waits for the player to pick Panic tests.
+const sim=s=>{const c=structuredClone(s);delete c.panicChooser;return c;};
 export function humanDecision(s){
+ // Two or more of the player's units must test for Panic together: the player clicks each in turn.
+ {const c=G.panicChoice(s);if(c)return {id:c.units[0],kind:'panic',message:`Panic: ${c.units.length} of your units must test together. Click each highlighted unit to take its test, in the order you choose.`};}
  {const o=(s.reformOffers??[]).find(o=>G.getUnit(s,o.unit)?.team===THEM&&G.reformOffer(s,o.unit));if(o)return {id:o.unit,kind:'reform',message:'Choose a facing to reform, or keep it.'};}
  if(G.challengePending(s)&&s.combatSession.challenge.team===THEM){const ch=s.combatSession.challenge;return {id:s.selected,kind:'challenge',message:ch.stage==='issue'?'Issue a challenge, or fight on without one.':ch.stage==='accept'?'Accept the challenge, or refuse it.':'Name the model that must retire.'};}
  if(s.pendingSpell&&G.getUnit(s,s.pendingSpell.caster)?.team===ME)return {id:s.pendingSpell.caster,kind:'dispel',message:`Choose how to dispel ${G.SPELLS[s.pendingSpell.key].name}.`};
@@ -306,7 +310,7 @@ function resolveCombatDecision(s,random){
 }
 
 export function shouldAct(s){
- if(s.stage==='deployment'||s.stage==='finished')return false;
+ if(s.stage==='deployment'||s.stage==='finished'||s.panicPending)return false;
  if(s.pendingSpell)return G.getUnit(s,s.pendingSpell.caster)?.team===THEM;
  if(s.team===ME)return !humanDecision(s);
  return s.stage==='movement'&&s.movementStep==='reactions'&&s.units.some(u=>u.team===THEM&&u.charge?.status==='declared'&&u.charge.reaction==='pending'&&G.getUnit(s,u.charge.target)?.team===ME)||!!combatDecision(s)||G.assailmentWaiting(s,ME).length>0||G.challengePending(s)&&s.combatSession.challenge.team===ME||myReform(s);
@@ -397,7 +401,7 @@ function describeOrder(o){return o.kind==='pivot'?'reforms':o.kind==='side'?`ste
 // tried for anything that matters; the side's one Fated Dispel is kept for spells that hurt.
 function spellHarm(s){
  const p=s.pendingSpell,key=p.key,spell=G.SPELLS[key];let harm=0;
- for(let i=0;i<6;i++){const c=structuredClone(s);try{G.resolveDispel(c,'none',seeded(i+11));harm+=-swing(s,c)/6;}catch{}}
+ for(let i=0;i<6;i++){const c=sim(s);try{G.resolveDispel(c,'none',seeded(i+11));harm+=-swing(s,c)/6;}catch{}}
  const lasting={arrow:6,shield:5,ashStorm:8,urgency:8,darkness:12,vessel:10,vigour:10,steed:10,pillar:15,vortexChaos:15,stormCall:8,plagueRust:10,ramparts:10,pathway:8,elementalSpirit:15,wordOfPain:12,gateway:8,phantasmagoria:15,battleLust:12};
  return harm+(lasting[key]??(spell.type==='assailment'?8:0));
 }
@@ -499,7 +503,7 @@ function spellValue(s,w,key,target,point){
  if(key==='battleLust')return target.role==='infantry'&&!target.engaged&&s.units.some(t=>t.team===THEM&&alive(t)&&!t.fleeing&&G.gap(target,t)<=G.profile(target).M+6)?8:0;
  if(G.SPELLS[key].relocate)return 0;
  if(spell.template)return point?10:0;
- let v=0;for(let i=0;i<6;i++){const c=structuredClone(s);try{G.castSpell(c,w.id,key,target.id,seeded(i+21),{point,dispel:'none'});v+=swing(s,c)/6;}catch{}}
+ let v=0;for(let i=0;i<6;i++){const c=sim(s);try{G.castSpell(c,w.id,key,target.id,seeded(i+21),{point,dispel:'none'});v+=swing(s,c)/6;}catch{}}
  return v;
 }
 function aiSpell(s,random){const wizard=s.units.find(u=>u.team===ME&&u.role==='wizard'&&alive(u));if(!wizard)return null;let pick=null;for(const key of wizard.spells){const spell=G.SPELLS[key];if(G.castBlockReason(s,wizard.id,key))continue;const point=spell.template?templatePoint(s,wizard,key):null;if(spell.template&&!point)continue;for(const t of G.spellTargets(s,wizard.id,key)){const value=spellValue(s,wizard,key,t,point);if(value>1&&(!pick||value>pick.value))pick={key,spell,target:t,point,value};}}

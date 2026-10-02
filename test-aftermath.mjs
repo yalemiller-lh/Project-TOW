@@ -32,12 +32,12 @@ test('the Daemonsmith\'s Stubborn turns a Break into Fall Back and is not spent 
  breakFor(s,'I1','A6',{margin:1});const r=G.rollCombatBreak(s,seq([face(6),face(6)]));assert.equal(r.outcome,'fall-back');assert.equal(r.stubborn,true);assert.equal(w.stubbornUsed,true);
  breakFor(s,'I1','A6',{margin:1});assert.equal(G.rollCombatBreak(s,seq([face(6),face(6)])).outcome,'break','spent: a second Break stands');
 });
-test('Giving Ground or Falling Back at the table edge stops there: the unit is not lost',()=>{
+test('Giving Ground at the table edge stops there; Falling Back in Good Order off it loses the unit',()=>{
  for(const [dice,outcome] of [[[3,3],'give-ground'],[[2,2],'fall-back']]){
   const {s,a,b}=engaged();Object.assign(b,{x:36,y:G.size(b).h/2+.3,heading:180});Object.assign(a,{x:36,y:b.y+(G.size(a).h+G.size(b).h)/2,heading:0});
   breakFor(s,'A1','I1',{margin:outcome==='give-ground'?0:4});const r=G.rollCombatBreak(s,seq(dice.map(face)));assert.equal(r.outcome,outcome);if(s.pendingCombat.stage==='loser-choice')G.chooseLoserAction(s,'fall-back');
   while(s.pendingCombat.stage==='declare')G.declarePursuit(s,s.pendingCombat.winner,'restrain',null,seq([0,0]));
-  G.moveCombatLoser(s,seq([face(2),face(2)]));assert.notEqual(b.x,null,`${outcome}: still on the table`);assert.ok(!b.destroyed);assert.equal(b.fleeing,false);
+  G.moveCombatLoser(s,seq([face(2),face(2)]));if(outcome==='fall-back'){assert.equal(b.destroyed,true,'it fell back off the battlefield');assert.equal(b.destroyedBy,'FELL_BACK_OFF_TABLE');assert.equal(b.fleeing,false);continue;}assert.notEqual(b.x,null,`${outcome}: still on the table`);assert.ok(!b.destroyed);assert.equal(b.fleeing,false);
   assert.equal(b.combatOutcome.kind,outcome==='give-ground'?'GAVE_GROUND':'FELL_BACK');assert.equal(BM.casualtyVP(b).vp,0);
  }
 });

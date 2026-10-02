@@ -24,15 +24,17 @@ test('a wheel cannot sweep through the Deathshrieker',()=>{
  const order={kind:'wheel',angle:30,distance:0,mode:'advance'};assert.equal(G.orderError(s,a,order),null);
  Object.assign(s.rocket,{x:a.x-G.SIZE.w/2-1.2,y:a.y-G.SIZE.h/2-1.5});assert.match(G.orderError(s,a,order)??'',/war machine|Deathshrieker|blocks/);
 });
-test('a unit falling back stops short of a war machine instead of passing through it',()=>{
+test('a unit falling back moves like a fleeing unit: through an enemy war machine, with Peril tests',()=>{
  const s=field(['A1','I1','A5']);const w=G.getUnit(s,'A1'),l=G.getUnit(s,'I1');Object.assign(w,{x:18,y:30,heading:0});Object.assign(l,{x:18,y:30-G.SIZE.h,heading:180});Object.assign(s.rocket,{x:18,y:l.y-G.SIZE.h/2-2.5});
  s.stage='combat';s.lastCombat={a:'A1',b:'I1'};s.combatHistory=[s.lastCombat];s.pendingCombat={winner:'A1',loser:'I1',margin:1,stage:'retreat',outcome:'fall-back'};
- G.moveCombatLoser(s,()=>.99);assert.ok(G.gap(l,{...s.rocket})>=-1e-9);assert.ok(l.y>s.rocket.y,'the loser did not pass the launcher');
+ const r=G.moveCombatLoser(s,()=>.99);assert.ok(l.y<s.rocket.y,'it passed the launcher');assert.ok(G.gap(l,{...s.rocket})>=1-1e-6,'and ended 1″ clear of it');assert.ok(r.flee.peril.length>0,'Peril tests for passing through an enemy');assert.equal(l.fleeing,false,'it rallies');
 });
-test('a unit falling back stops 1″ short of a friendly unit instead of ending on top of it',()=>{
+test('a unit falling back moves through a friendly unit and on until clear; the friend, tested already as it fell back, does not test again',()=>{
  const s=field(['A1','I1','I2']);const w=G.getUnit(s,'A1'),l=G.getUnit(s,'I1'),friend=G.getUnit(s,'I2');Object.assign(w,{x:18,y:30,heading:0});Object.assign(l,{x:18,y:30-G.SIZE.h,heading:180});Object.assign(friend,{x:18,y:l.y-G.SIZE.h-2.5,heading:180});
  s.stage='combat';s.lastCombat={a:'A1',b:'I1'};s.combatHistory=[s.lastCombat];s.pendingCombat={winner:'A1',loser:'I1',margin:1,stage:'retreat',outcome:'fall-back'};
- G.moveCombatLoser(s,()=>.99);assert.ok(G.gap(l,friend)>=1-1e-6,'kept 1″ from the friend');assert.ok(l.y>friend.y);
+ // The friend, 2.5″ away, passes its Nearby Friend Flees Combat test on a double 1.
+ let k=0;const r=G.moveCombatLoser(s,()=>k++<2?0:.99);assert.deepEqual(r.flee.passedThrough,['I2'],'through the friend');assert.ok(r.flee.distance>6,'on until clear of it');assert.ok(G.gap(l,friend)>=1-1e-6&&l.y<friend.y);
+ assert.deepEqual((s.panicLog??[]).filter(e=>e.unit==='I2').map(e=>[e.cause,e.passed]),[['Nearby Friend Flees Combat',true]],'one test a phase');
 });
 test('a loser that cannot give ground stays in the fight',()=>{
  const s=field(['A1','I1','I2']);const w=G.getUnit(s,'A1'),l=G.getUnit(s,'I1'),friend=G.getUnit(s,'I2');Object.assign(w,{x:18,y:30,heading:0});Object.assign(l,{x:18,y:30-G.SIZE.h,heading:180});Object.assign(friend,{x:18,y:l.y-G.SIZE.h-1,heading:180});
