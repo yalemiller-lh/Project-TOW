@@ -152,7 +152,7 @@ test('Fly lasts until the caster\'s next Start of Turn; Vigour\'s +1 Movement do
  s.stage='combat';G.nextTurn(s);assert.deepEqual(G.flyValues(a),[12],'in Blue\'s turn');s.stage='combat';G.nextTurn(s);assert.deepEqual(G.flyValues(a),[]);
 });
 test('a flyer crossing a vortex is struck by it, but loses Movement only by landing in it',()=>{
- {const {s,a}=flyer();s.vortices=[{id:'V1',spell:'vortexChaos',caster:'A6',team:'ash',x:30,y:a.y-G.size(a).h/2-5,radius:1.5}];G.commitOrder(s,'A1',fwd(11),dice(3,1));assert.equal(s.lastVortexHits.length,1);assert.equal(a.difficultThisMove,undefined);assert.equal(G.movementRemaining(a),1);}
+ {const {s,a}=flyer();s.vortices=[{id:'V1',spell:'vortexChaos',caster:'A6',team:'ash',x:30,y:a.y-G.size(a).h/2-5,radius:1.5}];G.commitOrder(s,'A1',fwd(11),dice(3,1));assert.equal(s.lastVortexHits.length,1);assert.ok(!a.difficultThisMove);assert.equal(G.movementRemaining(a),1);}
  {const {s,a}=flyer();s.vortices=[{id:'V1',spell:'vortexChaos',caster:'A6',team:'ash',x:30,y:a.y-G.size(a).h/2-9-1,radius:1.5}];G.commitOrder(s,'A1',fwd(9),dice(3,1));assert.equal(a.difficultThisMove,true,'landed in it');assert.equal(G.movementRemaining(a),2,'12 − 1 − 9');}
 });
 test('the Daemonsmith uses Daemonology by default; a Battle March roster may choose Battle Magic',()=>{

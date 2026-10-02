@@ -76,8 +76,8 @@ function armyFromRoster(team,roster){
   if(e.role==='wizard'){if(units.some(u=>u.role==='wizard'))throw Error('This engine supports one wizard per army.');units.push({...createWizard(team,faction,{lore:item.lore??e.lores?.default}),name:e.name,...paid});}
   else if(e.role==='warmachine'&&team==='ash'&&item.entry==='deathshrieker'){if(rocket)throw Error('This engine supports one Deathshrieker per army.');rocket={...paid};}
   else if(e.role==='warmachine'&&team==='iron'&&item.entry==='greatCannon'){if(cannons.length>=2)throw Error('This engine supports at most two Great Cannons.');cannons.push({id:'I'+(5+cannons.length),name:'Great Cannon '+'AB'[cannons.length],...machineFields('iron','empire'),x:null,y:null,heading:180,wounds:3,crew:3,shot:false,disabledUntil:0,lastShot:null,...paid});}
-  else if(e.role==='infantry'||e.role==='missile'){const id=REGIMENT_IDS[team][regiments++];if(!id)throw Error('Too many regiments for this engine.');units.push({id,team,faction,role:e.role,name:e.name,models:item.models,files:item.files??5,command:{C:!!item.command?.C,S:!!item.command?.S,M:!!item.command?.M},troop:e.troop,shields:!!(e.options?.shields&&(e.options.shields.required||item.options?.shields)),spears:!!item.options?.spears,...paid,heading:team==='ash'?0:180,...runtime()});}
-  else if(e.role==='character'){const id=CHARACTER_IDS[team][units.filter(u=>u.role==='character').length];if(!id)throw Error('Too many characters for this engine.');units.push({id,team,faction,role:'character',kind:e.kind,name:e.name,weapon:item.options?.greatWeapon?'greatWeapon':null,armour:item.options?.fullPlate?'fullPlate':null,wounds:CHARACTERS[e.kind].profile.W,...paid,heading:team==='ash'?0:180,...runtime()});}
+  else if(e.role==='infantry'||e.role==='missile'){const id=REGIMENT_IDS[team][regiments++];if(!id)throw Error('Too many regiments for this engine.');units.push({id,team,faction,role:e.role,name:e.name,models:item.models,files:item.files??5,command:{C:!!item.command?.C,S:!!item.command?.S,M:!!item.command?.M},troop:e.troop,shields:!!(e.options?.shields&&(e.options.shields.required||item.options?.shields)),spears:!!item.options?.spears,...paid,rules:[...(e.rules??[])],heading:team==='ash'?0:180,...runtime()});}
+  else if(e.role==='character'){const id=CHARACTER_IDS[team][units.filter(u=>u.role==='character').length];if(!id)throw Error('Too many characters for this engine.');units.push({id,team,faction,role:'character',kind:e.kind,name:e.name,weapon:item.options?.greatWeapon?'greatWeapon':null,armour:item.options?.fullPlate?'fullPlate':null,wounds:CHARACTERS[e.kind].profile.W,...paid,rules:[...(e.rules??[])],heading:team==='ash'?0:180,...runtime()});}
   else throw Error(`${e.name} cannot be fielded by this engine for this side.`);
  }
  return {units,cannons,rocket};
@@ -215,18 +215,28 @@ function destroyUnit(s,u,reason='COMBAT_CASUALTIES',random=Math.random){if(!u)re
 // Only friends: an enemy is never reached by an ordinary move, only by a charge.
 function closeAtStart(s,u){const start=getUnit(s,u?.id);return v=>!!start&&start.x!==null&&v.id!==start.id&&v.team===start.team&&v.x!==null&&gap(start,v)<1-EPS;}
 function shrink(poly,d=.03){const c={x:poly.reduce((n,p)=>n+p.x,0)/poly.length,y:poly.reduce((n,p)=>n+p.y,0)/poly.length};return poly.map(p=>{const l=Math.hypot(p.x-c.x,p.y-c.y)||1;return {x:p.x+(c.x-p.x)*d/l,y:p.y+(c.y-p.y)*d/l};});}
+// ---- Special deployment rules: Scouts, Vanguard, Ambushers ----
+// A unit's special rules: from its army entry (rules), or granted by an effect.
+export const unitHasRule=(u,rule)=>!!u?.rules?.includes(rule)||hasRule(u,rule);
+const isScout=u=>unitHasRule(u,'scouts');
+export const inReserve=u=>!!u?.reserve&&u.x===null&&!u.destroyed;
+// Scouts deploy after every other unit of both armies (in a game deployed all at once, whenever).
+function normalLeft(s,team){return deploymentPieces(s,team).some(q=>!q.deployed&&!inReserve(q)&&!isScout(q));}
+export function scoutPhase(s){return s.stage==='deployment'&&(!s.deployOrder?.alternate||!normalLeft(s,'ash')&&!normalLeft(s,'iron'));}
+const clearOfEnemies=(s,team,pose,d)=>combatants(s).every(v=>v.team===team||v.x===null||aliveCount(v)===0||gap(pose,v)>d+EPS);
 export function checkPosition(state,unit,x,y,deployment=false,{moving=false}={}){
   if(!Number.isFinite(x)||!Number.isFinite(y))return 'Enter valid coordinates.';
   const candidate={...unit,x,y},r=rectangle(candidate),close=moving?closeAtStart(state,unit):()=>false;
   if(offBoard(candidate,state))return 'The whole regiment must stay on the battlefield.';
   if(terrainBlocks(state,corners(candidate)))return 'Units cannot enter impassable terrain.';
-  if(deployment&&!inZone(state,unit.team,corners(candidate)))return 'Keep the entire block inside its own deployment zone.';
+  // Scouts may also deploy anywhere more than 12″ from every enemy model.
+  if(deployment&&!inZone(state,unit.team,corners(candidate))&&!(isScout(unit)&&scoutPhase(state)&&clearOfEnemies(state,unit.team,candidate,12)))return isScout(unit)&&scoutPhase(state)?'Scouts deploy in their own zone or more than 12″ from every enemy model.':'Keep the entire block inside its own deployment zone.';
   if(state.units.some(u=>u.id!==unit.id&&u.x!==null&&(close(u)?overlaps(candidate,u):gap(candidate,u)<1-EPS)))return 'Keep at least 1″ between regiments.';
   if(state.rocket?.x!==null&&state.rocket.id!==unit.id&&(close(state.rocket)?polygonGap(shrink(corners(candidate)),corners(state.rocket))<EPS:polygonGap(corners(candidate),corners(state.rocket))<1-EPS))return 'Keep at least 1″ between regiments and the Deathshrieker.';
   if(state.cannons?.some(c=>c.x!==null&&c.id!==unit.id&&(close(c)?polygonGap(shrink(corners(candidate)),corners(c))<EPS:polygonGap(corners(candidate),corners(c))<1-EPS)))return 'Keep at least 1″ between regiments and cannons.';
   return null;
 }
-export function place(s,id,x,y){if(s.stage!=='deployment')throw Error('Deployment is finished.');const u=getUnit(s,id);if(!u)throw Error('Unknown regiment.');deployGate(s,u);const error=checkPosition(s,u,x,y,true);if(error)throw Error(error);Object.assign(u,{x,y});deployPlaced(s,u);return u;}
+export function place(s,id,x,y){if(s.stage!=='deployment')throw Error('Deployment is finished.');const u=getUnit(s,id);if(!u)throw Error('Unknown regiment.');deployGate(s,u);const error=checkPosition(s,u,x,y,true);if(error)throw Error(error);Object.assign(u,{x,y,reserve:null});if(isScout(u))u.scouted=!inZone(s,u.team,corners(u));deployPlaced(s,u);return u;}
 // A war machine deploys like a regiment: its whole base, as turned, inside its own zone, clear of
 // impassable terrain and at least 1″ from every other unit and war machine.
 function machinePlacementError(s,m,x,y){
@@ -245,7 +255,8 @@ export function placeCannon(s,id,x,y){if(s.stage!=='deployment')throw Error('Dep
 // given a random source (the game's Quick deploy), otherwise it keeps its fixed test layout.
 export function autoDeploy(s,{team=null,random=null}={}){if(s.stage!=='deployment')throw Error('Deployment is finished.');if((s.format?.id??'classic')!=='classic'||random)return alternating(s)?alternateAutoDeploy(s,team,random):searchDeploy(s,team,random);s.units.forEach((u,i)=>{if(!team||u.team===team)Object.assign(u,{x:u.id==='A6'?3.5:u.id==='I7'?70:[18,36,54,64][i%4],y:u.team==='ash'?42:6});});if(!team||team==='ash')placeRocket(s,8,42);if(!team||team==='iron')for(const [i,c]of s.cannons.entries())placeCannon(s,c.id,[8,45][i],6);}
 // Spread each army across the middle of its zone, trying the nearest legal spots.
-function deployOrderOf(s,side){return [...s.units.filter(u=>u.team===side&&!isCharacter(u)),...combatants(s).filter(m=>m.role==='warmachine'&&m.team===side),...s.units.filter(u=>u.team===side&&isCharacter(u))];}
+// Regiments, war machines, characters, then Scouts; a unit held in reserve is not deployed.
+function deployOrderOf(s,side){const mine=v=>v.team===side&&!inReserve(v);return [...s.units.filter(u=>mine(u)&&!isCharacter(u)&&!isScout(u)),...combatants(s).filter(m=>m.role==='warmachine'&&mine(m)),...s.units.filter(u=>mine(u)&&isCharacter(u)&&!isScout(u)),...s.units.filter(u=>mine(u)&&isScout(u))];}
 function placePiece(s,p,x,y){return p.role==='warmachine'?(p.team==='ash'?placeRocket(s,x,y):placeCannon(s,p.id,x,y)):place(s,p.id,x,y);}
 // Manual deployment: place any piece (regiment, character or war machine), turn it where it
 // stands, or pick it back up. Only a piece that has not been confirmed can be changed.
@@ -299,9 +310,10 @@ export function deploymentPieces(s,team){return combatants(s).filter(p=>p.team==
 export function deploymentTurn(s){return alternating(s)&&s.deployOrder.first&&!s.deployOrder.complete?s.deployOrder.next:null;}
 // Deployment batches: a regiment is one turn; all of an army's war machines go down together in
 // one turn (anywhere in the zone); its characters go down together, last, once the rest is down.
-export function deploymentBatch(s,p){const kind=p.role==='warmachine'?'machines':isCharacter(p)?'characters':'unit';return {kind,team:p.team,ids:kind==='unit'?[p.id]:deploymentPieces(s,p.team).filter(q=>!q.deployed&&(kind==='machines'?q.role==='warmachine':isCharacter(q))).map(q=>q.id)};}
-const charactersWait=(s,p)=>isCharacter(p)&&deploymentPieces(s,p.team).some(q=>!q.deployed&&!isCharacter(q));
-function deployGate(s,p){const d=s.deployOrder;if(!alternating(s)||d.auto)return;if(!d.zonesChosen)throw Error('Choose the deployment zones first.');if(!d.first)throw Error('Roll off first: the winner deploys the first unit.');if(d.complete||p.deployed)throw Error(`${p.name} is already deployed; deployed units stay where they are.`);if(p.team!==d.next)throw Error(`${armyName(d.next,s)} deploys the next unit.`);if(charactersWait(s,p))throw Error('Characters deploy last, all together, once every other unit of the army is down.');}
+// A unit with Scouts deploys on its own, after every other unit of both armies.
+export function deploymentBatch(s,p){const kind=p.role==='warmachine'?'machines':isScout(p)?'scout':isCharacter(p)?'characters':'unit';return {kind,team:p.team,ids:kind==='unit'||kind==='scout'?[p.id]:deploymentPieces(s,p.team).filter(q=>!q.deployed&&!inReserve(q)&&(kind==='machines'?q.role==='warmachine':isCharacter(q)&&!isScout(q))).map(q=>q.id)};}
+const charactersWait=(s,p)=>isCharacter(p)&&!isScout(p)&&deploymentPieces(s,p.team).some(q=>!q.deployed&&!inReserve(q)&&!isCharacter(q)&&!isScout(q));
+function deployGate(s,p){const d=s.deployOrder;if(inReserve(p))throw Error(`${p.name} is held in reserve; bring it back to deploy it.`);if(!alternating(s)||d.auto)return;if(!d.zonesChosen)throw Error('Choose the deployment zones first.');if(!d.first)throw Error('Roll off first: the winner deploys the first unit.');if(d.complete||p.deployed)throw Error(`${p.name} is already deployed; deployed units stay where they are.`);if(isScout(p)&&!scoutPhase(s))throw Error('Scouts deploy after every other unit of both armies.');if(scoutPhase(s)&&d.scouts?.both&&!d.scouts.rollOff)throw Error('Both armies have Scouts: roll off to see who deploys them first.');if(p.team!==d.next)throw Error(`${armyName(d.next,s)} deploys the next unit.`);if(charactersWait(s,p))throw Error('Characters deploy last, all together, once every other unit of the army is down.');}
 function deployPlaced(s,p){const d=s.deployOrder;if(!alternating(s)||d.auto)return;
  // Starting a different batch puts back what the unconfirmed one had placed.
  if(d.batch&&!d.batch.ids.includes(p.id))for(const id of d.batch.ids){const q=getUnit(s,id);if(q&&!q.deployed)Object.assign(q,{x:null,y:null});}
@@ -324,10 +336,27 @@ export function confirmDeployment(s){
  const b=d.batch,placed=(b?.ids??[]).map(id=>getUnit(s,id)).filter(q=>q&&q.x!==null);if(!b||!placed.length)throw Error('Place a unit before confirming.');
  const missing=b.ids.map(id=>getUnit(s,id)).filter(q=>q&&q.x===null);if(missing.length)throw Error(`${b.kind==='machines'?'War machines':'Characters'} deploy together: place ${missing.map(q=>q.name).join(' and ')} too, then confirm.`);
  for(const q of placed){q.deployed=true;d.log.push({team:q.team,id:q.id});}d.batch=null;d.pending=null;
- const team=placed[0].team,left=t=>deploymentPieces(s,t).some(q=>!q.deployed),other=team==='ash'?'iron':'ash';
- d.next=left(other)?other:left(team)?team:null;d.complete=!d.next;
+ advanceDeployment(s,placed[0].team);
  return {id:placed[0].id,ids:placed.map(q=>q.id),kind:b.kind,next:d.next,complete:d.complete};
 }
+// Who deploys next after `team`: the other army while it has a unit to place, else this one. Then
+// the Scouts: with Scouts in both armies a roll-off decides who places one first, and they alternate.
+function advanceDeployment(s,team){
+ const d=s.deployOrder,other=team==='ash'?'iron':'ash',scoutsLeft=t=>deploymentPieces(s,t).some(q=>!q.deployed&&!inReserve(q)&&isScout(q));
+ if(normalLeft(s,other)||normalLeft(s,team)){d.next=normalLeft(s,other)?other:team;d.complete=false;return;}
+ const scouting=['ash','iron'].filter(scoutsLeft);if(!scouting.length){d.next=null;d.complete=true;return;}
+ d.scouts??={both:scouting.length>1,rollOff:null,started:false};d.complete=false;
+ if(d.scouts.both&&!d.scouts.rollOff){d.next=null;return;}
+ if(!d.scouts.started){d.scouts.started=true;d.next=d.scouts.rollOff?.winner??scouting[0];return;}
+ d.next=scoutsLeft(other)?other:scoutsLeft(team)?team:null;d.complete=!d.next;
+}
+export function scoutRollOff(s,random=Math.random){const d=s.deployOrder;if(!alternating(s)||!d.scouts?.both||d.scouts.rollOff)throw Error('No Scouts roll-off is needed.');d.scouts.rollOff=rollOff(random);advanceDeployment(s,'ash');return d.scouts.rollOff;}
+// Ambushers may be held in reserve (or brought back) any time before the unit is deployed.
+export function holdInReserve(s,id,hold=true){
+ const u=getUnit(s,id),d=s.deployOrder;if(s.stage!=='deployment')throw Error('A unit is held in reserve during deployment.');if(!unitHasRule(u,'ambushers'))throw Error(`${u?.name??'This unit'} does not have Ambushers.`);if(u.deployed)throw Error(`${u.name} is already deployed.`);
+ if(hold){if(u.x!==null){if(d?.batch?.ids.includes(u.id)){d.batch=null;d.pending=null;}Object.assign(u,{x:null,y:null});}u.reserve={held:true,arriving:null};}else u.reserve=null;
+ if(alternating(s)&&d.first&&!d.auto&&(!d.next||!deploymentPieces(s,d.next).some(q=>!q.deployed&&!inReserve(q))))advanceDeployment(s,d.next??u.team);
+ return u;}
 // With a team: place and confirm that side's next unit. Without: deploy both armies at once
 // (a quick start for testing and two-player setups).
 function alternateAutoDeploy(s,team,random=null){
@@ -336,21 +365,35 @@ function alternateAutoDeploy(s,team,random=null){
  if(!d.first)throw Error('Roll off first: the winner deploys the first unit.');
  if(d.next!==team)throw Error(d.complete?'Both armies are deployed.':`${armyName(d.next,s)} deploys the next unit.`);
  // The batch already started, or the next one in order; every piece of it goes down, then it is confirmed.
- const order=deployOrderOf(s,team),pending=d.pending?getUnit(s,d.pending):null,p=pending??order.find(q=>!q.deployed),plan=deployPlan(s,team,random);
+ const order=deployOrderOf(s,team),pending=d.pending?getUnit(s,d.pending):null,p=pending??order.find(q=>!q.deployed&&isScout(q)===scoutPhase(s)),plan=deployPlan(s,team,random);
  for(const id of (d.batch??deploymentBatch(s,p)).ids){const q=getUnit(s,id);if(q.x===null)autoSpot(s,q,plan[q.id]);}
  return confirmDeployment(s);
 }
-export function deploymentComplete(s){return combatants(s).every(p=>p.x!==null)&&(!s.deployOrder?.alternate||s.deployOrder.complete);}
-export function firstTurnRollOff(s,random=Math.random){if(s.stage!=='deployment')throw Error('The battle already started.');if(!deploymentComplete(s))throw Error('Deploy both armies before rolling off for the first turn.');if(s.firstTurn)throw Error('The first-turn roll-off has been made.');s.firstTurn={...rollOff(random),chosen:null};return s.firstTurn;}
+export function deploymentComplete(s){return combatants(s).every(p=>p.x!==null||inReserve(p))&&(!s.deployOrder?.alternate||s.deployOrder.complete);}
+// ---- Vanguard moves: after deployment, before the first-turn roll-off. Each unit with Vanguard may
+// make one ordinary move (it may manoeuvre but not march). With Vanguard units in both armies a
+// roll-off decides who moves first, then the armies alternate a unit at a time. A unit that makes
+// a Vanguard move cannot charge in its first turn.
+export function vanguardUnits(s,team=null){return s.units.filter(u=>(!team||u.team===team)&&u.x!==null&&aliveCount(u)>0&&unitHasRule(u,'vanguard')&&!s.vanguard?.done?.includes(u.id));}
+export function vanguardState(s){if(s.vanguard||s.stage!=='deployment'||!deploymentComplete(s))return s.vanguard??null;const teams=['ash','iron'].filter(t=>vanguardUnits(s,t).length);return s.vanguard={both:teams.length>1,rollOff:null,next:teams.length===1?teams[0]:null,active:null,done:[],complete:!teams.length};}
+export const vanguardPending=s=>s.stage==='deployment'&&deploymentComplete(s)&&!vanguardState(s).complete;
+export function vanguardRollOff(s,random=Math.random){const v=vanguardState(s);if(!v?.both||v.rollOff)throw Error('No Vanguard roll-off is needed.');v.rollOff=rollOff(random);v.next=v.rollOff.winner;return v.rollOff;}
+export function beginVanguard(s,id){const v=vanguardState(s),u=getUnit(s,id);if(!v||v.complete)throw Error('There is no Vanguard move to make.');if(v.both&&!v.rollOff)throw Error('Both armies have Vanguard units: roll off first.');if(v.active&&v.active!==id)throw Error('Finish the Vanguard move in progress first.');if(!u||!vanguardUnits(s,v.next).includes(u))throw Error(`${armyName(v.next,s)} makes the next Vanguard move.`);v.active=id;s.history=[];return u;}
+// The move ends (moved), or the unit declines it; the other army then makes its next one.
+export function endVanguard(s,id,moved=true){const v=vanguardState(s),u=getUnit(s,id);if(!v||v.complete||!u||!vanguardUnits(s,v.next).includes(u)||v.active&&v.active!==id)throw Error('That unit is not making a Vanguard move.');
+ v.done.push(id);v.active=null;if(moved&&(u.movedThisTurn||(u.spent??0)>EPS))u.vanguarded=true;s.history=[];const other=u.team==='ash'?'iron':'ash';v.next=vanguardUnits(s,other).length?other:vanguardUnits(s,u.team).length?u.team:null;v.complete=!v.next;return v;}
+export function firstTurnRollOff(s,random=Math.random){if(s.stage!=='deployment')throw Error('The battle already started.');if(!deploymentComplete(s))throw Error('Deploy both armies before rolling off for the first turn.');if(vanguardPending(s))throw Error('Make or decline the Vanguard moves first.');if(s.firstTurn)throw Error('The first-turn roll-off has been made.');s.firstTurn={...rollOff(random),chosen:null};return s.firstTurn;}
 export function chooseFirstTurn(s,team,first){if(!s.firstTurn)throw Error('Roll off for the first turn first.');if(s.firstTurn.chosen)throw Error('The first player has already been chosen.');if(team!==s.firstTurn.winner)throw Error('Only the roll-off winner chooses who goes first.');if(!['ash','iron'].includes(first))throw Error('Choose Red or the opponent.');s.firstTurn.chosen=first;s.firstPlayer=first;return first;}
-export function begin(s,random=Math.random,{firstPlayer=null}={}){if(s.stage!=='deployment')throw Error('The battle already started.');if(s.units.some(u=>u.x===null)||s.rocket.x===null&&!s.rocket.absent||s.cannons.some(c=>c.x===null))throw Error('Deploy all units, the Deathshrieker, and Empire cannons before battle.');if(s.deployOrder?.alternate&&!s.deployOrder.complete)throw Error('Confirm the last unit’s placement to finish deployment.');const first=firstPlayer??s.firstTurn?.chosen??(s.deployOrder?.alternate?null:s.firstPlayer??'ash');if(!first)throw Error('Roll off for the first turn; the winner chooses who goes first.');for(const u of s.units.filter(u=>u.role==='wizard')){const r=rollSpells(random,{lore:u.lore??'battle',level:u.level??2});u.spells=r.spells;u.spellRolls=r.rolls;}s.firstPlayer=first;s.stage='strategy';s.team=s.firstPlayer;s.selected=s.units.find(u=>u.team===s.team)?.id;}
-export function canAct(s,u){return s.stage==='movement'&&u?.team===s.team&&aliveCount(u)>0&&!u.moved&&!u.engaged&&!u.charge&&!u.fleeing&&u.x!==null;}
+export function begin(s,random=Math.random,{firstPlayer=null}={}){if(s.stage!=='deployment')throw Error('The battle already started.');if(vanguardPending(s))throw Error('Make or decline the Vanguard moves first.');if(s.units.some(u=>u.x===null&&!inReserve(u))||s.rocket.x===null&&!s.rocket.absent||s.cannons.some(c=>c.x===null))throw Error('Deploy all units, the Deathshrieker, and Empire cannons before battle.');if(s.deployOrder?.alternate&&!s.deployOrder.complete)throw Error('Confirm the last unit’s placement to finish deployment.');const first=firstPlayer??s.firstTurn?.chosen??(s.deployOrder?.alternate?null:s.firstPlayer??'ash');if(!first)throw Error('Roll off for the first turn; the winner chooses who goes first.');for(const u of s.units.filter(u=>u.role==='wizard')){const r=rollSpells(random,{lore:u.lore??'battle',level:u.level??2});u.spells=r.spells;u.spellRolls=r.rolls;}
+ // A Vanguard move is made before the battle: it leaves no movement used in the first turn.
+ for(const u of s.units)Object.assign(u,{moved:false,spent:0,movementMode:null,movementMedium:null,movementFly:null,marchRequired:null,marchTest:null,movedThisTurn:false,difficultThisMove:false});s.history=[];if(s.vanguard)s.vanguard.active=null;s.firstPlayer=first;s.stage='strategy';s.team=s.firstPlayer;s.selected=s.units.find(u=>u.team===s.team)?.id;}
+export function canAct(s,u){if(s.stage==='deployment')return !!u&&s.vanguard?.active===u.id&&!u.moved&&aliveCount(u)>0&&u.x!==null;return s.stage==='movement'&&u?.team===s.team&&aliveCount(u)>0&&!u.moved&&!u.engaged&&!u.charge&&!u.fleeing&&u.x!==null;}
 // Why a unit cannot act right now, in plain words, or null when it can.
 export function inactionReason(s,u){
  if(!u||s.stage==='deployment')return null;
  if(s.stage==='finished')return 'The battle is over.';
  if(u.destroyed||aliveCount(u)===0)return 'Destroyed.';
- if(u.x===null)return u.offBoardPursuit?'Off the battlefield after pursuing; it returns in its next Movement phase.':'Not on the battlefield.';
+ if(u.x===null)return u.offBoardPursuit?'Off the battlefield after pursuing; it returns in its next Movement phase.':inReserve(u)?(u.reserve.arriving?'Arriving: place it against a battlefield edge in Compulsory Moves.':'Held in reserve (Ambushers): from round 2 it arrives on a 4+.'):'Not on the battlefield.';
  if(u.team!==s.team)return 'Waiting: it is the other army’s turn.';
  const spellNow=u.role==='wizard'&&u.spells.some(key=>SPELLS[key]?.phase===s.stage&&spellTargets(s,u.id,key).some(t=>canCast(s,u.id,key,t.id)));
  if(s.stage==='strategy'){if(u.fleeing&&!u.rallyAttempted||spellNow||u.role==='wizard'&&canDispelAVortex(s,u))return null;if(u.fleeing)return 'Failed to rally this turn and is still fleeing.';return u.role==='wizard'?'No hex or enchantment can be cast now.':'Nothing to do in Strategy: only fleeing units rally and wizards cast here.';}
@@ -430,6 +473,9 @@ function forwardError(s,u,start,end){const swept=hull([...corners(start),...corn
 export function orderError(s,u,order){
   if(!canAct(s,u))return 'Select an unmoved regiment from the active army.';
   const {kind='advance',mode='advance',angle=0,distance=0}=order;
+  if(s.stage==='deployment'&&mode==='march')return 'A Vanguard move cannot march.';
+  if(s.stage==='movement'&&arrivals(s,u.team).length)return 'Place the arriving reinforcements first: they enter in Compulsory Moves.';
+  if(mode==='march'&&u.reinforced===`${s.round}:${s.team}`)return 'Arrived as reinforcements this turn: it cannot march.';
   if(!['advance','back','side','wheel','pivot'].includes(kind)||!['advance','march'].includes(mode))return 'Choose a valid movement order.';
   if(!Number.isFinite(angle)||!Number.isFinite(distance)||distance<0)return 'Enter a valid angle and distance.';
   if(kind==='advance'&&(distance<=0||angle!==0))return 'Choose a forward distance.';
@@ -478,7 +524,7 @@ export function orderError(s,u,order){
 const vortexUnder=(s,u,pose)=>sweptVortices(s,u,[pose,pose],{all:true}).length>0;
 function remember(s,u){s.history.push({id:u.id,x:u.x,y:u.y,heading:heading(u),moved:u.moved,spent:u.spent??0,movementMode:u.movementMode??null,movementMedium:u.movementMedium??null,movementFly:u.movementFly??null,difficultThisMove:!!u.difficultThisMove,movedThisTurn:!!u.movedThisTurn,marchRequired:u.marchRequired??null});}
 // A flyer that crosses a vortex is struck by it as well; its Movement suffers only for landing in it.
-export function commitOrder(s,id,order,random=Math.random){const u=getUnit(s,id);const error=orderError(s,u,order);if(error)throw Error(error);const medium=order.medium??u.movementMedium??'ground',fly=medium==='fly'?(order.fly??u.movementFly??flyValues(u)[0]):null,plan=planMove(u,order),vortices=sweptVortices(s,u,movePoses(plan)),entered=medium==='fly'?vortexUnder(s,u,plan.start)||vortexUnder(s,u,plan.end):sweptVortices(s,u,movePoses(plan),{all:true}).length>0,difficult=!!u.difficultThisMove||entered;enterRemaining(s,random);remember(s,u);
+export function commitOrder(s,id,order,random=Math.random){const u=getUnit(s,id);const error=orderError(s,u,order);if(error)throw Error(error);const medium=order.medium??u.movementMedium??'ground',fly=medium==='fly'?(order.fly??u.movementFly??flyValues(u)[0]):null,plan=planMove(u,order),vortices=sweptVortices(s,u,movePoses(plan)),entered=medium==='fly'?vortexUnder(s,u,plan.start)||vortexUnder(s,u,plan.end):sweptVortices(s,u,movePoses(plan),{all:true}).length>0,difficult=!!u.difficultThisMove||entered;if(s.stage==='movement')enterRemaining(s,random);remember(s,u);
  // A flyer suffers dangerous terrain only where it takes off or lands.
  const lands=v=>[plan.start,plan.end].some(p=>circleGap(corners(p),{x:v.x,y:v.y,r:v.radius??1.5})<EPS),struck=medium==='fly'?vortices.filter(v=>!VORTEX_RULES[v.spell]?.dangerous||lands(v)):vortices;const marchRequired=medium==='fly'?false:needsMarchTest(s,u),spent=(u.spent??0)+plan.cost,allowance=moveAllowance(u,{mode:plan.mode,medium,fly,difficult});Object.assign(u,{x:plan.end.x,y:plan.end.y,heading:plan.end.heading,spent,movementMode:plan.mode,movementMedium:medium,movementFly:fly,marchRequired,moved:plan.kind==='pivot'||spent>=allowance-EPS,movedThisTurn:true});if(entered)u.difficultThisMove=true;s.lastVortexHits=vortexMoveHits(s,u,struck,random,medium==='fly'?[plan.end]:movePoses(plan));
  // A unit that has finished moving may have to test against a Phantasmagoria.
@@ -487,8 +533,8 @@ export function commitOrder(s,id,order,random=Math.random){const u=getUnit(s,id)
  if(s.lastVortexHits.length||s.lastPhantasm?.length)s.history=s.history.filter(h=>h.id!==u.id);return plan;}
 export function movementError(s,u,distance,mode){return orderError(s,u,{kind:'advance',distance,mode,angle:0});}
 export function move(s,id,distance,mode){return commitOrder(s,id,{kind:'advance',distance,mode,angle:0});}
-export function hold(s,id,random=Math.random){const u=getUnit(s,id);if(!canAct(s,u))throw Error('This regiment cannot take orders now.');enterRemaining(s,random);remember(s,u);u.moved=true;s.lastPhantasm=u.movedThisTurn?endOfMove(s,u,random):null;if(s.lastPhantasm?.length)s.history=s.history.filter(h=>h.id!==u.id);}
-export function undo(s){if(s.stage!=='movement')throw Error('Undo is available during Movement only.');const last=s.history.pop();if(!last)throw Error('No move to undo this turn.');const u=getUnit(s,last.id);Object.assign(u,{x:last.x,y:last.y,heading:last.heading,moved:last.moved,spent:last.spent,movementMode:last.movementMode,movementMedium:last.movementMedium??null,movementFly:last.movementFly??null,difficultThisMove:!!last.difficultThisMove,movedThisTurn:!!last.movedThisTurn,marchRequired:last.marchRequired});s.selected=u.id;}
+export function hold(s,id,random=Math.random){const u=getUnit(s,id);if(!canAct(s,u)||s.stage!=='movement')throw Error('This regiment cannot take orders now.');if(arrivals(s,u.team).length)throw Error('Place the arriving reinforcements first: they enter in Compulsory Moves.');enterRemaining(s,random);remember(s,u);u.moved=true;s.lastPhantasm=u.movedThisTurn?endOfMove(s,u,random):null;if(s.lastPhantasm?.length)s.history=s.history.filter(h=>h.id!==u.id);}
+export function undo(s){if(s.stage!=='movement'&&!s.vanguard?.active)throw Error('Undo is available during Movement only.');const last=s.history.pop();if(!last)throw Error('No move to undo this turn.');const u=getUnit(s,last.id);Object.assign(u,{x:last.x,y:last.y,heading:last.heading,moved:last.moved,spent:last.spent,movementMode:last.movementMode,movementMedium:last.movementMedium??null,movementFly:last.movementFly??null,difficultThisMove:!!last.difficultThisMove,movedThisTurn:!!last.movedThisTurn,marchRequired:last.marchRequired});s.selected=u.id;}
 // Format rules modules (such as Battle March objectives and scoring) register what happens at
 // the end of each player's turn and at the end of the game.
 const FORMAT_RULES={};
@@ -507,8 +553,8 @@ export function finishGame(s,reason){if(s.stage==='finished')return s.result;s.s
 export function nextTurn(s,random=Math.random){if(s.stage!=='combat')throw Error('Finish the Combat phase first.');endOfPlayerTurn(s,s.team);if(s.stage==='finished')return;s.stage='strategy';s.team=s.team==='ash'?'iron':'ash';if(s.team===(s.firstPlayer??'ash'))s.round++;s.units.forEach(u=>{u.moved=false;u.shot=false;u.pursued=false;u.spent=0;u.movementMode=null;u.marchRequired=null;u.marchTest=null;if(u.pursuitPending&&u.engaged)u.pursuitPending=false;else u.charge=null;u.reaction=null;u.combatFocus=null;u.impetuousTest=null;u.combatResolved=false;u.rallyAttempted=false;u.difficultThisMove=false;u.movedThisTurn=false;u.movementMedium=null;u.movementFly=null;if(u.role==='wizard'){u.castThisTurn=[];u.magicExhausted=false;u.dispelExhausted=false;u.engineerUsed=false;}});s.fatedDispelUsed={ash:false,iron:false};s.magicLocked={};s.dispelBlocked={};
  // Start of Turn, in this order: (1) effects lasting until the casting side's next Start of Turn
  // end; (2) vortices move; (3) the format's start of turn (Raid & Burn).
- expireEffects(s,'start',`${s.round}:${s.team}`);s.vortexReports=driftVortices(s,random);s.rocket.shot=false;s.rocket.lastShot=null;s.cannons.forEach(c=>{c.shot=false;c.lastShot=null;});s.history=[];s.selected=s.units.find(u=>u.team===s.team).id;formatRules(s)?.startOfTurn?.(s,s.team,random);}
-export function nextPhase(s,random=Math.random){if(s.stage==='finished')throw Error('The battle is over.');if(s.pendingSpell)throw Error('Resolve the dispel of the spell just cast first.');if(s.stage==='strategy'&&s.units.some(u=>u.team===s.team&&u.x!==null&&u.fleeing&&!u.rallyAttempted))throw Error('Attempt to rally every fleeing regiment first.');if(s.units.some(u=>u.charge?.status==='declared'))throw Error('Resolve all declared charges first.');if(s.stage==='combat'&&(s.combatSession||s.pendingCombat||combatPairs(s).length))throw Error('Resolve every combat and its outcome first.');const i=PHASES.indexOf(s.stage);if(i<0)throw Error('Begin the battle first.');if(s.stage==='movement')for(const u of s.units.filter(u=>u.team===s.team&&u.movedThisTurn))endOfMove(s,u,random);s.movementReopened=false;s.movementHistory=i===1?s.history:i===2?s.movementHistory:null;if(i===3)nextTurn(s,random);else{s.stage=PHASES[i+1];s.history=[];if(s.stage==='movement'){s.movementStep='declare';if(!s.units.some(u=>u.team===s.team&&canAct(s,u)&&availableCharges(s,u).length))beginRemaining(s,random);}s.shootingSkipped=false;if(s.stage==='shooting'&&!phaseHasActions(s)){s.stage='combat';s.shootingSkipped=true;}if(s.stage==='combat')combatants(s).forEach(u=>u.combatResolved=false);}return s.stage;}
+ expireEffects(s,'start',`${s.round}:${s.team}`);s.vortexReports=driftVortices(s,random);s.reserveReports=reserveRolls(s,s.team,random);s.rocket.shot=false;s.rocket.lastShot=null;s.cannons.forEach(c=>{c.shot=false;c.lastShot=null;});s.history=[];s.selected=s.units.find(u=>u.team===s.team).id;formatRules(s)?.startOfTurn?.(s,s.team,random);}
+export function nextPhase(s,random=Math.random){if(s.stage==='finished')throw Error('The battle is over.');if(s.pendingSpell)throw Error('Resolve the dispel of the spell just cast first.');if(s.stage==='strategy'&&s.units.some(u=>u.team===s.team&&u.x!==null&&u.fleeing&&!u.rallyAttempted))throw Error('Attempt to rally every fleeing regiment first.');if(s.units.some(u=>u.charge?.status==='declared'))throw Error('Resolve all declared charges first.');if(s.stage==='combat'&&(s.combatSession||s.pendingCombat||combatPairs(s).length))throw Error('Resolve every combat and its outcome first.');const i=PHASES.indexOf(s.stage);if(i<0)throw Error('Begin the battle first.');if(s.stage==='movement')for(const u of arrivals(s)){if(firstReinforcementSpot(s,u.id))throw Error(`Place ${u.name} first: it arrives as reinforcements this turn.`);u.reserve.arriving=null;}if(s.stage==='movement')for(const u of s.units.filter(u=>u.team===s.team&&u.movedThisTurn))endOfMove(s,u,random);s.movementReopened=false;s.movementHistory=i===1?s.history:i===2?s.movementHistory:null;if(i===3)nextTurn(s,random);else{s.stage=PHASES[i+1];s.history=[];if(s.stage==='movement'){s.movementStep='declare';if(!s.units.some(u=>u.team===s.team&&canAct(s,u)&&availableCharges(s,u).length))beginRemaining(s,random);}s.shootingSkipped=false;if(s.stage==='shooting'&&!phaseHasActions(s)){s.stage='combat';s.shootingSkipped=true;}if(s.stage==='combat')combatants(s).forEach(u=>u.combatResolved=false);}return s.stage;}
 // Movement can be reopened until the active army acts in Shooting (or, when Shooting
 // was skipped, in Combat). Its undo history is kept so the last moves can be taken back.
 function castIn(s,phase){return s.units.some(u=>u.team===s.team&&u.role==='wizard'&&u.castThisTurn.some(key=>SPELLS[key]?.phase===phase));}
@@ -1137,6 +1183,7 @@ function closeTheDoor(u,t,face){
 }
 export function chargePlan(s,u,t){
  if(u&&hasRule(u,'noCharge'))return {error:'Earthen Ramparts: this unit cannot charge.'};
+ if(u&&s.round===1&&(u.scouted||u.vanguarded))return {error:u.scouted?'Deployed as Scouts: it cannot charge in its first turn.':'Made a Vanguard move: it cannot charge in its first turn.'};
  const direct=directChargePlan(s,u,t);if(!direct.error)return direct;
  if(!u||!t||u.x===null||t.x===null||u.team===t.team||u.engaged||u.fleeing||u.rallied||gap(u,t)>profile(u).M+6+EPS||/front arc/.test(direct.error))return direct;
  const face=chargeFace(u,t),offset={front:0,rear:180,'left flank':-90,'right flank':90}[face],out=normalize(heading(t)+offset),desired=normalize(out+180),own=size(u),theirs=size(t),depth=face.includes('flank')?theirs.w:theirs.h,width=face.includes('flank')?theirs.h:theirs.w;
@@ -1622,6 +1669,28 @@ function fleeMove(s,u,distance,random=Math.random,depth=0){
  if(depth<6)for(const friend of crossed.filter(v=>v.team===u.team&&v.role!=='warmachine'&&!v.fleeing&&!v.engaged&&v.x!==null&&aliveCount(v)>0)){const entry=panicTest(s,friend,{cause:'Fled Through',random,depth});if(entry)report.panic.push({...entry,flee:entry.move});}
  return report;
 }
+// ---- Ambushers: reserves and reinforcements ----
+// From round 2, at each of its Start of Turns, a unit held in reserve arrives on a 4+ (in round 5 it
+// arrives without a roll). It enters in Compulsory Moves, before any other unit's Remaining Move:
+// its rear edge against a battlefield edge of its player's choice, facing the centre, more than 8″
+// from every enemy model. It cannot march that turn, and counts as having moved for shooting.
+// With no legal place on any edge, it stays in reserve and rolls again next turn.
+function reserveRolls(s,team,random){const out=[];if(s.round<2)return out;for(const u of s.units.filter(u=>u.team===team&&inReserve(u)&&!u.reserve.arriving)){const roll=s.round>=5?null:rollD6(1,random)[0],arrives=roll===null||roll>=4;out.push({unit:u.id,roll,arrives});if(arrives)u.reserve.arriving=`${s.round}:${team}`;}return out;}
+export const arrivals=(s,team=s.team)=>s.units.filter(u=>u.team===team&&inReserve(u)&&u.reserve.arriving===`${s.round}:${team}`);
+const EDGE_HEADING={top:180,bottom:0,left:90,right:270};
+export function reinforcementPose(s,u,edge,along){if(!(edge in EDGE_HEADING))return null;const h=size(u).h/2,b=boardOf(s);return {...u,heading:EDGE_HEADING[edge],x:edge==='left'?h:edge==='right'?b.width-h:along,y:edge==='top'?h:edge==='bottom'?b.height-h:along};}
+export function reinforcementError(s,id,edge,along){
+ const u=getUnit(s,id);if(!u||!inReserve(u))return 'This unit is not held in reserve.';
+ if(s.stage!=='movement'||s.team!==u.team||u.reserve.arriving!==`${s.round}:${s.team}`)return 'It has not arrived: from round 2 it arrives on a 4+ at the Start of Turn.';
+ if(s.movementStep!=='remaining')return 'It enters in Compulsory Moves, after charges.';
+ if(!Number.isFinite(along))return 'Choose where along the edge it enters.';const pose=reinforcementPose(s,u,edge,along);if(!pose)return 'Choose a battlefield edge.';
+ if(!clearOfEnemies(s,u.team,pose,8))return 'It cannot enter within 8″ of an enemy model.';
+ return checkPosition(s,pose,pose.x,pose.y);}
+export function placeReinforcement(s,id,edge,along){const error=reinforcementError(s,id,edge,along);if(error)throw Error(error);const u=getUnit(s,id),pose=reinforcementPose(s,u,edge,along);Object.assign(u,{x:pose.x,y:pose.y,heading:pose.heading,reserve:null,deployed:true,moved:false,spent:0,movementMode:null,movedThisTurn:true,reinforced:`${s.round}:${s.team}`});return u;}
+// The first legal place: its own deployment zone's edges first, each searched from the middle out.
+export function firstReinforcementSpot(s,id){const u=getUnit(s,id),b=boardOf(s),z=zoneOf(s,u.team),touches=edge=>z.some(p=>edge==='top'?p.y<EPS:edge==='bottom'?p.y>b.height-EPS:edge==='left'?p.x<EPS:p.x>b.width-EPS)?1:0;
+ for(const edge of ['top','bottom','left','right'].sort((a,c)=>touches(c)-touches(a))){const len=edge==='top'||edge==='bottom'?b.width:b.height;for(let k=0;k<=len*2;k++){const along=len/2+(k%2?1:-1)*Math.ceil(k/2)/2;if(!reinforcementError(s,id,edge,along))return {edge,along};}}return null;}
+export function autoReinforce(s,id){const spot=firstReinforcementSpot(s,id);if(!spot){getUnit(s,id).reserve.arriving=null;return null;}return placeReinforcement(s,id,spot.edge,spot.along);}
 // ---- Phantasmagoria ----
 // An enemy unit that ends its move within 12″ of the template tests for Panic at once, falling back
 // or fleeing directly away from it if it fails; one that passes (or has no test to take) is

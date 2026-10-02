@@ -196,6 +196,9 @@ export function deploymentChoice(s){
  if(d.rollOff&&!d.first&&d.rollOff.winner===ME)return 'deploy-order';
  if(s.firstTurn&&!s.firstTurn.chosen&&s.firstTurn.winner===ME)return 'first-turn';
  if(G.deploymentTurn(s)===ME)return 'deploy';
+ // Roll-offs for Scouts and Vanguard moves (whichever side calls them), and its own Vanguard units.
+ if(!d.complete&&!d.next&&d.scouts?.both&&!d.scouts.rollOff)return 'scout-roll';
+ if(G.vanguardPending(s)){const v=G.vanguardState(s);if(v.both&&!v.rollOff)return 'vanguard-roll';if(v.next===ME)return 'vanguard';}
  return null;
 }
 export function takeDeploymentStep(s,random=null){
@@ -205,6 +208,10 @@ export function takeDeploymentStep(s,random=null){
  if(choice==='deploy-order'){G.chooseDeploymentOrder(s,ME,THEM);return {message:'The bot won the deployment roll-off and has you deploy first.'};}
  if(choice==='first-turn'){G.chooseFirstTurn(s,ME,ME);return {message:'The bot won the roll-off and takes the first turn.'};}
  if(choice==='deploy'){const out=deployNext(s,random),names=(out.ids??[out.id]).map(id=>G.getUnit(s,id).name);return {message:`The bot deploys ${names.join(' and ')}.`,id:out.id,...out};}
+ if(choice==='scout-roll'){const r=G.scoutRollOff(s,random??Math.random);return {message:`Scouts roll-off: ${r.winner===ME?'the bot':'you'} deploy Scouts first.`};}
+ if(choice==='vanguard-roll'){const r=G.vanguardRollOff(s,random??Math.random);return {message:`Vanguard roll-off: ${r.winner===ME?'the bot':'you'} move first.`};}
+ // The bot keeps its Vanguard units where it deployed them (it does not plan Vanguard moves yet).
+ if(choice==='vanguard'){const u=G.vanguardUnits(s,ME)[0];G.endVanguard(s,u.id,false);return {message:`The bot keeps ${u.name} where it was deployed (no Vanguard move).`};}
  return null;
 }
 // The bot plans its whole remaining deployment against what is on the table now, then places
@@ -403,6 +410,8 @@ export function takeStep(s,random=Math.random){
   G.enterRemaining(s,random);return {message:'The bot begins remaining moves.'};
  }
  if(s.stage==='movement'){
+  // Arriving Ambushers enter first, at the first legal place along its own edge.
+  for(const a of G.arrivals(s,ME)){const p=G.autoReinforce(s,a.id);if(p)return {message:`${a.name} arrives as reinforcements.`};}
   const u=s.units.find(u=>u.team===ME&&G.canAct(s,u));if(u)return moveRegiment(s,u,random);
   const cast=aiSpell(s,random);if(cast)return cast;
   G.nextPhase(s,random);return {message:`The bot begins ${s.stage}.`};
